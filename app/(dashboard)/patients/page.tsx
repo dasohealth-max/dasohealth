@@ -13,10 +13,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Search, Pencil, Trash2, Eye, Phone, MapPin, X, UserPlus,
-  ChevronLeft, ChevronRight, QrCode, ArrowLeft, Save, Navigation, AlertTriangle,
+  ChevronLeft, ChevronRight, QrCode, ArrowLeft, Save, Navigation, AlertTriangle, Printer,
 } from 'lucide-react';
 import { usePermissions } from '@/lib/auth';
 import LocationMapPicker from '@/components/ui/LocationMapPicker';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { QRCodeSVG } from 'qrcode.react';
 
 const PAGE_SIZE = 10;
 
@@ -346,6 +348,7 @@ export default function PatientsPage() {
   const [viewPt, setViewPt]     = useState<Patient | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm]         = useState<typeof BLANK>(BLANK);
+  const [qrPatient, setQrPatient] = useState<Patient | null>(null);
 
   const filtered = patients.filter((p) =>
     p.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -467,6 +470,7 @@ export default function PatientsPage() {
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           <button onClick={() => setViewPt(p)} className="p-1.5 rounded-lg hover:bg-teal-50 text-slate-400 hover:text-teal-600 transition-colors" title="View"><Eye size={14} /></button>
+                          <button onClick={() => setQrPatient(p)} className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors" title="ID Card"><QrCode size={14} /></button>
                           {can('patients', 'edit') && <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Edit"><Pencil size={14} /></button>}
                           {can('patients', 'delete') && <button onClick={() => setDeleteId(p.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14} /></button>}
                         </div>
@@ -533,6 +537,67 @@ export default function PatientsPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Print isolation style */}
+      <style>{`@media print { * { visibility: hidden !important; } #qr-patient-card, #qr-patient-card * { visibility: visible !important; } #qr-patient-card { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; } }`}</style>
+
+      {/* QR ID Card modal */}
+      {qrPatient && (
+        <Dialog open={!!qrPatient} onOpenChange={(open) => { if (!open) setQrPatient(null); }}>
+          <DialogContent showCloseButton={false} className="max-w-sm rounded-2xl p-0 overflow-hidden">
+            <div id="qr-patient-card" className="bg-white">
+              <div className="bg-teal-600 px-6 py-4 text-white">
+                <p className="text-xs font-semibold uppercase tracking-widest opacity-80">Patient ID Card</p>
+                <h2 className="text-lg font-bold mt-0.5">{qrPatient.fullName}</h2>
+                <p className="text-sm font-mono opacity-80">{qrPatient.patientCode}</p>
+              </div>
+              <div className="px-6 py-5 flex gap-5">
+                <div className="flex-1 grid grid-cols-1 gap-2.5 text-sm">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Date of Birth</p>
+                    <p className="text-slate-700 font-medium">{formatDate(qrPatient.dateOfBirth)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Sex</p>
+                    <p className="text-slate-700 font-medium capitalize">{qrPatient.sex}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Phone</p>
+                    <p className="text-slate-700 font-medium">{maskPatient ? '•••••••••' : qrPatient.phone}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">District</p>
+                    <p className="text-slate-700 font-medium">{qrPatient.district}, {qrPatient.region}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center justify-center">
+                  <QRCodeSVG
+                    value={JSON.stringify({ id: qrPatient.id, code: qrPatient.patientCode, name: qrPatient.fullName })}
+                    size={130}
+                    fgColor="#0d9488"
+                    bgColor="#ffffff"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1.5">Scan to verify</p>
+                </div>
+              </div>
+              <div className="px-6 pb-5 flex gap-2 print:hidden">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors flex-1 justify-center"
+                >
+                  <Printer size={14} /> Print Card
+                </button>
+                <button
+                  onClick={() => setQrPatient(null)}
+                  className="flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Delete confirm */}
