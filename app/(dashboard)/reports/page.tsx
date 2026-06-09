@@ -1,10 +1,14 @@
 'use client';
 import { useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { useStore } from '@/lib/store';
+import { usePermissions } from '@/lib/auth';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileBarChart, Download, Printer } from 'lucide-react';
+import { FileBarChart, Download, Printer, FileSpreadsheet } from 'lucide-react';
 
 const COLORS = ['#0d9488','#6366f1','#f59e0b','#ec4899','#8b5cf6'];
 
@@ -12,7 +16,123 @@ type ReportType = 'Campaign Summary' | 'Patient Statistics' | 'Surgery Outcomes'
 
 export default function ReportsPage() {
   const { campaigns, patients, screenings, surgeries, referrals, followUps } = useStore();
+  const { can } = usePermissions();
   const [type, setType] = useState<ReportType>('Campaign Summary');
+
+  const teal: [number, number, number] = [13, 148, 136];
+
+  function exportPDF() {
+    const today = new Date().toISOString().split('T')[0];
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    // Page 1 — summary KPIs
+    doc.setFontSize(18);
+    doc.setTextColor(13, 148, 136);
+    doc.text('EyeCare Pro — Programme Report', 14, 20);
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Generated: ' + today, 14, 28);
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Total Patients', patients.length],
+        ['Total Screenings', screenings.length],
+        ['Surgeries Completed', surgeries.filter((s) => s.status === 'Completed').length],
+        ['Follow-ups Completed', followUps.filter((f) => f.status === 'Completed').length],
+        ['Total Referrals', referrals.length],
+      ],
+      headStyles: { fillColor: teal },
+      theme: 'striped',
+    });
+
+    // Page 2 — Patients
+    doc.addPage();
+    doc.setFontSize(14);
+    doc.setTextColor(13, 148, 136);
+    doc.text('Patients', 14, 15);
+
+    autoTable(doc, {
+      startY: 22,
+      head: [['Code', 'Name', 'Sex', 'District', 'Campaign']],
+      body: patients.map((p) => {
+        const camp = campaigns.find((c) => c.id === p.campaignId);
+        return [p.patientCode, p.fullName, p.sex, p.district, camp?.name ?? '-'];
+      }),
+      headStyles: { fillColor: teal },
+      theme: 'striped',
+    });
+
+    // Page 3 — Surgeries
+    doc.addPage();
+    doc.setFontSize(14);
+    doc.setTextColor(13, 148, 136);
+    doc.text('Surgeries', 14, 15);
+
+    autoTable(doc, {
+      startY: 22,
+      head: [['Patient', 'Date', 'Eye', 'Lens', 'Status', 'Surgeon']],
+      body: surgeries.map((s) => [
+        s.patientName,
+        (s.performedAt ?? s.scheduledAt).split('T')[0],
+        s.eye,
+        s.lensType,
+        s.status,
+        s.surgeonName ?? '-',
+      ]),
+      headStyles: { fillColor: teal },
+      theme: 'striped',
+    });
+
+    doc.save('eyecare-report-' + today + '.pdf');
+  }
+
+  function exportExcel() {
+    const today = new Date().toISOString().split('T')[0];
+    const wb = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(wb,
+      XLSX.utils.json_to_sheet(patients.map((p) => {
+        const camp = campaigns.find((c) => c.id === p.campaignId);
+        return { ID: p.id, Code: p.patientCode, Name: p.fullName, Sex: p.sex, DOB: p.dateOfBirth, District: p.district, Region: p.region, Campaign: camp?.name ?? '' };
+      })),
+      'Patients'
+    );
+
+    XLSX.utils.book_append_sheet(wb,
+      XLSX.utils.json_to_sheet(screenings.map((s) => ({
+        ID: s.id, Patient: s.patientName, Date: s.screenedAt.split('T')[0],
+        'VA Right': s.vaRightUnaided, 'VA Left': s.vaLeftUnaided, Recommendation: s.recommendation,
+      }))),
+      'Screenings'
+    );
+
+    XLSX.utils.book_append_sheet(wb,
+      XLSX.utils.json_to_sheet(surgeries.map((s) => ({
+        ID: s.id, Patient: s.patientName,
+        Date: (s.performedAt ?? s.scheduledAt).split('T')[0],
+        Eye: s.eye, Lens: s.lensType, Status: s.status, Surgeon: s.surgeonName ?? '',
+      }))),
+      'Surgeries'
+    );
+
+    XLSX.utils.book_append_sheet(wb,
+      XLSX.utils.json_to_sheet(followUps.map((f) => ({
+        ID: f.id, Patient: f.patientName, Milestone: f.milestone, 'Due Date': f.dueDate, Status: f.status,
+      }))),
+      'Follow-Ups'
+    );
+
+    XLSX.utils.book_append_sheet(wb,
+      XLSX.utils.json_to_sheet(referrals.map((r) => ({
+        ID: r.id, Patient: r.patientName, Source: r.source, Status: r.status, 'Referred Date': r.referredAt,
+      }))),
+      'Referrals'
+    );
+
+    XLSX.writeFile(wb, 'eyecare-report-' + today + '.xlsx');
+  }
 
   function exportCSV() {
     let rows: string[][] = [];
@@ -73,7 +193,13 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <div><h1 className="text-xl font-bold text-slate-900">Reports</h1>
           <p className="text-sm text-slate-500">Generate summaries and export data</p></div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {can('reports', 'export') && (
+            <Button onClick={exportPDF} className="bg-rose-600 hover:bg-rose-700 text-white gap-2 rounded-xl"><Download size={15} />Export PDF</Button>
+          )}
+          {can('reports', 'export') && (
+            <Button onClick={exportExcel} className="bg-green-600 hover:bg-green-700 text-white gap-2 rounded-xl"><FileSpreadsheet size={15} />Export Excel</Button>
+          )}
           <Button variant="outline" onClick={() => window.print()} className="gap-2 rounded-xl border-slate-200"><Printer size={15} />Print</Button>
           <Button onClick={exportCSV} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Download size={15} />Export CSV</Button>
         </div>
