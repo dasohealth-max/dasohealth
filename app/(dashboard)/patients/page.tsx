@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   Search, Pencil, Trash2, Eye, Phone, MapPin, X, UserPlus,
-  ChevronLeft, ChevronRight, QrCode, ArrowLeft, Save, Navigation,
+  ChevronLeft, ChevronRight, QrCode, ArrowLeft, Save, Navigation, AlertTriangle,
 } from 'lucide-react';
 import { usePermissions } from '@/lib/auth';
 import LocationMapPicker from '@/components/ui/LocationMapPicker';
@@ -55,7 +55,7 @@ function Sel({ value, onChange, children, className = '' }: {
 
 // ─── Full-page Patient Form ───────────────────────────────────────────────────
 function PatientFullForm({
-  editing, form, setForm, campaigns, locations, onSave, onCancel, isValid,
+  editing, form, setForm, campaigns, locations, onSave, onCancel, isValid, patients,
 }: {
   editing: Patient | null;
   form: typeof BLANK;
@@ -65,11 +65,22 @@ function PatientFullForm({
   onSave: () => void;
   onCancel: () => void;
   isValid: boolean;
+  patients: Patient[];
 }) {
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function set(k: keyof typeof BLANK, v: any) {
     if (v === null || v === undefined) return;
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  function handlePhoneChange(value: string) {
+    set('phone', value);
+    const trimmed = value.trim();
+    if (!trimmed) { setDuplicateWarning(null); return; }
+    const match = patients.find((p) => p.phone.trim() === trimmed && p.id !== editing?.id);
+    setDuplicateWarning(match ? `${match.fullName} (${match.patientCode})` : null);
   }
 
   function handleMapSelect(d: { district: string; region: string; lat: number; lng: number }) {
@@ -153,10 +164,16 @@ function PatientFullForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs mb-1 block font-medium text-slate-600">Phone Number *</Label>
-                <input value={form.phone} onChange={(e) => set('phone', e.target.value)}
+                <input value={form.phone} onChange={(e) => handlePhoneChange(e.target.value)}
                   className={`${field} ${!form.phone.trim() ? 'border-red-300' : ''}`}
                   placeholder="+252 61 …" />
                 {!form.phone.trim() && <p className="text-[11px] text-red-500 mt-0.5">Required</p>}
+                {duplicateWarning && (
+                  <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg p-3 text-sm">
+                    <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                    <span>Warning: A patient with this phone number already exists — <strong>{duplicateWarning}</strong>. You can still save if this is intentional.</span>
+                  </div>
+                )}
               </div>
               <div>
                 <Label className="text-xs mb-1 block font-medium text-slate-600">Email (optional)</Label>
@@ -370,6 +387,7 @@ export default function PatientsPage() {
         onSave={save}
         onCancel={cancel}
         isValid={isValid}
+        patients={patients}
       />
     );
   }
