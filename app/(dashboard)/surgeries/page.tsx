@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineForm from '@/components/forms/InlineForm';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, AlertTriangle, UserCheck } from 'lucide-react';
 import { usePermissions } from '@/lib/auth';
 
 const STATUSES: SurgeryStatus[] = ['Scheduled','In-Theatre','Completed','Cancelled','Postponed'];
@@ -37,10 +37,13 @@ export default function SurgeryPage() {
   const { surgeries, patients, users, addSurgery, updateSurgery, deleteSurgery } = useStore();
   const { can } = usePermissions();
   const surgeons = users.filter((u) => ['Ophthalmologist','Surgeon','Super Administrator'].includes(u.role));
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing]   = useState<Surgery | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm]         = useState<typeof BLANK>(BLANK);
+  const [showForm, setShowForm]         = useState(false);
+  const [editing, setEditing]           = useState<Surgery | null>(null);
+  const [deleteId, setDeleteId]         = useState<string | null>(null);
+  const [form, setForm]                 = useState<typeof BLANK>(BLANK);
+  const [assigningId, setAssigningId]   = useState<string | null>(null);
+  const [assignSurgeonId, setAssignSurgeonId] = useState('');
+  const unassignedCount = surgeries.filter((s) => !s.surgeonId).length;
 
   function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
   function openEdit(s: Surgery) {
@@ -119,6 +122,15 @@ export default function SurgeryPage() {
         </InlineForm>
       )}
 
+      {unassignedCount > 0 && can('surgeries', 'edit') && (
+        <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle size={15} className="shrink-0 text-amber-600" />
+          <span>
+            <strong>{unassignedCount}</strong> {unassignedCount === 1 ? 'surgery is' : 'surgeries are'} missing a surgeon assignment.
+          </span>
+        </div>
+      )}
+
       {/* Kanban board */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 items-start">
         {(['Scheduled','In-Theatre','Completed','Cancelled'] as SurgeryStatus[]).map((status) => {
@@ -143,8 +155,58 @@ export default function SurgeryPage() {
                         {can('surgeries','delete') && <button onClick={() => setDeleteId(s.id)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"><Trash2 size={11} /></button>}
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500 mb-1">By {s.surgeonName || 'â€”'}</p>
-                    <p className="text-xs text-slate-400 mb-1.5">{s.scheduledAt ? formatDate(s.scheduledAt) : 'â€”'}</p>
+                    {s.surgeonId ? (
+                      <p className=”text-xs font-medium text-teal-700 bg-teal-50 rounded-full px-2 py-0.5 inline-flex items-center gap-1 mb-1”>
+                        <UserCheck size={10} />{s.surgeonName}
+                      </p>
+                    ) : (
+                      <div className=”flex items-center gap-1.5 mb-1 flex-wrap”>
+                        <span className=”text-[10px] font-semibold bg-orange-100 text-orange-700 rounded-full px-2 py-0.5”>Surgeon Not Assigned</span>
+                        {can('surgeries', 'edit') && assigningId !== s.id && (
+                          <button
+                            onClick={() => { setAssigningId(s.id); setAssignSurgeonId(''); }}
+                            className=”text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full px-2 py-0.5 transition-colors”
+                          >
+                            Assign
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {assigningId === s.id && (
+                      <div className=”mt-1.5 pt-1.5 border-t border-slate-100 space-y-1.5 mb-1”>
+                        <Select value={assignSurgeonId} onValueChange={setAssignSurgeonId}>
+                          <SelectTrigger className=”rounded-lg h-7 text-xs”>
+                            <SelectValue placeholder=”Select surgeon…” />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {surgeons.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className=”flex gap-1”>
+                          <button
+                            disabled={!assignSurgeonId}
+                            onClick={() => {
+                              const u = surgeons.find((x) => x.id === assignSurgeonId);
+                              if (!u) return;
+                              updateSurgery({ ...s, surgeonId: u.id, surgeonName: u.name });
+                              setAssigningId(null);
+                            }}
+                            className=”flex-1 text-[10px] font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg px-2 py-1 transition-colors”
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setAssigningId(null)}
+                            className=”text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg px-2 py-1 transition-colors”
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <p className=”text-xs text-slate-400 mb-1.5”>{s.scheduledAt ? formatDate(s.scheduledAt) : 'â€”'}</p>
                     {s.preOpVA  ? <p className="text-xs text-slate-500">Pre: <span className="font-mono font-medium">{s.preOpVA}</span></p>  : null}
                     {s.postOpVA ? <p className="text-xs text-green-600">Post: <span className="font-mono font-medium">{s.postOpVA}</span></p> : null}
                     <div className="flex gap-1 mt-2 flex-wrap">
