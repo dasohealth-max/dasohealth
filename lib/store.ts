@@ -5,6 +5,7 @@ import type {
   Surgery, Referral, FollowUp, InventoryItem,
   OutreachActivity, TransportJob, AuditLog,
 } from '@/types';
+import { uid } from '@/lib/utils';
 
 // ─── Seed data ─────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,68 @@ export const useStore = create<AppState>()(
       deleteScreening: (id) => set((s) => ({ screenings: s.screenings.filter((x) => x.id !== id) })),
 
       addSurgery: (sg) => set((s) => ({ surgeries: [...s.surgeries, sg] })),
-      updateSurgery: (sg) => set((s) => ({ surgeries: s.surgeries.map((x) => x.id === sg.id ? sg : x) })),
+      updateSurgery: (sg) => set((s) => {
+        const updatedSurgeries = s.surgeries.map((x) => x.id === sg.id ? sg : x);
+
+        // Only auto-create follow-ups when transitioning to Completed
+        if (sg.status !== 'Completed') return { surgeries: updatedSurgeries };
+
+        // Idempotency guard — skip if follow-ups already exist for this surgery
+        if (s.followUps.some((f) => f.surgeryId === sg.id)) return { surgeries: updatedSurgeries };
+
+        const base = sg.performedAt ? new Date(sg.performedAt) : new Date();
+        const addDays = (days: number) => {
+          const d = new Date(base);
+          d.setDate(d.getDate() + days);
+          return d.toISOString().split('T')[0];
+        };
+
+        const now = new Date().toISOString();
+        const milestones = [
+          { milestone: 'Day 1'   as const, days: 1  },
+          { milestone: 'Week 1'  as const, days: 7  },
+          { milestone: 'Month 1' as const, days: 30 },
+          { milestone: 'Month 3' as const, days: 90 },
+        ];
+
+        const newFollowUps: FollowUp[] = milestones.map(({ milestone, days }) => ({
+          id: uid(),
+          patientId: sg.patientId,
+          patientName: sg.patientName,
+          surgeryId: sg.id,
+          campaignId: sg.campaignId,
+          milestone,
+          dueDate: addDays(days),
+          status: 'Pending' as const,
+          complications: '',
+          notes: '',
+          smsReminderSent: false,
+          createdAt: now,
+        }));
+
+        let actor = 'System';
+        try {
+          if (typeof window !== 'undefined') {
+            actor = JSON.parse(localStorage.getItem('ec_user') ?? 'null')?.name ?? 'System';
+          }
+        } catch { /* ignore */ }
+
+        const auditEntry: AuditLog = {
+          id: uid(),
+          actor,
+          action: 'auto-created follow-ups',
+          entity: 'FollowUp',
+          entityId: sg.id,
+          details: `4 post-op follow-ups created for surgery ${sg.id} (${sg.patientName})`,
+          createdAt: now,
+        };
+
+        return {
+          surgeries: updatedSurgeries,
+          followUps: [...s.followUps, ...newFollowUps],
+          auditLogs: [auditEntry, ...s.auditLogs].slice(0, 500),
+        };
+      }),
       deleteSurgery: (id) => set((s) => ({ surgeries: s.surgeries.filter((x) => x.id !== id) })),
 
       addReferral: (r) => set((s) => ({ referrals: [...s.referrals, r] })),
