@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { uid, formatDate, daysUntil } from '@/lib/utils';
 import type { FollowUp, FollowUpStatus, FollowUpMilestone } from '@/types';
@@ -30,13 +30,20 @@ const BLANK: Omit<FollowUp,'id'|'createdAt'> = {
 };
 
 export default function FollowUpsPage() {
-  const { followUps, patients, addFollowUp, updateFollowUp, deleteFollowUp } = useStore();
+  const { followUps, patients, addFollowUp, updateFollowUp, deleteFollowUp, checkOverdueFollowUps } = useStore();
   const { can } = usePermissions();
   const [filter, setFilter]     = useState<FollowUpStatus|'All'>('All');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState<FollowUp | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm]         = useState<typeof BLANK>(BLANK);
+
+  useEffect(() => {
+    checkOverdueFollowUps();
+    const id = setInterval(checkOverdueFollowUps, 60_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = filter === 'All' ? followUps : followUps.filter((f) => f.status === filter);
   const overdue  = followUps.filter((f) => f.status === 'Overdue').length;
@@ -60,14 +67,21 @@ export default function FollowUpsPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Follow-ups</h1>
-          <p className="text-sm text-slate-500">{followUps.length} follow-ups Â· <span className="text-red-600 font-medium">{overdue} overdue</span></p>
+          <p className="text-sm text-slate-500">{followUps.length} total</p>
         </div>
         {can('followups','create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />Add Follow-up</Button>}
         {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
       </div>
 
+      {overdue > 0 && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-sm font-medium">
+          <span className="inline-flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 shrink-0">{overdue}</span>
+          {overdue === 1 ? '1 overdue follow-up' : `${overdue} overdue follow-ups`} - please review and update status
+        </div>
+      )}
+
       {showForm && (
-        <InlineForm title={editing ? `Edit â€” ${editing.patientName}` : 'Add Follow-up'}
+        <InlineForm title={editing ? `Edit â€" ${editing.patientName}` : 'Add Follow-up'}
           onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Add'} saveDisabled={!form.patientId || !form.dueDate}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="col-span-2"><Label className="text-xs mb-1 block">Patient *</Label>
@@ -135,7 +149,7 @@ export default function FollowUpsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[f.status]}`}>{f.status}</span></td>
-                      <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{f.vaRightPost || 'â€”'} / {f.vaLeftPost || 'â€”'}</td>
+                      <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{f.vaRightPost || 'â€"'} / {f.vaLeftPost || 'â€"'}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {f.smsReminderSent
                           ? <span className="text-xs text-green-600 font-medium flex items-center gap-1"><CheckCircle size={11} />Sent</span>

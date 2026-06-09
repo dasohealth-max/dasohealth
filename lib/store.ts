@@ -141,6 +141,7 @@ interface AppState {
   addFollowUp: (f: FollowUp) => void;
   updateFollowUp: (f: FollowUp) => void;
   deleteFollowUp: (id: string) => void;
+  checkOverdueFollowUps: () => void;
 
   // Inventory
   addInventoryItem: (i: InventoryItem) => void;
@@ -275,6 +276,18 @@ export const useStore = create<AppState>()(
       addFollowUp: (f) => set((s) => ({ followUps: [...s.followUps, f] })),
       updateFollowUp: (f) => set((s) => ({ followUps: s.followUps.map((x) => x.id === f.id ? f : x) })),
       deleteFollowUp: (id) => set((s) => ({ followUps: s.followUps.filter((x) => x.id !== id) })),
+      checkOverdueFollowUps: () => set((s) => {
+        const today = new Date().toISOString().split('T')[0];
+        let changed = false;
+        const followUps = s.followUps.map((f) => {
+          if ((f.status === 'Pending' || f.status === 'Due') && f.dueDate < today) {
+            changed = true;
+            return { ...f, status: 'Overdue' as const };
+          }
+          return f;
+        });
+        return changed ? { followUps } : {};
+      }),
 
       addInventoryItem: (i) => set((s) => ({ inventory: [...s.inventory, i] })),
       updateInventoryItem: (i) => set((s) => ({ inventory: s.inventory.map((x) => x.id === i.id ? i : x) })),
