@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, Shield, UserRound, BarChart3, HeartHandshake } from 'lucide-react';
 import { signIn, getSession } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -15,19 +15,22 @@ const DEMOS = [
   { email: 'donor@eyecare.org',   pass: 'donor123',  label: 'Donor',           desc: 'Aggregate view',     icon: HeartHandshake, color: 'bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100' },
 ];
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail]     = useState('');
-  const [pass, setPass]       = useState('');
+function LoginForm() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const from         = searchParams.get('from') || '/dashboard';
+
+  const [email, setEmail]       = useState('');
+  const [pass, setPass]         = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [error, setError]     = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   useEffect(() => {
     getSession().then((session) => {
-      if (session) router.replace('/dashboard');
+      if (session) router.replace(from);
     });
-  }, [router]);
+  }, [router, from]);
 
   function fill(e: string, p: string) {
     setEmail(e); setPass(p); setError('');
@@ -40,7 +43,7 @@ export default function LoginPage() {
 
     try {
       await signIn(email.trim(), pass);
-      router.push('/dashboard');
+      router.push(from);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Sign in failed.';
       setError(
@@ -152,5 +155,14 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// useSearchParams() requires a Suspense boundary in Next.js App Router
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

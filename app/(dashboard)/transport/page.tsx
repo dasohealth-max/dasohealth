@@ -1,8 +1,14 @@
-﻿'use client';
-import { useState, useEffect } from 'react';
-import { useStore } from '@/lib/store';
-import { uid, formatDateTime } from '@/lib/utils';
+'use client';
+import { useState, useEffect, useTransition } from 'react';
+import { formatDateTime } from '@/lib/utils';
 import { getAllPatients } from '@/app/actions/patients';
+import {
+  getAllTransportJobs,
+  actionCreateTransportJob,
+  actionUpdateTransportJob,
+  actionUpdateTransportStatus,
+  actionDeleteTransportJob,
+} from '@/app/actions/transport';
 import type { TransportJob, TransportStatus, Patient } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineForm from '@/components/forms/InlineForm';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
 import { usePermissions } from '@/lib/auth';
 
 const STATUSES: TransportStatus[] = ['Scheduled','In-Transit','Completed','Cancelled'];
@@ -25,30 +31,49 @@ const BLANK: Omit<TransportJob,'id'|'createdAt'> = {
 };
 
 export default function TransportPage() {
-  const { transport, addTransport, updateTransport, deleteTransport } = useStore();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  useEffect(() => { getAllPatients().then(setPatients); }, []);
   const { can } = usePermissions();
+  const [jobs, setJobs]         = useState<TransportJob[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState<TransportJob | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm]         = useState<typeof BLANK>(BLANK);
+  const [saveError, setSaveError] = useState('');
+  const [isPending, startTransition] = useTransition();
 
-  const totalCost = transport.filter((t) => t.status === 'Completed').reduce((a, t) => a + t.cost, 0);
+  async function load() {
+    const [t, p] = await Promise.all([getAllTransportJobs(), getAllPatients()]);
+    setJobs(t); setPatients(p); setIsLoading(false);
+  }
+  useEffect(() => { load(); }, []);
 
-  function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
-  function openEdit(t: TransportJob) { setEditing(t); const { id, createdAt, ...r } = t; setForm(r); setShowForm(true); }
-  function cancel() { setShowForm(false); setEditing(null); }
+  const totalCost = jobs.filter((t) => t.status === 'Completed').reduce((a, t) => a + t.cost, 0);
+
+  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
+  function openEdit(t: TransportJob) { setEditing(t); const { id, createdAt, ...r } = t; setForm(r); setSaveError(''); setShowForm(true); }
+  function cancel() { setShowForm(false); setEditing(null); setSaveError(''); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
   function handlePatient(pid: string | null) { if (!pid) return; const p = patients.find((x) => x.id === pid); set('patientId', pid); if (p) set('patientName', p.fullName); }
-  function save() {
-    if (editing) updateTransport({ ...editing, ...form });
-    else addTransport({ id: uid(), createdAt: new Date().toISOString(), ...form });
-    cancel();
+
+  async function save() {
+    setSaveError('');
+    startTransition(async () => {
+      const result = editing
+        ? await actionUpdateTransportJob(editing.id, form)
+        : await actionCreateTransportJob(form);
+      if (!result.ok) { setSaveError(result.error); return; }
+      await load();
+      cancel();
+    });
   }
-  function changeStatus(t: TransportJob, status: TransportStatus) {
-    updateTransport({ ...t, status, ...(status === 'Completed' ? { completedAt: new Date().toISOString() } : {}) });
+
+  function changeStatus(job: TransportJob, status: TransportStatus) {
+    startTransition(async () => {
+      await actionUpdateTransportStatus(job.id, status);
+      await load();
+    });
   }
 
   return (
@@ -56,15 +81,21 @@ export default function TransportPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Transport & Logistics</h1>
-          <p className="text-sm text-slate-500">{transport.length} jobs Â· ${totalCost} total cost</p>
+          <p className="text-sm text-slate-500">{jobs.length} jobs · ${totalCost} total cost</p>
         </div>
         {can('transport','create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />Add Transport</Button>}
         {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
       </div>
 
+      {saveError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-sm text-red-700 font-medium">
+          <AlertTriangle size={14} /> {saveError}
+        </div>
+      )}
+
       {showForm && (
-        <InlineForm title={editing ? `Edit â€” ${editing.patientName}` : 'Add Transport Job'}
-          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Add Job'} saveDisabled={!form.patientId}>
+        <InlineForm title={editing ? `Edit — ${editing.patientName}` : 'Add Transport Job'}
+          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Add Job'} saveDisabled={!form.patientId || isPending}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="col-span-2"><Label className="text-xs mb-1 block">Patient *</Label>
               <Select value={form.patientId} onValueChange={handlePatient}>
@@ -76,7 +107,7 @@ export default function TransportPage() {
             <div><Label className="text-xs mb-1 block">Driver</Label><Input value={form.driver} onChange={(e) => set('driver', e.target.value)} className="rounded-xl" /></div>
             <div className="col-span-2"><Label className="text-xs mb-1 block">Pickup Location</Label><Input value={form.pickupLocation} onChange={(e) => set('pickupLocation', e.target.value)} className="rounded-xl" /></div>
             <div className="col-span-2"><Label className="text-xs mb-1 block">Drop-off Location</Label><Input value={form.dropLocation} onChange={(e) => set('dropLocation', e.target.value)} className="rounded-xl" /></div>
-            <div className="col-span-2"><Label className="text-xs mb-1 block">Scheduled Date/Time</Label><Input type="datetime-local" value={form.scheduledAt} onChange={(e) => set('scheduledAt', e.target.value)} className="rounded-xl" /></div>
+            <div className="col-span-2"><Label className="text-xs mb-1 block">Scheduled Date/Time</Label><Input type="datetime-local" value={typeof form.scheduledAt === 'string' ? form.scheduledAt.slice(0,16) : ''} onChange={(e) => set('scheduledAt', e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Cost ($)</Label><Input type="number" value={form.cost} onChange={(e) => set('cost', +e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Status</Label>
               <Select value={form.status} onValueChange={(v) => set('status', v)}>
@@ -101,8 +132,9 @@ export default function TransportPage() {
                 ))}</tr>
               </thead>
               <tbody>
-                {transport.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">No transport jobs.</td></tr>}
-                {transport.map((t) => (
+                {isLoading && <tr><td colSpan={9} className="text-center py-12 text-slate-400">Loading…</td></tr>}
+                {!isLoading && jobs.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">No transport jobs.</td></tr>}
+                {jobs.map((t) => (
                   <tr key={t.id} className={`border-b border-slate-50 hover:bg-slate-50/70 transition-colors ${editing?.id === t.id ? 'bg-teal-50/30' : ''}`}>
                     <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{t.patientName}</td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{t.vehicle}</td>
@@ -114,8 +146,8 @@ export default function TransportPage() {
                     <td className="px-4 py-3 whitespace-nowrap"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[t.status]}`}>{t.status}</span></td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1">
-                        {t.status === 'Scheduled'  && <button onClick={() => changeStatus(t,'In-Transit')} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium hover:bg-amber-200 whitespace-nowrap">â†’ Transit</button>}
-                        {t.status === 'In-Transit' && <button onClick={() => changeStatus(t,'Completed')} className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium hover:bg-green-200">Done</button>}
+                        {t.status === 'Scheduled'  && can('transport','edit') && <button disabled={isPending} onClick={() => changeStatus(t,'In-Transit')} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium hover:bg-amber-200 whitespace-nowrap disabled:opacity-40">→ Transit</button>}
+                        {t.status === 'In-Transit' && can('transport','edit') && <button disabled={isPending} onClick={() => changeStatus(t,'Completed')} className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium hover:bg-green-200 disabled:opacity-40">Done</button>}
                         {can('transport','edit') && <button onClick={() => openEdit(t)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"><Pencil size={13} /></button>}
                         {can('transport','delete') && <button onClick={() => setDeleteId(t.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>}
                       </div>
@@ -133,7 +165,13 @@ export default function TransportPage() {
           <AlertDialogHeader><AlertDialogTitle>Delete Transport Job?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteTransport(deleteId); setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={async () => {
+                if (deleteId) { await actionDeleteTransportJob(deleteId); await load(); }
+                setDeleteId(null);
+              }}
+              className="bg-red-600 hover:bg-red-700 rounded-xl"
+            >Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

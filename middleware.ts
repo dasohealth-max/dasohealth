@@ -37,8 +37,8 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // getSession() also silently refreshes an expiring access token.
-  const { data: { session } } = await supabase.auth.getSession();
+  // getUser() validates the JWT server-side on every request (more secure than getSession()).
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 
@@ -46,11 +46,14 @@ export async function middleware(request: NextRequest) {
     (p) => pathname === p || pathname.startsWith(p + '/')
   );
 
-  if (isProtected && !session) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (isProtected && !user) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('from', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  if (pathname === '/login' && session) {
+  // Authenticated users skip /login — but can still view the landing page (/)
+  if (pathname === '/login' && user) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 

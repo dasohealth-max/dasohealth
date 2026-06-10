@@ -1,9 +1,14 @@
-﻿'use client';
-import { useState, useEffect } from 'react';
-import { useStore } from '@/lib/store';
-import { uid, formatDate } from '@/lib/utils';
+'use client';
+import { useState, useEffect, useTransition } from 'react';
+import { formatDate } from '@/lib/utils';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllLocations } from '@/app/actions/locations';
+import {
+  getAllOutreachActivities,
+  actionCreateOutreachActivity,
+  actionUpdateOutreachActivity,
+  actionDeleteOutreachActivity,
+} from '@/app/actions/outreach';
 import type { OutreachActivity, OutreachType, Campaign, Location } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineForm from '@/components/forms/InlineForm';
-import { Plus, Pencil, Trash2, HeartPulse, TrendingUp, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, HeartPulse, TrendingUp, X, AlertTriangle } from 'lucide-react';
 import { usePermissions } from '@/lib/auth';
 
 const TYPES: OutreachType[] = ['Awareness Campaign','Community Meeting','Radio Broadcast','School Visit','Health Fair','CHW Training'];
@@ -22,31 +27,44 @@ const BLANK: Omit<OutreachActivity,'id'|'createdAt'> = {
 };
 
 export default function OutreachPage() {
-  const { outreach, addOutreach, updateOutreach, deleteOutreach } = useStore();
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  useEffect(() => {
-    Promise.all([getAllCampaigns(), getAllLocations()]).then(([c, l]) => { setCampaigns(c); setLocations(l); });
-  }, []);
   const { can } = usePermissions();
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing]   = useState<OutreachActivity | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm]         = useState<typeof BLANK>(BLANK);
+  const [activities, setActivities] = useState<OutreachActivity[]>([]);
+  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
+  const [locations, setLocations]   = useState<Location[]>([]);
+  const [isLoading, setIsLoading]   = useState(true);
+  const [showForm, setShowForm]     = useState(false);
+  const [editing, setEditing]       = useState<OutreachActivity | null>(null);
+  const [deleteId, setDeleteId]     = useState<string | null>(null);
+  const [form, setForm]             = useState<typeof BLANK>(BLANK);
+  const [saveError, setSaveError]   = useState('');
+  const [isPending, startTransition] = useTransition();
 
-  const totalReach = outreach.reduce((a, o) => a + o.reach, 0);
-  const totalConv  = outreach.reduce((a, o) => a + o.conversions, 0);
+  async function load() {
+    const [a, c, l] = await Promise.all([getAllOutreachActivities(), getAllCampaigns(), getAllLocations()]);
+    setActivities(a); setCampaigns(c); setLocations(l); setIsLoading(false);
+  }
+  useEffect(() => { load(); }, []);
 
-  function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
-  function openEdit(o: OutreachActivity) { setEditing(o); const { id, createdAt, ...r } = o; setForm(r); setShowForm(true); }
-  function cancel() { setShowForm(false); setEditing(null); }
+  const totalReach = activities.reduce((a, o) => a + o.reach, 0);
+  const totalConv  = activities.reduce((a, o) => a + o.conversions, 0);
+
+  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
+  function openEdit(o: OutreachActivity) { setEditing(o); const { id, createdAt, ...r } = o; setForm(r); setSaveError(''); setShowForm(true); }
+  function cancel() { setShowForm(false); setEditing(null); setSaveError(''); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
   function handleLocation(lid: string | null) { if (!lid) return; const l = locations.find((x) => x.id === lid); set('locationId', lid); if (l) set('locationName', l.name); }
-  function save() {
-    if (editing) updateOutreach({ ...editing, ...form });
-    else addOutreach({ id: uid(), createdAt: new Date().toISOString(), ...form });
-    cancel();
+
+  async function save() {
+    setSaveError('');
+    startTransition(async () => {
+      const result = editing
+        ? await actionUpdateOutreachActivity(editing.id, form)
+        : await actionCreateOutreachActivity(form);
+      if (!result.ok) { setSaveError(result.error); return; }
+      await load();
+      cancel();
+    });
   }
 
   return (
@@ -54,15 +72,21 @@ export default function OutreachPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Community Outreach</h1>
-          <p className="text-sm text-slate-500">{outreach.length} activities Â· {totalReach.toLocaleString()} total reach</p>
+          <p className="text-sm text-slate-500">{activities.length} activities · {totalReach.toLocaleString()} total reach</p>
         </div>
         {can('outreach','create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />Log Activity</Button>}
         {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
       </div>
 
+      {saveError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-sm text-red-700 font-medium">
+          <AlertTriangle size={14} /> {saveError}
+        </div>
+      )}
+
       {showForm && (
-        <InlineForm title={editing ? `Edit â€” ${editing.title}` : 'Log Outreach Activity'}
-          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Log Activity'} saveDisabled={!form.title}>
+        <InlineForm title={editing ? `Edit — ${editing.title}` : 'Log Outreach Activity'}
+          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Log Activity'} saveDisabled={!form.title || !form.locationId || !form.campaignId || isPending}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="col-span-2"><Label className="text-xs mb-1 block">Title *</Label><Input value={form.title} onChange={(e) => set('title', e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Type</Label>
@@ -72,13 +96,13 @@ export default function OutreachPage() {
               </Select>
             </div>
             <div><Label className="text-xs mb-1 block">Date</Label><Input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} className="rounded-xl" /></div>
-            <div className="col-span-2"><Label className="text-xs mb-1 block">Location</Label>
+            <div className="col-span-2"><Label className="text-xs mb-1 block">Location *</Label>
               <Select value={form.locationId} onValueChange={handleLocation}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="col-span-2"><Label className="text-xs mb-1 block">Campaign</Label>
+            <div className="col-span-2"><Label className="text-xs mb-1 block">Campaign *</Label>
               <Select value={form.campaignId} onValueChange={(v) => set('campaignId', v)}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
@@ -86,7 +110,7 @@ export default function OutreachPage() {
             </div>
             <div><Label className="text-xs mb-1 block">Reach</Label><Input type="number" value={form.reach} onChange={(e) => set('reach', +e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Conversions</Label><Input type="number" value={form.conversions} onChange={(e) => set('conversions', +e.target.value)} className="rounded-xl" /></div>
-            <div className="col-span-2"><Label className="text-xs mb-1 block">Conducted By</Label><Input value={form.conductedBy} onChange={(e) => set('conductedBy', e.target.value)} className="rounded-xl" /></div>
+            <div className="col-span-2"><Label className="text-xs mb-1 block">Conducted By *</Label><Input value={form.conductedBy} onChange={(e) => set('conductedBy', e.target.value)} className="rounded-xl" /></div>
             <div className="col-span-2 md:col-span-4"><Label className="text-xs mb-1 block">Notes</Label>
               <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 resize-none h-14" />
             </div>
@@ -97,7 +121,7 @@ export default function OutreachPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label:'Activities', value: outreach.length, icon: HeartPulse, color:'bg-teal-500' },
+          { label:'Activities', value: activities.length, icon: HeartPulse, color:'bg-teal-500' },
           { label:'Total Reach', value: totalReach.toLocaleString(), icon: TrendingUp, color:'bg-indigo-500' },
           { label:'Conversions', value: totalConv, icon: TrendingUp, color:'bg-emerald-500' },
         ].map(({ label, value, icon: Icon, color }) => (
@@ -118,8 +142,9 @@ export default function OutreachPage() {
                 ))}</tr>
               </thead>
               <tbody>
-                {outreach.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">No activities logged.</td></tr>}
-                {outreach.map((o) => (
+                {isLoading && <tr><td colSpan={9} className="text-center py-12 text-slate-400">Loading…</td></tr>}
+                {!isLoading && activities.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">No activities logged.</td></tr>}
+                {activities.map((o) => (
                   <tr key={o.id} className={`border-b border-slate-50 hover:bg-slate-50/70 transition-colors ${editing?.id === o.id ? 'bg-teal-50/30' : ''}`}>
                     <td className="px-4 py-3 font-medium text-slate-800">{o.title}</td>
                     <td className="px-4 py-3"><span className="text-xs bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2 py-0.5 font-medium">{o.type}</span></td>
@@ -127,7 +152,7 @@ export default function OutreachPage() {
                     <td className="px-4 py-3 text-slate-500">{o.locationName}</td>
                     <td className="px-4 py-3 font-semibold text-slate-700">{o.reach.toLocaleString()}</td>
                     <td className="px-4 py-3 font-semibold text-green-700">{o.conversions}</td>
-                    <td className="px-4 py-3 text-slate-500">{o.reach ? `${Math.round((o.conversions / o.reach) * 100)}%` : 'â€”'}</td>
+                    <td className="px-4 py-3 text-slate-500">{o.reach ? `${Math.round((o.conversions / o.reach) * 100)}%` : '—'}</td>
                     <td className="px-4 py-3 text-slate-500">{o.conductedBy}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
@@ -148,7 +173,13 @@ export default function OutreachPage() {
           <AlertDialogHeader><AlertDialogTitle>Delete Activity?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteOutreach(deleteId); setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={async () => {
+                if (deleteId) { await actionDeleteOutreachActivity(deleteId); await load(); }
+                setDeleteId(null);
+              }}
+              className="bg-red-600 hover:bg-red-700 rounded-xl"
+            >Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { fromPrisma, getAllPatients, getPatientById } from '@/lib/api/patients';
+import { guard } from '@/lib/auth-server';
 import { nextPatientCode } from '@/lib/utils';
 import type { Patient } from '@/types';
 import type { Sex, DisabilityStatus } from '@/lib/generated/prisma/client';
@@ -48,6 +49,9 @@ type ActionResult<T = null> =
 export async function actionCreatePatient(
   input: unknown
 ): Promise<ActionResult<Patient>> {
+  const denied = await guard('patients', 'create');
+  if (denied) return denied;
+
   const parsed = PatientSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0].message };
@@ -95,6 +99,9 @@ export async function actionUpdatePatient(
   id: string,
   input: unknown
 ): Promise<ActionResult<Patient>> {
+  const denied = await guard('patients', 'edit');
+  if (denied) return denied;
+
   const parsed = PatientSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0].message };
@@ -137,6 +144,9 @@ export async function actionUpdatePatient(
 export async function actionDeletePatient(
   id: string
 ): Promise<ActionResult<null>> {
+  const denied = await guard('patients', 'delete');
+  if (denied) return denied;
+
   try {
     await prisma.patient.delete({ where: { id } });
     return { ok: true, data: null };

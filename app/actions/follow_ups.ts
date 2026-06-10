@@ -1,6 +1,7 @@
 'use server';
 
 import { getAllFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, checkAndMarkOverdue } from '@/lib/api/follow_ups';
+import { guard } from '@/lib/auth-server';
 import type { FollowUp } from '@/types';
 
 export { getAllFollowUps, checkAndMarkOverdue };
@@ -10,6 +11,9 @@ type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string
 export async function actionCreateFollowUp(
   data: Omit<FollowUp, 'id' | 'createdAt'>,
 ): Promise<ActionResult<FollowUp>> {
+  const denied = await guard('followups', 'create');
+  if (denied) return denied;
+
   try {
     if (!data.patientId || !data.surgeryId || !data.campaignId || !data.dueDate) {
       return { ok: false, error: 'Surgery, campaign, and due date are required' };
@@ -24,6 +28,9 @@ export async function actionUpdateFollowUp(
   id: string,
   data: Omit<FollowUp, 'id' | 'createdAt'>,
 ): Promise<ActionResult<FollowUp>> {
+  const denied = await guard('followups', 'edit');
+  if (denied) return denied;
+
   try {
     return { ok: true, data: await updateFollowUp(id, data) };
   } catch (e) {
@@ -32,6 +39,9 @@ export async function actionUpdateFollowUp(
 }
 
 export async function actionDeleteFollowUp(id: string): Promise<ActionResult> {
+  const denied = await guard('followups', 'delete');
+  if (denied) return denied;
+
   try {
     await deleteFollowUp(id);
     return { ok: true, data: null };

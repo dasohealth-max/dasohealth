@@ -1,10 +1,15 @@
-﻿'use client';
-import { useState, useEffect } from 'react';
-import { useStore } from '@/lib/store';
-import { uid, formatDate } from '@/lib/utils';
+'use client';
+import { useState, useEffect, useTransition } from 'react';
+import { formatDate } from '@/lib/utils';
 import { getAllLocations } from '@/app/actions/locations';
-import type { Location } from '@/types';
-import type { InventoryItem, InventoryCategory } from '@/types';
+import {
+  getAllInventoryItems,
+  actionCreateInventoryItem,
+  actionUpdateInventoryItem,
+  actionAdjustInventoryQuantity,
+  actionDeleteInventoryItem,
+} from '@/app/actions/inventory';
+import type { Location, InventoryItem, InventoryCategory } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -28,35 +33,54 @@ const isExp  = (i: InventoryItem) => !!i.expiryDate && new Date(i.expiryDate) < 
 const isNear = (i: InventoryItem) => { if (!i.expiryDate) return false; const d = Math.ceil((new Date(i.expiryDate).getTime() - Date.now()) / 86400000); return d >= 0 && d <= 60; };
 
 export default function InventoryPage() {
-  const { inventory, addInventoryItem, updateInventoryItem, deleteInventoryItem } = useStore();
-  const [locations, setLocations] = useState<Location[]>([]);
-  useEffect(() => { getAllLocations().then(setLocations); }, []);
   const { can } = usePermissions();
+  const [items, setItems]       = useState<InventoryItem[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState<InventoryItem | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm]         = useState<typeof BLANK>(BLANK);
   const [search, setSearch]     = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [isPending, startTransition] = useTransition();
 
-  const filtered = inventory.filter((i) =>
+  async function load() {
+    const [inv, locs] = await Promise.all([getAllInventoryItems(), getAllLocations()]);
+    setItems(inv); setLocations(locs); setIsLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  const filtered = items.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase()) || i.sku.toLowerCase().includes(search.toLowerCase()),
   );
-  const lowItems  = inventory.filter(isLow);
-  const expItems  = inventory.filter(isExp);
-  const nearItems = inventory.filter(isNear);
+  const lowItems  = items.filter(isLow);
+  const expItems  = items.filter(isExp);
+  const nearItems = items.filter(isNear);
 
-  function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
-  function openEdit(i: InventoryItem) { setEditing(i); const { id, createdAt, ...r } = i; setForm(r); setShowForm(true); }
-  function cancel() { setShowForm(false); setEditing(null); }
+  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
+  function openEdit(i: InventoryItem) { setEditing(i); const { id, createdAt, ...r } = i; setForm(r); setSaveError(''); setShowForm(true); }
+  function cancel() { setShowForm(false); setEditing(null); setSaveError(''); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
-  function save() {
-    if (editing) updateInventoryItem({ ...editing, ...form });
-    else addInventoryItem({ id: uid(), createdAt: new Date().toISOString(), ...form });
-    cancel();
+
+  async function save() {
+    setSaveError('');
+    startTransition(async () => {
+      const result = editing
+        ? await actionUpdateInventoryItem(editing.id, form)
+        : await actionCreateInventoryItem(form);
+      if (!result.ok) { setSaveError(result.error); return; }
+      await load();
+      cancel();
+    });
   }
+
   function adjust(item: InventoryItem, delta: number) {
-    updateInventoryItem({ ...item, quantity: Math.max(0, item.quantity + delta) });
+    startTransition(async () => {
+      await actionAdjustInventoryQuantity(item.id, delta);
+      await load();
+    });
   }
 
   return (
@@ -64,7 +88,7 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Inventory</h1>
-          <p className="text-sm text-slate-500">{inventory.length} items Â· {lowItems.length} low stock</p>
+          <p className="text-sm text-slate-500">{items.length} items · {lowItems.length} low stock</p>
         </div>
         {can('inventory','create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />Add Item</Button>}
         {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
@@ -79,11 +103,17 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {saveError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-sm text-red-700 font-medium">
+          <AlertTriangle size={14} /> {saveError}
+        </div>
+      )}
+
       {showForm && (
-        <InlineForm title={editing ? `Edit â€” ${editing.name}` : 'Add Inventory Item'}
-          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Add Item'} saveDisabled={!form.name}>
+        <InlineForm title={editing ? `Edit — ${editing.name}` : 'Add Inventory Item'}
+          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Add Item'} saveDisabled={!form.name || isPending}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><Label className="text-xs mb-1 block">SKU</Label><Input value={form.sku} onChange={(e) => set('sku', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="text-xs mb-1 block">SKU *</Label><Input value={form.sku} onChange={(e) => set('sku', e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Name *</Label><Input value={form.name} onChange={(e) => set('name', e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Category</Label>
               <Select value={form.category} onValueChange={(v) => set('category', v)}>
@@ -91,13 +121,13 @@ export default function InventoryPage() {
                 <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div><Label className="text-xs mb-1 block">Unit</Label><Input value={form.unit} onChange={(e) => set('unit', e.target.value)} className="rounded-xl" placeholder="pcs, boxesâ€¦" /></div>
+            <div><Label className="text-xs mb-1 block">Unit</Label><Input value={form.unit} onChange={(e) => set('unit', e.target.value)} className="rounded-xl" placeholder="pcs, boxes…" /></div>
             <div><Label className="text-xs mb-1 block">Quantity</Label><Input type="number" value={form.quantity} onChange={(e) => set('quantity', +e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Reorder Level</Label><Input type="number" value={form.reorderLevel} onChange={(e) => set('reorderLevel', +e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Expiry Date</Label><Input type="date" value={form.expiryDate} onChange={(e) => set('expiryDate', e.target.value)} className="rounded-xl" /></div>
             <div><Label className="text-xs mb-1 block">Supplier</Label><Input value={form.supplier} onChange={(e) => set('supplier', e.target.value)} className="rounded-xl" /></div>
             <div className="col-span-2">
-              <Label className="text-xs mb-1 block">Location</Label>
+              <Label className="text-xs mb-1 block">Location *</Label>
               <Select value={form.locationId} onValueChange={(v) => set('locationId', v)}>
                 <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
@@ -112,7 +142,7 @@ export default function InventoryPage() {
 
       <div className="relative max-w-sm">
         <PackageSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or SKUâ€¦" className="pl-9 rounded-xl border-slate-200" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or SKU…" className="pl-9 rounded-xl border-slate-200" />
       </div>
 
       <Card className="border-0 shadow-sm overflow-hidden">
@@ -125,7 +155,8 @@ export default function InventoryPage() {
                 ))}</tr>
               </thead>
               <tbody>
-                {filtered.length === 0 && <tr><td colSpan={10} className="text-center py-12 text-slate-400">No items.</td></tr>}
+                {isLoading && <tr><td colSpan={10} className="text-center py-12 text-slate-400">Loading…</td></tr>}
+                {!isLoading && filtered.length === 0 && <tr><td colSpan={10} className="text-center py-12 text-slate-400">No items found.</td></tr>}
                 {filtered.map((item) => (
                   <tr key={item.id} className={`border-b border-slate-50 hover:bg-slate-50/70 transition-colors ${isExp(item) ? 'bg-red-50/20' : isLow(item) ? 'bg-amber-50/20' : ''} ${editing?.id === item.id ? 'ring-1 ring-teal-200' : ''}`}>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">{item.sku}</td>
@@ -133,14 +164,14 @@ export default function InventoryPage() {
                     <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLORS[item.category]}`}>{item.category}</span></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => adjust(item, -1)} className="w-5 h-5 rounded flex items-center justify-center hover:bg-slate-100 text-slate-400"><Minus size={10} /></button>
+                        {can('inventory','edit') && <button onClick={() => adjust(item, -1)} disabled={isPending} className="w-5 h-5 rounded flex items-center justify-center hover:bg-slate-100 text-slate-400 disabled:opacity-40"><Minus size={10} /></button>}
                         <span className={`font-semibold min-w-[28px] text-center text-sm ${isLow(item) ? 'text-red-600' : 'text-slate-800'}`}>{item.quantity}</span>
-                        <button onClick={() => adjust(item, 1)} className="w-5 h-5 rounded flex items-center justify-center hover:bg-slate-100 text-slate-400"><Plus size={10} /></button>
+                        {can('inventory','edit') && <button onClick={() => adjust(item, 1)} disabled={isPending} className="w-5 h-5 rounded flex items-center justify-center hover:bg-slate-100 text-slate-400 disabled:opacity-40"><Plus size={10} /></button>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-500">{item.reorderLevel}</td>
                     <td className="px-4 py-3 text-slate-500">{item.unit}</td>
-                    <td className="px-4 py-3 whitespace-nowrap"><span className={`text-xs font-medium ${isExp(item) ? 'text-red-600' : isNear(item) ? 'text-orange-600' : 'text-slate-400'}`}>{item.expiryDate ? formatDate(item.expiryDate) : 'â€”'}</span></td>
+                    <td className="px-4 py-3 whitespace-nowrap"><span className={`text-xs font-medium ${isExp(item) ? 'text-red-600' : isNear(item) ? 'text-orange-600' : 'text-slate-400'}`}>{item.expiryDate ? formatDate(item.expiryDate) : '—'}</span></td>
                     <td className="px-4 py-3 text-slate-500">{item.supplier}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {isExp(item) ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Expired</span>
@@ -167,7 +198,13 @@ export default function InventoryPage() {
           <AlertDialogHeader><AlertDialogTitle>Delete Item?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteInventoryItem(deleteId); setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={async () => {
+                if (deleteId) { await actionDeleteInventoryItem(deleteId); await load(); }
+                setDeleteId(null);
+              }}
+              className="bg-red-600 hover:bg-red-700 rounded-xl"
+            >Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

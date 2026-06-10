@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useStore } from '@/lib/store';
 import { formatDate } from '@/lib/utils';
-import type { Surgery, SurgeryStatus, SurgeryEye, LensType, Patient, Campaign, Location } from '@/types';
+import type { Surgery, SurgeryStatus, SurgeryEye, LensType, Patient, Campaign, Location, User } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -15,6 +14,7 @@ import { getAllSurgeries, actionCreateSurgery, actionUpdateSurgery, actionDelete
 import { getAllPatients } from '@/app/actions/patients';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllLocations } from '@/app/actions/locations';
+import { actionGetAllUsers } from '@/app/actions/users';
 
 const STATUSES: SurgeryStatus[] = ['Scheduled','In-Theatre','Completed','Cancelled','Postponed'];
 const COL: Record<SurgeryStatus, { bg: string; border: string; badge: string }> = {
@@ -38,14 +38,13 @@ function toLocal(iso: string) {
 }
 
 export default function SurgeryPage() {
-  const { users } = useStore();
   const { can } = usePermissions();
-  const surgeons = users.filter((u) => ['Ophthalmologist','Surgeon','Super Administrator'].includes(u.role));
 
   const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
   const [patients, setPatients]     = useState<Patient[]>([]);
   const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
   const [locations, setLocations]   = useState<Location[]>([]);
+  const [surgeons, setSurgeons]     = useState<User[]>([]);
   const [isLoading, setIsLoading]   = useState(true);
   const [saveError, setSaveError]   = useState('');
   const [showForm, setShowForm]     = useState(false);
@@ -56,8 +55,14 @@ export default function SurgeryPage() {
   const [assignSurgeonId, setAssignSurgeonId] = useState('');
 
   useEffect(() => {
-    Promise.all([getAllSurgeries(), getAllPatients(), getAllCampaigns(), getAllLocations()])
-      .then(([s, p, c, l]) => { setSurgeries(s); setPatients(p); setCampaigns(c); setLocations(l); setIsLoading(false); });
+    Promise.all([getAllSurgeries(), getAllPatients(), getAllCampaigns(), getAllLocations(), actionGetAllUsers()])
+      .then(([s, p, c, l, usersResult]) => {
+        setSurgeries(s); setPatients(p); setCampaigns(c); setLocations(l);
+        if (usersResult.ok) {
+          setSurgeons(usersResult.data.filter((u) => ['Ophthalmologist','Surgeon','Super Administrator'].includes(u.role)));
+        }
+        setIsLoading(false);
+      });
   }, []);
 
   const unassignedCount = surgeries.filter((s) => !s.surgeonId).length;
@@ -74,7 +79,7 @@ export default function SurgeryPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
   function handlePatient(pid: string | null) { if (!pid) return; const p = patients.find((x) => x.id === pid); set('patientId', pid); if (p) set('patientName', p.fullName); }
-  function handleSurgeon(uid2: string | null) { if (!uid2) return; const u = users.find((x) => x.id === uid2); set('surgeonId', uid2); if (u) set('surgeonName', u.name); }
+  function handleSurgeon(uid2: string | null) { if (!uid2) return; const u = surgeons.find((x) => x.id === uid2); set('surgeonId', uid2); if (u) set('surgeonName', u.name); }
 
   async function save() {
     setSaveError('');

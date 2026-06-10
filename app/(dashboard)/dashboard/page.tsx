@@ -1,13 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useStore } from '@/lib/store';
 import { getAllPatients } from '@/app/actions/patients';
 import { getAllScreenings } from '@/app/actions/screenings';
 import { getAllSurgeries } from '@/app/actions/surgeries';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllReferrals } from '@/app/actions/referrals';
-import type { Patient, Screening, Surgery, FollowUp, Campaign, Referral } from '@/types';
+import { getAllOutreachActivities } from '@/app/actions/outreach';
+import type { Patient, Screening, Surgery, FollowUp, Campaign, Referral, OutreachActivity } from '@/types';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -54,21 +54,22 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const { outreach } = useStore();
   const [patients, setPatients]     = useState<Patient[]>([]);
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
   const [followUps, setFollowUps]   = useState<FollowUp[]>([]);
   const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
   const [referrals, setReferrals]   = useState<Referral[]>([]);
+  const [outreach, setOutreach]     = useState<OutreachActivity[]>([]);
 
   useEffect(() => {
     Promise.all([
       getAllPatients(), getAllScreenings(), getAllSurgeries(),
       getAllFollowUps(), getAllCampaigns(), getAllReferrals(),
-    ]).then(([p, sc, sg, f, c, r]) => {
+      getAllOutreachActivities(),
+    ]).then(([p, sc, sg, f, c, r, o]) => {
       setPatients(p); setScreenings(sc); setSurgeries(sg);
-      setFollowUps(f); setCampaigns(c); setReferrals(r);
+      setFollowUps(f); setCampaigns(c); setReferrals(r); setOutreach(o);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

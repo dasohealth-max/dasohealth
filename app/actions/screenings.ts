@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { getAllScreenings, createScreening, updateScreening, deleteScreening } from '@/lib/api/screenings';
+import { guard } from '@/lib/auth-server';
 import type { Screening } from '@/types';
 
 export { getAllScreenings };
@@ -83,6 +84,9 @@ async function handleAutoRouting(
 export async function actionCreateScreening(
   data: Omit<Screening, 'id' | 'createdAt'>,
 ): Promise<ActionResult<Screening>> {
+  const denied = await guard('screening', 'create');
+  if (denied) return denied;
+
   try {
     if (!data.patientId || !data.campaignId || !data.locationId) {
       return { ok: false, error: 'Patient, campaign, and location are required' };
@@ -103,6 +107,9 @@ export async function actionUpdateScreening(
   id: string,
   data: Omit<Screening, 'id' | 'createdAt'>,
 ): Promise<ActionResult<Screening>> {
+  const denied = await guard('screening', 'edit');
+  if (denied) return denied;
+
   try {
     if (!data.patientId || !data.campaignId || !data.locationId) {
       return { ok: false, error: 'Patient, campaign, and location are required' };
@@ -120,6 +127,9 @@ export async function actionUpdateScreening(
 }
 
 export async function actionDeleteScreening(id: string): Promise<ActionResult> {
+  const denied = await guard('screening', 'delete');
+  if (denied) return denied;
+
   try {
     await deleteScreening(id);
     return { ok: true, data: null };

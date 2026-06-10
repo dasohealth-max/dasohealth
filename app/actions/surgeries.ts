@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { getAllSurgeries, createSurgery, updateSurgery, deleteSurgery } from '@/lib/api/surgeries';
 import { surgeryStatusFromApp } from '@/lib/prisma-enums';
+import { guard } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
 
 export { getAllSurgeries };
@@ -12,6 +13,9 @@ type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string
 export async function actionCreateSurgery(
   data: Omit<Surgery, 'id' | 'createdAt'>,
 ): Promise<ActionResult<Surgery>> {
+  const denied = await guard('surgeries', 'create');
+  if (denied) return denied;
+
   try {
     if (!data.patientId || !data.campaignId || !data.locationId) {
       return { ok: false, error: 'Patient, campaign, and location are required' };
@@ -26,11 +30,13 @@ export async function actionUpdateSurgery(
   id: string,
   data: Omit<Surgery, 'id' | 'createdAt'>,
 ): Promise<ActionResult<Surgery>> {
+  const denied = await guard('surgeries', 'edit');
+  if (denied) return denied;
+
   try {
     const old = await prisma.surgery.findUnique({ where: { id }, select: { status: true } });
     const updated = await updateSurgery(id, data);
 
-    // Auto-create follow-up milestones when surgery first reaches Completed
     const newStatusKey = surgeryStatusFromApp(data.status);
     if (newStatusKey === 'Completed' && old?.status !== ('Completed' as never)) {
       const row = await prisma.surgery.findUnique({
@@ -69,6 +75,9 @@ export async function actionUpdateSurgery(
 }
 
 export async function actionDeleteSurgery(id: string): Promise<ActionResult> {
+  const denied = await guard('surgeries', 'delete');
+  if (denied) return denied;
+
   try {
     await deleteSurgery(id);
     return { ok: true, data: null };
