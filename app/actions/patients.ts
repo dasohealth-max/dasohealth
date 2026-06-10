@@ -2,40 +2,51 @@
 
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { fromPrisma, getAllPatients, getPatientById } from '@/lib/api/patients';
+import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetchPatientById } from '@/lib/api/patients';
 import { guard } from '@/lib/auth-server';
 import { nextPatientCode } from '@/lib/utils';
 import type { Patient } from '@/types';
 import type { Sex, DisabilityStatus } from '@/lib/generated/prisma/client';
 
-export { getAllPatients, getPatientById };
+// ─── Protected read operations ────────────────────────────────────────────
+export async function getAllPatients(): Promise<Patient[]> {
+  const denied = await guard('patients', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllPatients();
+}
+
+export async function getPatientById(id: string): Promise<Patient | null> {
+  const denied = await guard('patients', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchPatientById(id);
+}
 
 // ---------------------------------------------------------------------------
 // Validation schema
 // ---------------------------------------------------------------------------
 
 const PatientSchema = z.object({
-  fullName:         z.string().min(1, 'Full name is required'),
-  dateOfBirth:      z.string().min(1, 'Date of birth is required'),
-  sex:              z.enum(['Male', 'Female', 'Other']),
-  phone:            z.string().min(1, 'Phone is required'),
-  email:            z.string().optional(),
-  district:         z.string().min(1, 'District is required'),
-  region:           z.string().min(1, 'Region is required'),
-  occupation:       z.string().optional(),
-  education:        z.string().optional(),
+  fullName: z.string().min(1, 'Full name is required'),
+  dateOfBirth: z.string().min(1, 'Date of birth is required'),
+  sex: z.enum(['Male', 'Female', 'Other']),
+  phone: z.string().min(1, 'Phone is required'),
+  email: z.string().optional(),
+  district: z.string().min(1, 'District is required'),
+  region: z.string().min(1, 'Region is required'),
+  occupation: z.string().optional(),
+  education: z.string().optional(),
   disabilityStatus: z.enum(['None', 'Visual', 'Hearing', 'Mobility', 'Cognitive', 'Multiple']),
-  insuranceStatus:  z.string(),
+  insuranceStatus: z.string(),
   emergencyContact: z.string(),
-  emergencyPhone:   z.string(),
-  consentGiven:     z.boolean(),
-  consentDate:      z.string().optional(),
-  campaignId:       z.string().optional(),
-  locationId:       z.string().optional(),
-  referralSource:   z.string(),
-  notes:            z.string().optional(),
-  lat:              z.number().optional(),
-  lng:              z.number().optional(),
+  emergencyPhone: z.string(),
+  consentGiven: z.boolean(),
+  consentDate: z.string().optional(),
+  campaignId: z.string().optional(),
+  locationId: z.string().optional(),
+  referralSource: z.string(),
+  notes: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
 });
 
 type ActionResult<T = null> =

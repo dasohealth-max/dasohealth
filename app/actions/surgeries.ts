@@ -1,12 +1,16 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { getAllSurgeries, createSurgery, updateSurgery, deleteSurgery } from '@/lib/api/surgeries';
+import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, deleteSurgery } from '@/lib/api/surgeries';
 import { surgeryStatusFromApp } from '@/lib/prisma-enums';
 import { guard } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
 
-export { getAllSurgeries };
+export async function getAllSurgeries(): Promise<Surgery[]> {
+  const denied = await guard('surgeries', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllSurgeries();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 

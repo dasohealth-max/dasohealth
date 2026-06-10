@@ -1,10 +1,14 @@
 'use server';
 
-import { getAllCampaigns, createCampaign, updateCampaign, deleteCampaign } from '@/lib/api/campaigns';
+import { getAllCampaigns as fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign } from '@/lib/api/campaigns';
 import { guard } from '@/lib/auth-server';
 import type { Campaign } from '@/types';
 
-export { getAllCampaigns };
+export async function getAllCampaigns(): Promise<Campaign[]> {
+  const denied = await guard('campaigns', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllCampaigns();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 

@@ -2,26 +2,30 @@
 
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { fromPrisma, getAllOutreachActivities } from '@/lib/api/outreach';
+import { fromPrisma, getAllOutreachActivities as fetchAllOutreachActivities } from '@/lib/api/outreach';
 import { guard } from '@/lib/auth-server';
 import type { OutreachActivity } from '@/types';
 import type { OutreachType } from '@/lib/generated/prisma/client';
 
-export { getAllOutreachActivities };
+export async function getAllOutreachActivities(): Promise<OutreachActivity[]> {
+  const denied = await guard('outreach', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllOutreachActivities();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
 const OutreachSchema = z.object({
-  type:         z.enum(['Awareness Campaign','Community Meeting','Radio Broadcast','School Visit','Health Fair','CHW Training']),
-  title:        z.string().min(1, 'Title is required'),
-  date:         z.string().min(1, 'Date is required'),
-  locationId:   z.string().uuid('Valid location required'),
+  type: z.enum(['Awareness Campaign', 'Community Meeting', 'Radio Broadcast', 'School Visit', 'Health Fair', 'CHW Training']),
+  title: z.string().min(1, 'Title is required'),
+  date: z.string().min(1, 'Date is required'),
+  locationId: z.string().uuid('Valid location required'),
   locationName: z.string().min(1),
-  campaignId:   z.string().uuid('Valid campaign required'),
-  reach:        z.number().int().min(0),
-  conversions:  z.number().int().min(0),
-  conductedBy:  z.string().min(1, 'Conducted by is required'),
-  notes:        z.string(),
+  campaignId: z.string().uuid('Valid campaign required'),
+  reach: z.number().int().min(0),
+  conversions: z.number().int().min(0),
+  conductedBy: z.string().min(1, 'Conducted by is required'),
+  notes: z.string(),
 });
 
 export async function actionCreateOutreachActivity(
@@ -37,16 +41,16 @@ export async function actionCreateOutreachActivity(
   try {
     const row = await prisma.outreachActivity.create({
       data: {
-        type:         d.type as OutreachType,
-        title:        d.title,
-        date:         new Date(d.date),
-        locationId:   d.locationId,
+        type: d.type as OutreachType,
+        title: d.title,
+        date: new Date(d.date),
+        locationId: d.locationId,
         locationName: d.locationName,
-        campaignId:   d.campaignId,
-        reach:        d.reach,
-        conversions:  d.conversions,
-        conductedBy:  d.conductedBy,
-        notes:        d.notes,
+        campaignId: d.campaignId,
+        reach: d.reach,
+        conversions: d.conversions,
+        conductedBy: d.conductedBy,
+        notes: d.notes,
       },
     });
     return { ok: true, data: fromPrisma(row) };
@@ -70,16 +74,16 @@ export async function actionUpdateOutreachActivity(
     const row = await prisma.outreachActivity.update({
       where: { id },
       data: {
-        type:         d.type as OutreachType,
-        title:        d.title,
-        date:         new Date(d.date),
-        locationId:   d.locationId,
+        type: d.type as OutreachType,
+        title: d.title,
+        date: new Date(d.date),
+        locationId: d.locationId,
         locationName: d.locationName,
-        campaignId:   d.campaignId,
-        reach:        d.reach,
-        conversions:  d.conversions,
-        conductedBy:  d.conductedBy,
-        notes:        d.notes,
+        campaignId: d.campaignId,
+        reach: d.reach,
+        conversions: d.conversions,
+        conductedBy: d.conductedBy,
+        notes: d.notes,
       },
     });
     return { ok: true, data: fromPrisma(row) };

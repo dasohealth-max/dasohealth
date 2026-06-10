@@ -1,10 +1,14 @@
 'use server';
 
-import { getAllLocations, createLocation, updateLocation, deleteLocation } from '@/lib/api/locations';
+import { getAllLocations as fetchAllLocations, createLocation, updateLocation, deleteLocation } from '@/lib/api/locations';
 import { guard } from '@/lib/auth-server';
 import type { Location } from '@/types';
 
-export { getAllLocations };
+export async function getAllLocations(): Promise<Location[]> {
+  const denied = await guard('locations', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllLocations();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 

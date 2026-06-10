@@ -2,26 +2,30 @@
 
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { fromPrisma, getAllInventoryItems } from '@/lib/api/inventory';
+import { fromPrisma, getAllInventoryItems as fetchAllInventoryItems } from '@/lib/api/inventory';
 import { guard } from '@/lib/auth-server';
 import type { InventoryItem } from '@/types';
 import type { InventoryCategory } from '@/lib/generated/prisma/client';
 
-export { getAllInventoryItems };
+export async function getAllInventoryItems(): Promise<InventoryItem[]> {
+  const denied = await guard('inventory', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllInventoryItems();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
 const InventorySchema = z.object({
-  sku:          z.string().min(1, 'SKU is required'),
-  name:         z.string().min(1, 'Name is required'),
-  category:     z.enum(['IOL', 'Medication', 'Equipment', 'Consumable', 'PPE']),
-  quantity:     z.number().int().min(0),
+  sku: z.string().min(1, 'SKU is required'),
+  name: z.string().min(1, 'Name is required'),
+  category: z.enum(['IOL', 'Medication', 'Equipment', 'Consumable', 'PPE']),
+  quantity: z.number().int().min(0),
   reorderLevel: z.number().int().min(0),
-  unit:         z.string().min(1, 'Unit is required'),
-  expiryDate:   z.string().optional(),
-  supplier:     z.string(),
-  locationId:   z.string().uuid('Valid location required'),
-  notes:        z.string(),
+  unit: z.string().min(1, 'Unit is required'),
+  expiryDate: z.string().optional(),
+  supplier: z.string(),
+  locationId: z.string().uuid('Valid location required'),
+  notes: z.string(),
 });
 
 export async function actionCreateInventoryItem(
@@ -37,16 +41,16 @@ export async function actionCreateInventoryItem(
   try {
     const row = await prisma.inventoryItem.create({
       data: {
-        sku:          d.sku,
-        name:         d.name,
-        category:     d.category as InventoryCategory,
-        quantity:     d.quantity,
+        sku: d.sku,
+        name: d.name,
+        category: d.category as InventoryCategory,
+        quantity: d.quantity,
         reorderLevel: d.reorderLevel,
-        unit:         d.unit,
-        expiryDate:   d.expiryDate ? new Date(d.expiryDate) : null,
-        supplier:     d.supplier,
-        locationId:   d.locationId,
-        notes:        d.notes,
+        unit: d.unit,
+        expiryDate: d.expiryDate ? new Date(d.expiryDate) : null,
+        supplier: d.supplier,
+        locationId: d.locationId,
+        notes: d.notes,
       },
     });
     return { ok: true, data: fromPrisma(row) };
@@ -70,16 +74,16 @@ export async function actionUpdateInventoryItem(
     const row = await prisma.inventoryItem.update({
       where: { id },
       data: {
-        sku:          d.sku,
-        name:         d.name,
-        category:     d.category as InventoryCategory,
-        quantity:     d.quantity,
+        sku: d.sku,
+        name: d.name,
+        category: d.category as InventoryCategory,
+        quantity: d.quantity,
         reorderLevel: d.reorderLevel,
-        unit:         d.unit,
-        expiryDate:   d.expiryDate ? new Date(d.expiryDate) : null,
-        supplier:     d.supplier,
-        locationId:   d.locationId,
-        notes:        d.notes,
+        unit: d.unit,
+        expiryDate: d.expiryDate ? new Date(d.expiryDate) : null,
+        supplier: d.supplier,
+        locationId: d.locationId,
+        notes: d.notes,
       },
     });
     return { ok: true, data: fromPrisma(row) };

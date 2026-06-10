@@ -1,11 +1,15 @@
 'use server';
 
 import { prisma } from '@/lib/prisma';
-import { getAllScreenings, createScreening, updateScreening, deleteScreening } from '@/lib/api/screenings';
+import { getAllScreenings as fetchAllScreenings, createScreening, updateScreening, deleteScreening } from '@/lib/api/screenings';
 import { guard } from '@/lib/auth-server';
 import type { Screening } from '@/types';
 
-export { getAllScreenings };
+export async function getAllScreenings(): Promise<Screening[]> {
+  const denied = await guard('screening', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllScreenings();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 

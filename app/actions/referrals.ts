@@ -1,10 +1,14 @@
 'use server';
 
-import { getAllReferrals, createReferral, updateReferral, deleteReferral } from '@/lib/api/referrals';
+import { getAllReferrals as fetchAllReferrals, createReferral, updateReferral, deleteReferral } from '@/lib/api/referrals';
 import { guard } from '@/lib/auth-server';
 import type { Referral } from '@/types';
 
-export { getAllReferrals };
+export async function getAllReferrals(): Promise<Referral[]> {
+  const denied = await guard('referrals', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllReferrals();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 

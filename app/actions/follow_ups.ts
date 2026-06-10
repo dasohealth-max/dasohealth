@@ -1,10 +1,20 @@
 'use server';
 
-import { getAllFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, checkAndMarkOverdue } from '@/lib/api/follow_ups';
+import { getAllFollowUps as fetchAllFollowUps, createFollowUp, updateFollowUp, deleteFollowUp, checkAndMarkOverdue as apiCheckAndMarkOverdue } from '@/lib/api/follow_ups';
 import { guard } from '@/lib/auth-server';
 import type { FollowUp } from '@/types';
 
-export { getAllFollowUps, checkAndMarkOverdue };
+export async function getAllFollowUps(): Promise<FollowUp[]> {
+  const denied = await guard('followups', 'view');
+  if (denied) throw new Error(denied.error);
+  return fetchAllFollowUps();
+}
+
+export async function checkAndMarkOverdue(): Promise<void> {
+  const denied = await guard('followups', 'edit');
+  if (denied) throw new Error(denied.error);
+  return apiCheckAndMarkOverdue();
+}
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
