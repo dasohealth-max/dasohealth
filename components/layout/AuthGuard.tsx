@@ -12,14 +12,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    // Mark as mounted first so we show the spinner, not blank content
     setMounted(true);
-    const user = getSession();
-    if (!user) {
-      router.replace('/login');
-    } else {
-      setAuthReady(true);
-    }
+    getSession().then((session) => {
+      if (!session) {
+        router.replace('/login');
+      } else {
+        setAuthReady(true);
+      }
+    });
   }, [router]);
 
   // While checking auth or before mount, show branded loading screen

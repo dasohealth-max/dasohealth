@@ -1,0 +1,527 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  SuperAdministrator  @map("Super Administrator")
+  ProjectManager      @map("Project Manager")
+  CampaignManager     @map("Campaign Manager")
+  HospitalCoordinator @map("Hospital Coordinator")
+  DataClerk           @map("Data Clerk")
+  ScreeningOfficer    @map("Screening Officer")
+  Ophthalmologist
+  Surgeon
+  FollowUpOfficer     @map("Follow-Up Officer")
+  OutreachOfficer     @map("Outreach Officer")
+  LogisticsOfficer    @map("Logistics Officer")
+  InventoryOfficer    @map("Inventory Officer")
+  MEALOfficer         @map("MEAL Officer")
+  FinanceOfficer      @map("Finance Officer")
+  DonorUser           @map("Donor User")
+
+  @@map("user_role")
+}
+
+enum CampaignType {
+  Cataract
+  SchoolEyeHealth     @map("School Eye Health")
+  DiabeticRetinopathy @map("Diabetic Retinopathy")
+  Glaucoma
+  General
+
+  @@map("campaign_type")
+}
+
+enum CampaignStatus {
+  Planned
+  Active
+  Completed
+  Suspended
+
+  @@map("campaign_status")
+}
+
+enum FacilityType {
+  Hospital
+  Clinic
+  MobileUnit      @map("Mobile Unit")
+  School
+  CommunityCentre @map("Community Centre")
+
+  @@map("facility_type")
+}
+
+enum Sex {
+  Male
+  Female
+  Other
+
+  @@map("sex")
+}
+
+enum DisabilityStatus {
+  None
+  Visual
+  Hearing
+  Mobility
+  Cognitive
+  Multiple
+
+  @@map("disability_status")
+}
+
+enum VaGrade {
+  V6_6   @map("6/6")
+  V6_9   @map("6/9")
+  V6_12  @map("6/12")
+  V6_18  @map("6/18")
+  V6_24  @map("6/24")
+  V6_36  @map("6/36")
+  V6_60  @map("6/60")
+  LT6_60 @map("<6/60")
+  CF
+  HM
+  PL
+  NPL
+
+  @@map("va_grade")
+}
+
+enum ScreeningRecommendation {
+  Discharge
+  ReferForSurgery      @map("Refer for Surgery")
+  FurtherInvestigation @map("Further Investigation")
+  Glasses
+  FollowUp             @map("Follow-up")
+
+  @@map("screening_recommendation")
+}
+
+enum SurgeryEye {
+  Right
+  Left
+  Both
+
+  @@map("surgery_eye")
+}
+
+enum LensType {
+  PMMA
+  FoldableAcrylic @map("Foldable Acrylic")
+  Hydrophilic
+  Hydrophobic
+
+  @@map("lens_type")
+}
+
+enum SurgeryStatus {
+  Scheduled
+  InTheatre @map("In-Theatre")
+  Completed
+  Cancelled
+  Postponed
+
+  @@map("surgery_status")
+}
+
+enum ReferralSource {
+  CHW
+  Volunteer
+  School
+  Facility
+  Self
+  CommunityLeader @map("Community Leader")
+
+  @@map("referral_source")
+}
+
+enum ReferralStatus {
+  Pending
+  Contacted
+  Screened
+  Converted
+  Lost
+
+  @@map("referral_status")
+}
+
+enum FollowUpMilestone {
+  Day1   @map("Day 1")
+  Week1  @map("Week 1")
+  Month1 @map("Month 1")
+  Month3 @map("Month 3")
+
+  @@map("follow_up_milestone")
+}
+
+enum FollowUpStatus {
+  Pending
+  Due
+  Overdue
+  Completed
+  Missed
+
+  @@map("follow_up_status")
+}
+
+enum InventoryCategory {
+  IOL
+  Medication
+  Equipment
+  Consumable
+  PPE
+
+  @@map("inventory_category")
+}
+
+enum OutreachType {
+  AwarenessCampaign @map("Awareness Campaign")
+  CommunityMeeting  @map("Community Meeting")
+  RadioBroadcast    @map("Radio Broadcast")
+  SchoolVisit       @map("School Visit")
+  HealthFair        @map("Health Fair")
+  CHWTraining       @map("CHW Training")
+
+  @@map("outreach_type")
+}
+
+enum TransportStatus {
+  Scheduled
+  InTransit @map("In-Transit")
+  Completed
+  Cancelled
+
+  @@map("transport_status")
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  email     String   @unique
+  role      UserRole
+  initials  String
+  color     String   @default("#0d9488")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  surgeries Surgery[]
+
+  @@map("users")
+}
+
+model Campaign {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  type             CampaignType
+  status           CampaignStatus @default(Planned)
+  startDate        DateTime       @map("start_date") @db.Date
+  endDate          DateTime       @map("end_date") @db.Date
+  budget           Decimal        @default(0) @map("budget") @db.Decimal(14, 2)
+  donors           String         @default("")
+  targetScreenings Int            @default(0) @map("target_screenings")
+  targetSurgeries  Int            @default(0) @map("target_surgeries")
+  targetFollowUps  Int            @default(0) @map("target_follow_ups")
+  description      String         @default("")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  campaignLocations  CampaignLocation[]
+  patients           Patient[]
+  screenings         Screening[]
+  referrals          Referral[]
+  surgeries          Surgery[]
+  followUps          FollowUp[]
+  outreachActivities OutreachActivity[]
+
+  @@map("campaigns")
+}
+
+model Location {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  code         String       @unique
+  facilityType FacilityType @map("facility_type")
+  district     String
+  region       String
+  country      String       @default("Somalia")
+  lat          Float        @db.DoublePrecision
+  lng          Float        @db.DoublePrecision
+  phone        String?
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  campaignLocations  CampaignLocation[]
+  patients           Patient[]
+  screenings         Screening[]
+  referrals          Referral[]
+  surgeries          Surgery[]
+  inventoryItems     InventoryItem[]
+  outreachActivities OutreachActivity[]
+
+  @@map("locations")
+}
+
+model CampaignLocation {
+  campaignId String @map("campaign_id") @db.Uuid
+  locationId String @map("location_id") @db.Uuid
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, locationId])
+  @@map("campaign_locations")
+}
+
+model Patient {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientCode      String          @unique @map("patient_code")
+  fullName         String          @map("full_name")
+  dateOfBirth      DateTime        @map("date_of_birth") @db.Date
+  sex              Sex
+  phone            String
+  email            String?
+  district         String
+  region           String
+  occupation       String?
+  education        String?
+  disabilityStatus DisabilityStatus @default(None) @map("disability_status")
+  insuranceStatus  String          @default("None") @map("insurance_status")
+  emergencyContact String          @default("") @map("emergency_contact")
+  emergencyPhone   String          @default("") @map("emergency_phone")
+  consentGiven     Boolean         @default(false) @map("consent_given")
+  consentDate      DateTime?       @map("consent_date") @db.Date
+  campaignId       String?         @map("campaign_id") @db.Uuid
+  locationId       String?         @map("location_id") @db.Uuid
+  referralSource   String          @default("") @map("referral_source")
+  notes            String?
+  lat              Float?          @db.DoublePrecision
+  lng              Float?          @db.DoublePrecision
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  campaign      Campaign?      @relation(fields: [campaignId], references: [id])
+  location      Location?      @relation(fields: [locationId], references: [id])
+  screenings    Screening[]
+  surgeries     Surgery[]
+  followUps     FollowUp[]
+  transportJobs TransportJob[]
+
+  @@index([campaignId], map: "idx_patients_campaign_id")
+  @@index([locationId], map: "idx_patients_location_id")
+  @@index([patientCode], map: "idx_patients_patient_code")
+  @@map("patients")
+}
+
+model Screening {
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId           String                  @map("patient_id") @db.Uuid
+  patientName         String                  @map("patient_name")
+  campaignId          String                  @map("campaign_id") @db.Uuid
+  locationId          String                  @map("location_id") @db.Uuid
+  screenedBy          String                  @map("screened_by")
+  screenedAt          DateTime                @map("screened_at") @db.Timestamptz(3)
+  vaRightUnaided      VaGrade                 @map("va_right_unaided")
+  vaLeftUnaided       VaGrade                 @map("va_left_unaided")
+  vaRightCorrected    VaGrade?                @map("va_right_corrected")
+  vaLeftCorrected     VaGrade?                @map("va_left_corrected")
+  iopRight            Int?                    @map("iop_right") @db.SmallInt
+  iopLeft             Int?                    @map("iop_left") @db.SmallInt
+  cataractSuspected   Boolean                 @default(false) @map("cataract_suspected")
+  glaucomaSuspected   Boolean                 @default(false) @map("glaucoma_suspected")
+  diabeticRetinopathy Boolean                 @default(false) @map("diabetic_retinopathy")
+  otherFindings       String                  @default("") @map("other_findings")
+  medicalHistory      String                  @default("") @map("medical_history")
+  currentMedications  String                  @default("") @map("current_medications")
+  recommendation      ScreeningRecommendation
+  notes               String                  @default("")
+  createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  campaign  Campaign   @relation(fields: [campaignId], references: [id])
+  location  Location   @relation(fields: [locationId], references: [id])
+  referrals Referral[]
+
+  @@index([patientId], map: "idx_screenings_patient_id")
+  @@index([campaignId], map: "idx_screenings_campaign_id")
+  @@index([locationId], map: "idx_screenings_location_id")
+  @@index([screenedAt(sort: Desc)], map: "idx_screenings_screened_at")
+  @@map("screenings")
+}
+
+model Referral {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  screeningId  String?        @map("screening_id") @db.Uuid
+  patientName  String         @map("patient_name")
+  patientPhone String         @map("patient_phone")
+  source       ReferralSource
+  referredBy   String         @map("referred_by")
+  campaignId   String         @map("campaign_id") @db.Uuid
+  locationId   String         @map("location_id") @db.Uuid
+  status       ReferralStatus @default(Pending)
+  referredAt   DateTime       @map("referred_at") @db.Date
+  contactedAt  DateTime?      @map("contacted_at") @db.Date
+  screenedAt   DateTime?      @map("screened_at") @db.Date
+  convertedAt  DateTime?      @map("converted_at") @db.Date
+  notes        String         @default("")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  screening Screening? @relation(fields: [screeningId], references: [id])
+  campaign  Campaign   @relation(fields: [campaignId], references: [id])
+  location  Location   @relation(fields: [locationId], references: [id])
+
+  @@index([campaignId], map: "idx_referrals_campaign_id")
+  @@index([locationId], map: "idx_referrals_location_id")
+  @@index([status], map: "idx_referrals_status")
+  @@map("referrals")
+}
+
+model Surgery {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId     String        @map("patient_id") @db.Uuid
+  patientName   String        @map("patient_name")
+  campaignId    String        @map("campaign_id") @db.Uuid
+  locationId    String        @map("location_id") @db.Uuid
+  surgeonId     String?       @map("surgeon_id") @db.Uuid
+  surgeonName   String?       @map("surgeon_name")
+  eye           SurgeryEye
+  lensType      LensType      @map("lens_type")
+  scheduledAt   DateTime      @map("scheduled_at") @db.Timestamptz(3)
+  performedAt   DateTime?     @map("performed_at") @db.Timestamptz(3)
+  status        SurgeryStatus @default(Scheduled)
+  preOpVa       String        @default("") @map("pre_op_va")
+  postOpVa      String?       @map("post_op_va")
+  complications String        @default("")
+  intraopNotes  String        @default("") @map("intraop_notes")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  campaign  Campaign   @relation(fields: [campaignId], references: [id])
+  location  Location   @relation(fields: [locationId], references: [id])
+  surgeon   User?      @relation(fields: [surgeonId], references: [id])
+  followUps FollowUp[]
+
+  @@index([patientId], map: "idx_surgeries_patient_id")
+  @@index([campaignId], map: "idx_surgeries_campaign_id")
+  @@index([surgeonId], map: "idx_surgeries_surgeon_id")
+  @@index([status], map: "idx_surgeries_status")
+  @@index([scheduledAt(sort: Desc)], map: "idx_surgeries_scheduled_at")
+  @@map("surgeries")
+}
+
+model FollowUp {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId       String            @map("patient_id") @db.Uuid
+  patientName     String            @map("patient_name")
+  surgeryId       String            @map("surgery_id") @db.Uuid
+  campaignId      String            @map("campaign_id") @db.Uuid
+  milestone       FollowUpMilestone
+  dueDate         DateTime          @map("due_date") @db.Date
+  completedAt     DateTime?         @map("completed_at") @db.Timestamptz(3)
+  status          FollowUpStatus    @default(Pending)
+  vaRightPost     String?           @map("va_right_post")
+  vaLeftPost      String?           @map("va_left_post")
+  complications   String            @default("")
+  notes           String            @default("")
+  smsReminderSent Boolean           @default(false) @map("sms_reminder_sent")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  patient  Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  surgery  Surgery  @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  @@index([patientId], map: "idx_follow_ups_patient_id")
+  @@index([surgeryId], map: "idx_follow_ups_surgery_id")
+  @@index([campaignId], map: "idx_follow_ups_campaign_id")
+  @@index([dueDate], map: "idx_follow_ups_due_date")
+  @@index([status], map: "idx_follow_ups_status")
+  @@map("follow_ups")
+}
+
+model InventoryItem {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sku          String            @unique
+  name         String
+  category     InventoryCategory
+  quantity     Int               @default(0)
+  reorderLevel Int               @default(0) @map("reorder_level")
+  unit         String
+  expiryDate   DateTime?         @map("expiry_date") @db.Date
+  supplier     String            @default("")
+  locationId   String            @map("location_id") @db.Uuid
+  notes        String            @default("")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@index([locationId], map: "idx_inventory_location_id")
+  @@index([category], map: "idx_inventory_category")
+  @@map("inventory_items")
+}
+
+model OutreachActivity {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type         OutreachType
+  title        String
+  date         DateTime     @db.Date
+  locationId   String       @map("location_id") @db.Uuid
+  locationName String       @map("location_name")
+  campaignId   String       @map("campaign_id") @db.Uuid
+  reach        Int          @default(0)
+  conversions  Int          @default(0)
+  conductedBy  String       @map("conducted_by")
+  notes        String       @default("")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  location Location @relation(fields: [locationId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId], map: "idx_outreach_campaign_id")
+  @@index([locationId], map: "idx_outreach_location_id")
+  @@map("outreach_activities")
+}
+
+model TransportJob {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId      String          @map("patient_id") @db.Uuid
+  patientName    String          @map("patient_name")
+  vehicle        String
+  driver         String
+  pickupLocation String          @map("pickup_location")
+  dropLocation   String          @map("drop_location")
+  scheduledAt    DateTime        @map("scheduled_at") @db.Timestamptz(3)
+  completedAt    DateTime?       @map("completed_at") @db.Timestamptz(3)
+  cost           Decimal         @default(0) @db.Decimal(10, 2)
+  status         TransportStatus @default(Scheduled)
+  notes          String          @default("")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId], map: "idx_transport_patient_id")
+  @@index([status], map: "idx_transport_status")
+  @@map("transport_jobs")
+}
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor     String
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  details   String   @default("")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([entity, entityId], map: "idx_audit_logs_entity")
+  @@index([createdAt(sort: Desc)], map: "idx_audit_logs_created_at")
+  @@map("audit_logs")
+}

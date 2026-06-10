@@ -1,8 +1,10 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { uid, formatDate } from '@/lib/utils';
-import type { OutreachActivity, OutreachType } from '@/types';
+import { getAllCampaigns } from '@/app/actions/campaigns';
+import { getAllLocations } from '@/app/actions/locations';
+import type { OutreachActivity, OutreachType, Campaign, Location } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -20,7 +22,12 @@ const BLANK: Omit<OutreachActivity,'id'|'createdAt'> = {
 };
 
 export default function OutreachPage() {
-  const { outreach, campaigns, locations, addOutreach, updateOutreach, deleteOutreach } = useStore();
+  const { outreach, addOutreach, updateOutreach, deleteOutreach } = useStore();
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  useEffect(() => {
+    Promise.all([getAllCampaigns(), getAllLocations()]).then(([c, l]) => { setCampaigns(c); setLocations(l); });
+  }, []);
   const { can } = usePermissions();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState<OutreachActivity | null>(null);

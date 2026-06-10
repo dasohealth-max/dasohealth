@@ -2,8 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Shield, UserRound, BarChart3, HeartHandshake } from 'lucide-react';
-import { setSession, getSession } from '@/lib/auth';
-import { useStore } from '@/lib/store';
+import { signIn, getSession } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,7 +17,6 @@ const DEMOS = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const { users } = useStore();
   const [email, setEmail]     = useState('');
   const [pass, setPass]       = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -26,7 +24,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (getSession()) router.replace('/dashboard');
+    getSession().then((session) => {
+      if (session) router.replace('/dashboard');
+    });
   }, [router]);
 
   function fill(e: string, p: string) {
@@ -37,28 +37,20 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    await new Promise((r) => setTimeout(r, 400));
 
-    const emailLower = email.trim().toLowerCase();
-
-    // 1. Check against store users (includes all newly created users)
-    const storeUser = users.find(
-      (u) => u.email.toLowerCase() === emailLower && u.password === pass && u.active
-    );
-
-    if (storeUser) {
-      setSession({
-        email:    storeUser.email,
-        name:     storeUser.name,
-        role:     storeUser.role,
-        initials: storeUser.initials,
-        color:    storeUser.color,
-      });
+    try {
+      await signIn(email.trim(), pass);
       router.push('/dashboard');
-    } else {
-      setError('Invalid email or password.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Sign in failed.';
+      setError(
+        msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('credentials')
+          ? 'Invalid email or password.'
+          : msg
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (

@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { useStore } from '@/lib/store';
-import { uid, formatDate, nextPatientCode } from '@/lib/utils';
-import type { Patient, Sex, DisabilityStatus } from '@/types';
+import { formatDate } from '@/lib/utils';
+import type { Patient, Sex, DisabilityStatus, Campaign, Location } from '@/types';
+import { getAllPatients, actionCreatePatient, actionUpdatePatient, actionDeletePatient } from '@/app/actions/patients';
+import { getAllCampaigns } from '@/app/actions/campaigns';
+import { getAllLocations } from '@/app/actions/locations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -57,17 +59,18 @@ function Sel({ value, onChange, children, className = '' }: {
 
 // ─── Full-page Patient Form ───────────────────────────────────────────────────
 function PatientFullForm({
-  editing, form, setForm, campaigns, locations, onSave, onCancel, isValid, patients,
+  editing, form, setForm, campaigns, locations, onSave, onCancel, isValid, patients, saveError,
 }: {
   editing: Patient | null;
   form: typeof BLANK;
   setForm: React.Dispatch<React.SetStateAction<typeof BLANK>>;
-  campaigns: ReturnType<typeof useStore>['campaigns'];
-  locations: ReturnType<typeof useStore>['locations'];
+  campaigns: Campaign[];
+  locations: Location[];
   onSave: () => void;
   onCancel: () => void;
   isValid: boolean;
   patients: Patient[];
+  saveError?: string | null;
 }) {
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
@@ -118,6 +121,13 @@ function PatientFullForm({
           </Button>
         </div>
       </div>
+
+      {saveError && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-2.5 text-sm text-red-700 font-medium flex items-center gap-2 shrink-0">
+          <AlertTriangle size={14} className="shrink-0" />
+          {saveError}
+        </div>
+      )}
 
       {/* Body — two columns */}
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -338,8 +348,14 @@ function PatientFullForm({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PatientsPage() {
-  const { patients, campaigns, locations, addPatient, updatePatient, deletePatient } = useStore();
   const { can, maskPatient } = usePermissions();
+
+  const [patients, setPatients]   = useState<Patient[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [search, setSearch]     = useState('');
   const [page, setPage]         = useState(1);
@@ -349,6 +365,14 @@ export default function PatientsPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm]         = useState<typeof BLANK>(BLANK);
   const [qrPatient, setQrPatient] = useState<Patient | null>(null);
+
+  useEffect(() => {
+    Promise.all([getAllPatients(), getAllCampaigns(), getAllLocations()])
+      .then(([p, c, l]) => { setPatients(p); setCampaigns(c); setLocations(l); })
+      .catch((e: Error) => setLoadError(e.message))
+      .finally(() => setIsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = patients.filter((p) =>
     p.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -369,11 +393,16 @@ export default function PatientsPage() {
   }
   function cancel() { setShowForm(false); setEditing(null); }
 
-  function save() {
+  async function save() {
+    setSaveError(null);
     if (editing) {
-      updatePatient({ ...editing, ...form });
+      const result = await actionUpdatePatient(editing.id, form);
+      if (!result.ok) { setSaveError(result.error); return; }
+      setPatients((prev) => prev.map((p) => p.id === editing.id ? result.data : p));
     } else {
-      addPatient({ id: uid(), patientCode: nextPatientCode(patients.map((p) => p.patientCode)), createdAt: new Date().toISOString(), ...form });
+      const result = await actionCreatePatient(form);
+      if (!result.ok) { setSaveError(result.error); return; }
+      setPatients((prev) => [result.data, ...prev]);
     }
     setShowForm(false); setEditing(null);
   }
@@ -391,7 +420,31 @@ export default function PatientsPage() {
         onCancel={cancel}
         isValid={isValid}
         patients={patients}
+        saveError={saveError}
       />
+    );
+  }
+
+  // ── Loading / error ──
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-slate-400">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm">Loading patients...</p>
+        </div>
+      </div>
+    );
+  }
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="text-center max-w-sm">
+          <AlertTriangle size={32} className="text-amber-500 mx-auto mb-3" />
+          <p className="text-sm font-medium text-slate-700">Failed to load patients</p>
+          <p className="text-xs text-slate-400 mt-1">{loadError}</p>
+        </div>
+      </div>
     );
   }
 
@@ -608,7 +661,17 @@ export default function PatientsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deletePatient(deleteId); setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={async () => {
+                if (deleteId) {
+                  const result = await actionDeletePatient(deleteId);
+                  if (!result.ok) { setSaveError(result.error); }
+                  else { setPatients((prev) => prev.filter((p) => p.id !== deleteId)); }
+                }
+                setDeleteId(null);
+              }}
+              className="bg-red-600 hover:bg-red-700 rounded-xl"
+            >Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

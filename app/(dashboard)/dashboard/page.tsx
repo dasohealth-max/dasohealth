@@ -1,5 +1,13 @@
 'use client';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
+import { getAllPatients } from '@/app/actions/patients';
+import { getAllScreenings } from '@/app/actions/screenings';
+import { getAllSurgeries } from '@/app/actions/surgeries';
+import { getAllFollowUps } from '@/app/actions/follow_ups';
+import { getAllCampaigns } from '@/app/actions/campaigns';
+import { getAllReferrals } from '@/app/actions/referrals';
+import type { Patient, Screening, Surgery, FollowUp, Campaign, Referral } from '@/types';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -46,7 +54,24 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const { patients, screenings, surgeries, followUps, campaigns, referrals, outreach } = useStore();
+  const { outreach } = useStore();
+  const [patients, setPatients]     = useState<Patient[]>([]);
+  const [screenings, setScreenings] = useState<Screening[]>([]);
+  const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
+  const [followUps, setFollowUps]   = useState<FollowUp[]>([]);
+  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
+  const [referrals, setReferrals]   = useState<Referral[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      getAllPatients(), getAllScreenings(), getAllSurgeries(),
+      getAllFollowUps(), getAllCampaigns(), getAllReferrals(),
+    ]).then(([p, sc, sg, f, c, r]) => {
+      setPatients(p); setScreenings(sc); setSurgeries(sg);
+      setFollowUps(f); setCampaigns(c); setReferrals(r);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Computed KPI ─────────────────────────────────────────────────────────────
   const overdue        = followUps.filter((f) => f.status === 'Overdue').length;

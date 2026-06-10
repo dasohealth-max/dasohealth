@@ -21,7 +21,6 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password: string;
   role: Role;
   initials: string;
   color: string;

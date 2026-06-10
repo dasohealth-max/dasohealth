@@ -1,15 +1,18 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { getSession, clearSession } from '@/lib/auth';
+import { signOut, usePermissions } from '@/lib/auth';
 import { Bell, LogOut, Search, ChevronDown, Menu } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
-import type { SessionUser } from '@/lib/auth';
 import Link from 'next/link';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useStore } from '@/lib/store';
+import { getAllPatients } from '@/app/actions/patients';
+import { getAllCampaigns } from '@/app/actions/campaigns';
+import { getAllFollowUps } from '@/app/actions/follow_ups';
+import { getAllReferrals } from '@/app/actions/referrals';
+import type { Patient, Campaign, FollowUp, Referral } from '@/types';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -17,19 +20,26 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
-  const [user, setUser] = useState<SessionUser | null>(null);
+  const { user } = usePermissions();
   const [search, setSearch] = useState('');
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const { patients, campaigns, followUps, referrals } = useStore();
+  const [patients, setPatients]   = useState<Patient[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+
+  useEffect(() => {
+    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps(), getAllReferrals()])
+      .then(([p, c, f, r]) => { setPatients(p); setCampaigns(c); setFollowUps(f); setReferrals(r); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Real notification count
   const overdueCount  = followUps.filter((f) => f.status === 'Overdue').length;
   const pendingCount  = referrals.filter((r) => r.status === 'Pending').length;
   const notifCount    = overdueCount + pendingCount;
-
-  useEffect(() => { setUser(getSession()); }, []);
 
   // Close search on outside click
   useEffect(() => {
@@ -42,9 +52,9 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  function logout() {
-    clearSession();
-    window.location.replace('/login');
+  async function logout() {
+    await signOut();
+    router.replace('/login');
   }
 
   // Quick search: patients + campaigns

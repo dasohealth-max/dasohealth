@@ -13,6 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import InlineForm from '@/components/forms/InlineForm';
 import { Plus, Pencil, Trash2, Shield, Activity, X, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { usePermissions } from '@/lib/auth';
+import { actionCreateUser, actionUpdateUserMetadata, actionDeleteUser } from '@/app/actions/users';
+
+// Form data type — extends User with a `password` field used only during creation.
+// Password is never stored in the User domain type; it goes straight to Supabase Auth.
+interface UserFormData extends Omit<User, 'id' | 'createdAt'> {
+  password: string;
+}
 
 const ROLES: Role[] = [
   'Super Administrator','Project Manager','Campaign Manager','Hospital Coordinator',
@@ -39,7 +46,7 @@ const ROLE_COLORS: Record<string, string> = {
   'Donor User':          'bg-pink-100 text-pink-700',
 };
 
-const BLANK: Omit<User, 'id' | 'createdAt'> = {
+const BLANK: UserFormData = {
   name: '', email: '', password: '', role: 'Screening Officer', initials: '', color: '#0d9488', active: true,
 };
 
@@ -54,12 +61,13 @@ const DEFAULT_ORG = {
 export default function SettingsPage() {
   const { users, auditLogs, addUser, updateUser, deleteUser, resetStore } = useStore();
   const { user: sessionUser } = usePermissions();
-  const [showForm, setShowForm]       = useState(false);
-  const [editing, setEditing]         = useState<User | null>(null);
-  const [deleteId, setDeleteId]       = useState<string | null>(null);
-  const [form, setForm]               = useState<typeof BLANK>(BLANK);
-  const [showPass, setShowPass]       = useState(false);
+  const [showForm, setShowForm]         = useState(false);
+  const [editing, setEditing]           = useState<User | null>(null);
+  const [deleteId, setDeleteId]         = useState<string | null>(null);
+  const [form, setForm]                 = useState<UserFormData>(BLANK);
+  const [showPass, setShowPass]         = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [saveError, setSaveError]       = useState<string | null>(null);
 
   // Org profile state
   const [org, setOrg]       = useState(DEFAULT_ORG);
@@ -67,20 +75,38 @@ export default function SettingsPage() {
 
   function saveOrg() { setOrgSaved(true); setTimeout(() => setOrgSaved(false), 3000); }
 
-  function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
-  function openEdit(u: User) { setEditing(u); const { id, createdAt, ...r } = u; setForm(r); setShowForm(true); }
-  function cancel() { setShowForm(false); setEditing(null); }
+  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(null); setShowForm(true); }
+  function openEdit(u: User) {
+    setEditing(u);
+    const { id, createdAt, ...r } = u;
+    setForm({ ...r, password: '' });
+    setSaveError(null);
+    setShowForm(true);
+  }
+  function cancel() { setShowForm(false); setEditing(null); setSaveError(null); }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
+  function set(k: keyof UserFormData, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
 
-  function save() {
+  async function save() {
+    setSaveError(null);
     const initials = form.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+    const { password, ...userFields } = form;
+
     if (editing) {
-      // Keep existing password if the field was left blank during edit
-      const password = form.password.trim() || editing.password;
-      updateUser({ ...editing, ...form, password, initials });
+      updateUser({ ...editing, ...userFields, initials });
+      // Update Supabase Auth metadata for UUID-based users (not legacy seeds)
+      if (editing.id.length > 10) {
+        await actionUpdateUserMetadata(editing.id, {
+          name: form.name, role: form.role, initials, color: form.color,
+        });
+      }
     } else {
-      addUser({ id: uid(), createdAt: new Date().toISOString(), ...form, initials });
+      const result = await actionCreateUser({
+        email: form.email, password, name: form.name,
+        role: form.role, initials, color: form.color,
+      });
+      if (!result.ok) { setSaveError(result.error); return; }
+      addUser({ id: result.data.id, createdAt: new Date().toISOString(), ...userFields, initials });
     }
     cancel();
   }
@@ -108,6 +134,13 @@ export default function SettingsPage() {
               : <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>
             }
           </div>
+
+          {saveError && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-2.5 text-sm font-medium">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              {saveError}
+            </div>
+          )}
 
           {showForm && (
             <InlineForm
@@ -323,7 +356,16 @@ export default function SettingsPage() {
             <AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteUser(deleteId); setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={async () => {
+                if (deleteId) {
+                  await actionDeleteUser(deleteId);
+                  deleteUser(deleteId);
+                }
+                setDeleteId(null);
+              }}
+              className="bg-red-600 hover:bg-red-700 rounded-xl"
+            >Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

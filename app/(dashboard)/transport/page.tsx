@@ -1,8 +1,9 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { uid, formatDateTime } from '@/lib/utils';
-import type { TransportJob, TransportStatus } from '@/types';
+import { getAllPatients } from '@/app/actions/patients';
+import type { TransportJob, TransportStatus, Patient } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -24,7 +25,9 @@ const BLANK: Omit<TransportJob,'id'|'createdAt'> = {
 };
 
 export default function TransportPage() {
-  const { transport, patients, addTransport, updateTransport, deleteTransport } = useStore();
+  const { transport, addTransport, updateTransport, deleteTransport } = useStore();
+  const [patients, setPatients] = useState<Patient[]>([]);
+  useEffect(() => { getAllPatients().then(setPatients); }, []);
   const { can } = usePermissions();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState<TransportJob | null>(null);

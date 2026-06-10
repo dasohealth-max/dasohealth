@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { useStore } from '@/lib/store';
-import { uid } from '@/lib/utils';
 import type { Location, FacilityType } from '@/types';
+import { getAllLocations, actionCreateLocation, actionUpdateLocation, actionDeleteLocation } from '@/app/actions/locations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -250,26 +249,41 @@ function LocationFullForm({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LocationsPage() {
-  const { locations, addLocation, updateLocation, deleteLocation } = useStore();
   const { can } = usePermissions();
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing]   = useState<Location | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm]         = useState<typeof BLANK>(BLANK);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveError, setSaveError] = useState('');
+  const [showForm, setShowForm]   = useState(false);
+  const [editing, setEditing]     = useState<Location | null>(null);
+  const [deleteId, setDeleteId]   = useState<string | null>(null);
+  const [form, setForm]           = useState<typeof BLANK>(BLANK);
+
+  useEffect(() => {
+    getAllLocations().then((data) => { setLocations(data); setIsLoading(false); });
+  }, []);
 
   const isValid = form.name.trim().length > 0 && form.code.trim().length > 0;
 
-  function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
+  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
   function openEdit(l: Location) {
     setEditing(l);
     const { id, createdAt, ...r } = l;
     setForm(r);
+    setSaveError('');
     setShowForm(true);
   }
   function cancel() { setShowForm(false); setEditing(null); }
-  function save() {
-    if (editing) updateLocation({ ...editing, ...form });
-    else addLocation({ id: uid(), createdAt: new Date().toISOString(), ...form });
+  async function save() {
+    setSaveError('');
+    if (editing) {
+      const res = await actionUpdateLocation(editing.id, form);
+      if (!res.ok) { setSaveError(res.error); return; }
+      setLocations((prev) => prev.map((l) => l.id === editing.id ? res.data : l));
+    } else {
+      const res = await actionCreateLocation(form);
+      if (!res.ok) { setSaveError(res.error); return; }
+      setLocations((prev) => [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name)));
+    }
     cancel();
   }
 
@@ -292,7 +306,7 @@ export default function LocationsPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Locations</h1>
-          <p className="text-sm text-slate-500">{locations.length} service delivery sites</p>
+          <p className="text-sm text-slate-500">{isLoading ? 'Loading...' : `${locations.length} service delivery sites`}</p>
         </div>
         {can('locations','create') && (
           <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl">
@@ -348,7 +362,7 @@ export default function LocationsPage() {
           <AlertDialogHeader><AlertDialogTitle>Delete Location?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteLocation(deleteId); setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
+            <AlertDialogAction onClick={async () => { if (deleteId) { await actionDeleteLocation(deleteId); setLocations((prev) => prev.filter((l) => l.id !== deleteId)); } setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

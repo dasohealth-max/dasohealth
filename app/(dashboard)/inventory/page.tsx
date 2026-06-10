@@ -1,7 +1,9 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { uid, formatDate } from '@/lib/utils';
+import { getAllLocations } from '@/app/actions/locations';
+import type { Location } from '@/types';
 import type { InventoryItem, InventoryCategory } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,7 +28,9 @@ const isExp  = (i: InventoryItem) => !!i.expiryDate && new Date(i.expiryDate) < 
 const isNear = (i: InventoryItem) => { if (!i.expiryDate) return false; const d = Math.ceil((new Date(i.expiryDate).getTime() - Date.now()) / 86400000); return d >= 0 && d <= 60; };
 
 export default function InventoryPage() {
-  const { inventory, locations, addInventoryItem, updateInventoryItem, deleteInventoryItem } = useStore();
+  const { inventory, addInventoryItem, updateInventoryItem, deleteInventoryItem } = useStore();
+  const [locations, setLocations] = useState<Location[]>([]);
+  useEffect(() => { getAllLocations().then(setLocations); }, []);
   const { can } = usePermissions();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState<InventoryItem | null>(null);

@@ -1,9 +1,15 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { useStore } from '@/lib/store';
+import { getAllPatients } from '@/app/actions/patients';
+import { getAllScreenings } from '@/app/actions/screenings';
+import { getAllSurgeries } from '@/app/actions/surgeries';
+import { getAllFollowUps } from '@/app/actions/follow_ups';
+import { getAllCampaigns } from '@/app/actions/campaigns';
+import { getAllReferrals } from '@/app/actions/referrals';
+import type { Patient, Screening, Surgery, FollowUp, Campaign, Referral } from '@/types';
 import { usePermissions } from '@/lib/auth';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui/button';
@@ -15,9 +21,25 @@ const COLORS = ['#0d9488','#6366f1','#f59e0b','#ec4899','#8b5cf6'];
 type ReportType = 'Campaign Summary' | 'Patient Statistics' | 'Surgery Outcomes' | 'Referral Conversion' | 'Donor Brief';
 
 export default function ReportsPage() {
-  const { campaigns, patients, screenings, surgeries, referrals, followUps } = useStore();
   const { can } = usePermissions();
-  const [type, setType] = useState<ReportType>('Campaign Summary');
+  const [type, setType]           = useState<ReportType>('Campaign Summary');
+  const [patients, setPatients]     = useState<Patient[]>([]);
+  const [screenings, setScreenings] = useState<Screening[]>([]);
+  const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
+  const [followUps, setFollowUps]   = useState<FollowUp[]>([]);
+  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
+  const [referrals, setReferrals]   = useState<Referral[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      getAllPatients(), getAllScreenings(), getAllSurgeries(),
+      getAllFollowUps(), getAllCampaigns(), getAllReferrals(),
+    ]).then(([p, sc, sg, f, c, r]) => {
+      setPatients(p); setScreenings(sc); setSurgeries(sg);
+      setFollowUps(f); setCampaigns(c); setReferrals(r);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const teal: [number, number, number] = [13, 148, 136];
 
