@@ -1,19 +1,11 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff, Shield, UserRound, BarChart3, HeartHandshake } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { signIn, getSession } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
-
-const DEMOS = [
-  { email: 'admin@eyecare.org',   pass: 'admin123',  label: 'Super Admin',     desc: 'Full access',        icon: Shield,         color: 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100' },
-  { email: 'screener@eyecare.org', pass: 'screen123', label: 'Screener', desc: 'Screening & follow-up', icon: UserRound,      color: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100' },
-  { email: 'pm@eyecare.org',      pass: 'pm123',     label: 'Project Manager', desc: 'Campaign & reports', icon: BarChart3,      color: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
-  { email: 'clerk@eyecare.org',   pass: 'clerk123',  label: 'Data Clerk',      desc: 'Patient registration', icon: HeartHandshake, color: 'bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100' },
-];
 
 function LoginForm() {
   const router       = useRouter();
@@ -31,10 +23,6 @@ function LoginForm() {
       if (session) router.replace(from);
     });
   }, [router, from]);
-
-  function fill(e: string, p: string) {
-    setEmail(e); setPass(p); setError('');
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -124,30 +112,6 @@ function LoginForm() {
             </Button>
           </form>
 
-          {/* Demo accounts */}
-          <div className="mt-6">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex-1 h-px bg-slate-100" />
-              <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Demo Accounts</span>
-              <div className="flex-1 h-px bg-slate-100" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {DEMOS.map(({ email: e, pass: p, label, desc, icon: Icon, color }) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => fill(e, p)}
-                  className={cn('flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all text-xs font-medium', color)}
-                >
-                  <Icon size={14} className="shrink-0" />
-                  <div>
-                    <div className="font-semibold">{label}</div>
-                    <div className="opacity-70 font-normal">{desc}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-slate-400 text-xs mt-4">

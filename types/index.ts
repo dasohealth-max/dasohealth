@@ -35,7 +35,6 @@ export interface Campaign {
   targetScreenings: number;
   targetSurgeries: number;
   targetFollowUps: number;
-  locationIds: string[];
   description: string;
   createdAt: string;
 }
@@ -63,11 +62,8 @@ export interface Patient {
   consentGiven: boolean;
   consentDate: string;
   campaignId?: string;
-  locationId?: string;
   referralSource: string;
   notes?: string;
-  lat?: number;
-  lng?: number;
   registeredById: string;
   registeredByName: string;
   screeningStatus: 'Awaiting Screening' | 'Screened';
@@ -81,7 +77,6 @@ export interface Screening {
   patientId: string;
   patientName: string;
   campaignId: string;
-  locationId?: string;
   region: string;
   operationDistrict: string;
   screenedBy: string;
@@ -114,11 +109,9 @@ export interface Surgery {
   patientId: string;
   patientName: string;
   campaignId: string;
-  locationId?: string;
   region: string;
   operationDistrict: string;
   createdFromScreeningId?: string;
-  surgeonId: string;
   surgeonName: string;
   eye: SurgeryEye;
   lensType: LensType;
@@ -134,7 +127,7 @@ export interface Surgery {
   createdAt: string;
 }
 
-export type FollowUpMilestone = 'Day 1' | 'Week 1' | 'Month 1' | 'Month 3';
+export type FollowUpMilestone = 'Day 1' | 'Week 1';
 export type FollowUpStatus = 'Pending' | 'Due' | 'Overdue' | 'Completed' | 'Missed';
 
 export interface FollowUp {
@@ -152,7 +145,6 @@ export interface FollowUp {
   vaLeftPost?: string;
   complications: string;
   notes: string;
-  smsReminderSent: boolean;
   needsDoctorReview: boolean;
   completedById: string;
   completedByName: string;

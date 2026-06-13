@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetchPatientById } from '@/lib/api/patients';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
-import { nextPatientCode } from '@/lib/utils';
 import type { Patient } from '@/types';
 import type { Sex, DisabilityStatus } from '@/lib/generated/prisma/client';
 
@@ -42,11 +41,8 @@ const PatientSchema = z.object({
   consentGiven: z.boolean(),
   consentDate: z.string().optional(),
   campaignId: z.string().min(1, 'Campaign is required'),
-  locationId: z.string().optional(),
   referralSource: z.string(),
   notes: z.string().optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
 });
 
 type ActionResult<T = null> =
@@ -58,6 +54,28 @@ async function getCampaignScope(campaignId: string) {
     where: { id: campaignId },
     select: { region: true, operationDistrict: true },
   });
+}
+
+async function createPatientWithCode(data: Omit<Parameters<typeof prisma.patient.create>[0]['data'], 'patientCode'>): Promise<Patient> {
+  const MAX_RETRIES = 5;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const last = await prisma.patient.findFirst({
+        select: { patientCode: true },
+        orderBy: { patientCode: 'desc' },
+      });
+      const year = new Date().getFullYear();
+      const lastNum = last ? parseInt(last.patientCode.split('-')[2] || '0', 10) : 0;
+      const patientCode = `EC-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+      const row = await prisma.patient.create({ data: { ...(data as Parameters<typeof prisma.patient.create>[0]['data']), patientCode } });
+      return fromPrisma(row);
+    } catch (e: unknown) {
+      const isUniqueViolation = e instanceof Error && 'code' in e && (e as { code: string }).code === 'P2002';
+      if (isUniqueViolation && attempt < MAX_RETRIES - 1) continue;
+      throw e;
+    }
+  }
+  throw new Error('Could not generate a unique patient code. Please try again.');
 }
 
 export async function actionCreatePatient(input: unknown): Promise<ActionResult<Patient>> {
@@ -74,40 +92,30 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
-    const existing = await prisma.patient.findMany({ select: { patientCode: true } });
-    const patientCode = nextPatientCode(existing.map((r) => r.patientCode));
-
-    const row = await prisma.patient.create({
-      data: {
-        patientCode,
-        fullName: d.fullName,
-        dateOfBirth: new Date(d.dateOfBirth),
-        sex: d.sex as Sex,
-        phone: d.phone,
-        email: d.email || null,
-        district: d.district || campaign.operationDistrict,
-        region: campaign.region,
-        operationDistrict: campaign.operationDistrict,
-        occupation: d.occupation || null,
-        education: d.education || null,
-        disabilityStatus: d.disabilityStatus as DisabilityStatus,
-        insuranceStatus: d.insuranceStatus,
-        emergencyContact: d.emergencyContact,
-        emergencyPhone: d.emergencyPhone,
-        consentGiven: d.consentGiven,
-        consentDate: d.consentDate ? new Date(d.consentDate) : null,
-        campaignId: d.campaignId,
-        locationId: d.locationId || null,
-        referralSource: d.referralSource,
-        notes: d.notes || null,
-        lat: d.lat ?? null,
-        lng: d.lng ?? null,
-        registeredById: actor.id,
-        registeredByName: actor.name,
-        screeningStatus: 'Awaiting Screening',
-      },
+    const patient = await createPatientWithCode({
+      fullName: d.fullName,
+      dateOfBirth: new Date(d.dateOfBirth),
+      sex: d.sex as Sex,
+      phone: d.phone,
+      email: d.email || null,
+      district: d.district || campaign.operationDistrict,
+      region: campaign.region,
+      operationDistrict: campaign.operationDistrict,
+      occupation: d.occupation || null,
+      education: d.education || null,
+      disabilityStatus: d.disabilityStatus as DisabilityStatus,
+      insuranceStatus: d.insuranceStatus,
+      emergencyContact: d.emergencyContact,
+      emergencyPhone: d.emergencyPhone,
+      consentGiven: d.consentGiven,
+      consentDate: d.consentDate ? new Date(d.consentDate) : null,
+      campaignId: d.campaignId,
+      referralSource: d.referralSource,
+      notes: d.notes || null,
+      registeredById: actor.id,
+      registeredByName: actor.name,
+      screeningStatus: 'Awaiting Screening',
     });
-    const patient = fromPrisma(row);
     await auditLog({
       actor,
       action: 'create',
@@ -163,11 +171,8 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
         consentGiven: d.consentGiven,
         consentDate: d.consentDate ? new Date(d.consentDate) : null,
         campaignId: d.campaignId,
-        locationId: d.locationId || null,
         referralSource: d.referralSource,
         notes: d.notes || null,
-        lat: d.lat ?? null,
-        lng: d.lng ?? null,
       },
     });
     const patient = fromPrisma(row);

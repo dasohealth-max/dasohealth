@@ -35,7 +35,6 @@ const BLANK: Omit<Patient, 'id' | 'patientCode' | 'createdAt'> = {
   consentGiven: true,
   consentDate: new Date().toISOString().split('T')[0],
   campaignId: '',
-  locationId: '',
   referralSource: 'Campaign walk-in',
   notes: '',
   registeredById: '',
@@ -122,6 +121,7 @@ export default function PatientsPage() {
   }
 
   async function remove(patient: Patient) {
+    if (!confirm(`Delete patient "${patient.fullName}" (${patient.patientCode})? This will also delete their screenings, surgeries, and follow-ups. This cannot be undone.`)) return;
     const result = await actionDeletePatient(patient.id);
     if (result.ok) setPatients((rows) => rows.filter((row) => row.id !== patient.id));
   }

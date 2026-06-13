@@ -14,19 +14,8 @@ datasource db {
 enum UserRole {
   SuperAdministrator  @map("Super Administrator")
   ProjectManager      @map("Project Manager")
-  CampaignManager     @map("Campaign Manager")
-  HospitalCoordinator @map("Hospital Coordinator")
   DataClerk           @map("Data Clerk")
   ScreeningOfficer    @map("Screening Officer")
-  Ophthalmologist
-  Surgeon
-  FollowUpOfficer     @map("Follow-Up Officer")
-  OutreachOfficer     @map("Outreach Officer")
-  LogisticsOfficer    @map("Logistics Officer")
-  InventoryOfficer    @map("Inventory Officer")
-  MEALOfficer         @map("MEAL Officer")
-  FinanceOfficer      @map("Finance Officer")
-  DonorUser           @map("Donor User")
 
   @@map("user_role")
 }
@@ -48,16 +37,6 @@ enum CampaignStatus {
   Suspended
 
   @@map("campaign_status")
-}
-
-enum FacilityType {
-  Hospital
-  Clinic
-  MobileUnit      @map("Mobile Unit")
-  School
-  CommunityCentre @map("Community Centre")
-
-  @@map("facility_type")
 }
 
 enum Sex {
@@ -133,32 +112,9 @@ enum SurgeryStatus {
   @@map("surgery_status")
 }
 
-enum ReferralSource {
-  CHW
-  Volunteer
-  School
-  Facility
-  Self
-  CommunityLeader @map("Community Leader")
-
-  @@map("referral_source")
-}
-
-enum ReferralStatus {
-  Pending
-  Contacted
-  Screened
-  Converted
-  Lost
-
-  @@map("referral_status")
-}
-
 enum FollowUpMilestone {
   Day1   @map("Day 1")
   Week1  @map("Week 1")
-  Month1 @map("Month 1")
-  Month3 @map("Month 3")
 
   @@map("follow_up_milestone")
 }
@@ -173,162 +129,86 @@ enum FollowUpStatus {
   @@map("follow_up_status")
 }
 
-enum InventoryCategory {
-  IOL
-  Medication
-  Equipment
-  Consumable
-  PPE
-
-  @@map("inventory_category")
-}
-
-enum OutreachType {
-  AwarenessCampaign @map("Awareness Campaign")
-  CommunityMeeting  @map("Community Meeting")
-  RadioBroadcast    @map("Radio Broadcast")
-  SchoolVisit       @map("School Visit")
-  HealthFair        @map("Health Fair")
-  CHWTraining       @map("CHW Training")
-
-  @@map("outreach_type")
-}
-
-enum TransportStatus {
-  Scheduled
-  InTransit @map("In-Transit")
-  Completed
-  Cancelled
-
-  @@map("transport_status")
-}
-
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
 
 model User {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  email     String   @unique
-  role      UserRole
-  assignedRegion String? @map("assigned_region")
-  initials  String
-  color     String   @default("#0d9488")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  surgeries Surgery[]
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  email          String   @unique
+  role           UserRole
+  assignedRegion String?  @map("assigned_region")
+  initials       String
+  color          String   @default("#0d9488")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("users")
 }
 
 model Campaign {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String
-  type             CampaignType
-  status           CampaignStatus @default(Planned)
-  region           String         @default("Banadir / Mogadishu")
-  operationDistrict String        @default("Mogadishu") @map("operation_district")
-  projectManagerId String         @default("") @map("project_manager_id")
-  projectManagerName String       @default("") @map("project_manager_name")
-  startDate        DateTime       @map("start_date") @db.Date
-  endDate          DateTime       @map("end_date") @db.Date
-  budget           Decimal        @default(0) @map("budget") @db.Decimal(14, 2)
-  donors           String         @default("")
-  targetScreenings Int            @default(0) @map("target_screenings")
-  targetSurgeries  Int            @default(0) @map("target_surgeries")
-  targetFollowUps  Int            @default(0) @map("target_follow_ups")
-  description      String         @default("")
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  type              CampaignType
+  status            CampaignStatus @default(Planned)
+  region            String         @default("Banadir / Mogadishu")
+  operationDistrict String         @default("Mogadishu") @map("operation_district")
+  projectManagerId  String         @default("") @map("project_manager_id")
+  projectManagerName String        @default("") @map("project_manager_name")
+  startDate         DateTime       @map("start_date") @db.Date
+  endDate           DateTime       @map("end_date") @db.Date
+  budget            Decimal        @default(0) @map("budget") @db.Decimal(14, 2)
+  donors            String         @default("")
+  targetScreenings  Int            @default(0) @map("target_screenings")
+  targetSurgeries   Int            @default(0) @map("target_surgeries")
+  targetFollowUps   Int            @default(0) @map("target_follow_ups")
+  description       String         @default("")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  campaignLocations  CampaignLocation[]
-  patients           Patient[]
-  screenings         Screening[]
-  referrals          Referral[]
-  surgeries          Surgery[]
-  followUps          FollowUp[]
-  outreachActivities OutreachActivity[]
+  patients   Patient[]
+  screenings Screening[]
+  surgeries  Surgery[]
+  followUps  FollowUp[]
 
   @@index([region], map: "idx_campaigns_region")
   @@index([projectManagerId], map: "idx_campaigns_project_manager_id")
   @@map("campaigns")
 }
 
-model Location {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  code         String       @unique
-  facilityType FacilityType @map("facility_type")
-  district     String
-  region       String
-  country      String       @default("Somalia")
-  lat          Float        @db.DoublePrecision
-  lng          Float        @db.DoublePrecision
-  phone        String?
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  campaignLocations  CampaignLocation[]
-  patients           Patient[]
-  screenings         Screening[]
-  referrals          Referral[]
-  surgeries          Surgery[]
-  inventoryItems     InventoryItem[]
-  outreachActivities OutreachActivity[]
-
-  @@map("locations")
-}
-
-model CampaignLocation {
-  campaignId String @map("campaign_id") @db.Uuid
-  locationId String @map("location_id") @db.Uuid
-
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-
-  @@id([campaignId, locationId])
-  @@map("campaign_locations")
-}
-
 model Patient {
-  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  patientCode      String          @unique @map("patient_code")
-  fullName         String          @map("full_name")
-  dateOfBirth      DateTime        @map("date_of_birth") @db.Date
-  sex              Sex
-  phone            String
-  email            String?
-  district         String
-  region           String
-  operationDistrict String       @default("") @map("operation_district")
-  occupation       String?
-  education        String?
-  disabilityStatus DisabilityStatus @default(None) @map("disability_status")
-  insuranceStatus  String          @default("None") @map("insurance_status")
-  emergencyContact String          @default("") @map("emergency_contact")
-  emergencyPhone   String          @default("") @map("emergency_phone")
-  consentGiven     Boolean         @default(false) @map("consent_given")
-  consentDate      DateTime?       @map("consent_date") @db.Date
-  campaignId       String?         @map("campaign_id") @db.Uuid
-  locationId       String?         @map("location_id") @db.Uuid
-  referralSource   String          @default("") @map("referral_source")
-  notes            String?
-  lat              Float?          @db.DoublePrecision
-  lng              Float?          @db.DoublePrecision
-  registeredById   String          @default("") @map("registered_by_id")
-  registeredByName String          @default("") @map("registered_by_name")
-  screeningStatus  String          @default("Awaiting Screening") @map("screening_status")
-  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientCode       String           @unique @map("patient_code")
+  fullName          String           @map("full_name")
+  dateOfBirth       DateTime         @map("date_of_birth") @db.Date
+  sex               Sex
+  phone             String
+  email             String?
+  district          String
+  region            String
+  operationDistrict String           @default("") @map("operation_district")
+  occupation        String?
+  education         String?
+  disabilityStatus  DisabilityStatus @default(None) @map("disability_status")
+  insuranceStatus   String           @default("None") @map("insurance_status")
+  emergencyContact  String           @default("") @map("emergency_contact")
+  emergencyPhone    String           @default("") @map("emergency_phone")
+  consentGiven      Boolean          @default(false) @map("consent_given")
+  consentDate       DateTime?        @map("consent_date") @db.Date
+  campaignId        String?          @map("campaign_id") @db.Uuid
+  referralSource    String           @default("") @map("referral_source")
+  notes             String?
+  registeredById    String           @default("") @map("registered_by_id")
+  registeredByName  String           @default("") @map("registered_by_name")
+  screeningStatus   String           @default("Awaiting Screening") @map("screening_status")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  campaign      Campaign?      @relation(fields: [campaignId], references: [id])
-  location      Location?      @relation(fields: [locationId], references: [id])
-  screenings    Screening[]
-  surgeries     Surgery[]
-  followUps     FollowUp[]
-  transportJobs TransportJob[]
+  campaign   Campaign?   @relation(fields: [campaignId], references: [id])
+  screenings Screening[]
+  surgeries  Surgery[]
+  followUps  FollowUp[]
 
   @@index([campaignId], map: "idx_patients_campaign_id")
-  @@index([locationId], map: "idx_patients_location_id")
   @@index([patientCode], map: "idx_patients_patient_code")
   @@index([region], map: "idx_patients_region")
   @@index([screeningStatus], map: "idx_patients_screening_status")
@@ -340,7 +220,6 @@ model Screening {
   patientId           String                  @map("patient_id") @db.Uuid
   patientName         String                  @map("patient_name")
   campaignId          String                  @map("campaign_id") @db.Uuid
-  locationId          String?                 @map("location_id") @db.Uuid
   region              String                  @default("Banadir / Mogadishu")
   operationDistrict   String                  @default("Mogadishu") @map("operation_district")
   screenedBy          String                  @map("screened_by")
@@ -363,79 +242,44 @@ model Screening {
   notes               String                  @default("")
   createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  campaign  Campaign   @relation(fields: [campaignId], references: [id])
-  location  Location?  @relation(fields: [locationId], references: [id])
-  referrals Referral[]
+  patient  Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id])
 
   @@index([patientId], map: "idx_screenings_patient_id")
   @@index([campaignId], map: "idx_screenings_campaign_id")
-  @@index([locationId], map: "idx_screenings_location_id")
   @@index([region], map: "idx_screenings_region")
   @@index([screenedAt(sort: Desc)], map: "idx_screenings_screened_at")
   @@map("screenings")
 }
 
-model Referral {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  screeningId  String?        @map("screening_id") @db.Uuid
-  patientName  String         @map("patient_name")
-  patientPhone String         @map("patient_phone")
-  source       ReferralSource
-  referredBy   String         @map("referred_by")
-  campaignId   String         @map("campaign_id") @db.Uuid
-  locationId   String         @map("location_id") @db.Uuid
-  status       ReferralStatus @default(Pending)
-  referredAt   DateTime       @map("referred_at") @db.Date
-  contactedAt  DateTime?      @map("contacted_at") @db.Date
-  screenedAt   DateTime?      @map("screened_at") @db.Date
-  convertedAt  DateTime?      @map("converted_at") @db.Date
-  notes        String         @default("")
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  screening Screening? @relation(fields: [screeningId], references: [id])
-  campaign  Campaign   @relation(fields: [campaignId], references: [id])
-  location  Location   @relation(fields: [locationId], references: [id])
-
-  @@index([campaignId], map: "idx_referrals_campaign_id")
-  @@index([locationId], map: "idx_referrals_location_id")
-  @@index([status], map: "idx_referrals_status")
-  @@map("referrals")
-}
-
 model Surgery {
-  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  patientId     String        @map("patient_id") @db.Uuid
-  patientName   String        @map("patient_name")
-  campaignId    String        @map("campaign_id") @db.Uuid
-  locationId    String?       @map("location_id") @db.Uuid
-  region        String        @default("Banadir / Mogadishu")
-  operationDistrict String    @default("Mogadishu") @map("operation_district")
-  createdFromScreeningId String? @map("created_from_screening_id") @db.Uuid
-  surgeonId     String?       @map("surgeon_id") @db.Uuid
-  surgeonName   String?       @map("surgeon_name")
-  eye           SurgeryEye
-  lensType      LensType      @map("lens_type")
-  scheduledAt   DateTime      @map("scheduled_at") @db.Timestamptz(3)
-  performedAt   DateTime?     @map("performed_at") @db.Timestamptz(3)
-  status        SurgeryStatus @default(Scheduled)
-  preOpVa       String        @default("") @map("pre_op_va")
-  postOpVa      String?       @map("post_op_va")
-  complications String        @default("")
-  intraopNotes  String        @default("") @map("intraop_notes")
-  completedById String        @default("") @map("completed_by_id")
-  completedByName String      @default("") @map("completed_by_name")
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId              String        @map("patient_id") @db.Uuid
+  patientName            String        @map("patient_name")
+  campaignId             String        @map("campaign_id") @db.Uuid
+  region                 String        @default("Banadir / Mogadishu")
+  operationDistrict      String        @default("Mogadishu") @map("operation_district")
+  createdFromScreeningId String?       @map("created_from_screening_id") @db.Uuid
+  surgeonName            String?       @map("surgeon_name")
+  eye                    SurgeryEye
+  lensType               LensType      @map("lens_type")
+  scheduledAt            DateTime      @map("scheduled_at") @db.Timestamptz(3)
+  performedAt            DateTime?     @map("performed_at") @db.Timestamptz(3)
+  status                 SurgeryStatus @default(Scheduled)
+  preOpVa                String        @default("") @map("pre_op_va")
+  postOpVa               String?       @map("post_op_va")
+  complications          String        @default("")
+  intraopNotes           String        @default("") @map("intraop_notes")
+  completedById          String        @default("") @map("completed_by_id")
+  completedByName        String        @default("") @map("completed_by_name")
+  createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
   campaign  Campaign   @relation(fields: [campaignId], references: [id])
-  location  Location?  @relation(fields: [locationId], references: [id])
-  surgeon   User?      @relation(fields: [surgeonId], references: [id])
   followUps FollowUp[]
 
   @@index([patientId], map: "idx_surgeries_patient_id")
   @@index([campaignId], map: "idx_surgeries_campaign_id")
-  @@index([surgeonId], map: "idx_surgeries_surgeon_id")
   @@index([region], map: "idx_surgeries_region")
   @@index([status], map: "idx_surgeries_status")
   @@index([scheduledAt(sort: Desc)], map: "idx_surgeries_scheduled_at")
@@ -457,7 +301,6 @@ model FollowUp {
   vaLeftPost      String?           @map("va_left_post")
   complications   String            @default("")
   notes           String            @default("")
-  smsReminderSent Boolean           @default(false) @map("sms_reminder_sent")
   needsDoctorReview Boolean         @default(false) @map("needs_doctor_review")
   completedById   String            @default("") @map("completed_by_id")
   completedByName String            @default("") @map("completed_by_name")
@@ -476,86 +319,21 @@ model FollowUp {
   @@map("follow_ups")
 }
 
-model InventoryItem {
-  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sku          String            @unique
-  name         String
-  category     InventoryCategory
-  quantity     Int               @default(0)
-  reorderLevel Int               @default(0) @map("reorder_level")
-  unit         String
-  expiryDate   DateTime?         @map("expiry_date") @db.Date
-  supplier     String            @default("")
-  locationId   String            @map("location_id") @db.Uuid
-  notes        String            @default("")
-  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  location Location @relation(fields: [locationId], references: [id])
-
-  @@index([locationId], map: "idx_inventory_location_id")
-  @@index([category], map: "idx_inventory_category")
-  @@map("inventory_items")
-}
-
-model OutreachActivity {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  type         OutreachType
-  title        String
-  date         DateTime     @db.Date
-  locationId   String       @map("location_id") @db.Uuid
-  locationName String       @map("location_name")
-  campaignId   String       @map("campaign_id") @db.Uuid
-  reach        Int          @default(0)
-  conversions  Int          @default(0)
-  conductedBy  String       @map("conducted_by")
-  notes        String       @default("")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  location Location @relation(fields: [locationId], references: [id])
-  campaign Campaign @relation(fields: [campaignId], references: [id])
-
-  @@index([campaignId], map: "idx_outreach_campaign_id")
-  @@index([locationId], map: "idx_outreach_location_id")
-  @@map("outreach_activities")
-}
-
-model TransportJob {
-  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  patientId      String          @map("patient_id") @db.Uuid
-  patientName    String          @map("patient_name")
-  vehicle        String
-  driver         String
-  pickupLocation String          @map("pickup_location")
-  dropLocation   String          @map("drop_location")
-  scheduledAt    DateTime        @map("scheduled_at") @db.Timestamptz(3)
-  completedAt    DateTime?       @map("completed_at") @db.Timestamptz(3)
-  cost           Decimal         @default(0) @db.Decimal(10, 2)
-  status         TransportStatus @default(Scheduled)
-  notes          String          @default("")
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-
-  @@index([patientId], map: "idx_transport_patient_id")
-  @@index([status], map: "idx_transport_status")
-  @@map("transport_jobs")
-}
-
 model AuditLog {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actor     String
-  actorId   String   @default("") @map("actor_id")
-  actorName String   @default("") @map("actor_name")
-  actorRole String   @default("") @map("actor_role")
-  action    String
-  entity    String
-  entityId  String   @map("entity_id")
-  region    String?
-  campaignId String? @map("campaign_id") @db.Uuid
-  details   String   @default("")
-  before    Json?
-  after     Json?
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor      String
+  actorId    String   @default("") @map("actor_id")
+  actorName  String   @default("") @map("actor_name")
+  actorRole  String   @default("") @map("actor_role")
+  action     String
+  entity     String
+  entityId   String   @map("entity_id")
+  region     String?
+  campaignId String?  @map("campaign_id") @db.Uuid
+  details    String   @default("")
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([entity, entityId], map: "idx_audit_logs_entity")
   @@index([region], map: "idx_audit_logs_region")

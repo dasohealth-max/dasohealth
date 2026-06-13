@@ -21,11 +21,9 @@ const BLANK: Omit<Surgery, 'id' | 'createdAt'> = {
   patientId: '',
   patientName: '',
   campaignId: '',
-  locationId: '',
   region: '',
   operationDistrict: '',
   createdFromScreeningId: '',
-  surgeonId: '',
   surgeonName: '',
   eye: 'Right',
   lensType: 'Foldable Acrylic',
@@ -114,12 +112,14 @@ export default function SurgeriesPage() {
   }
 
   async function setStatus(surgery: Surgery, status: SurgeryStatus) {
+    if (status === 'Completed' && !confirm(`Mark surgery for "${surgery.patientName}" as completed? This will automatically create Day 1 and Week 1 follow-ups.`)) return;
     const performedAt = status === 'Completed' ? (surgery.performedAt ?? new Date().toISOString()) : surgery.performedAt;
     const result = await actionUpdateSurgery(surgery.id, { ...surgery, status, performedAt });
     if (result.ok) setSurgeries((rows) => rows.map((row) => row.id === surgery.id ? result.data : row));
   }
 
   async function remove(surgery: Surgery) {
+    if (!confirm(`Delete surgery record for "${surgery.patientName}"? This will also delete associated follow-ups. This cannot be undone.`)) return;
     const result = await actionDeleteSurgery(surgery.id);
     if (result.ok) setSurgeries((rows) => rows.filter((row) => row.id !== surgery.id));
   }

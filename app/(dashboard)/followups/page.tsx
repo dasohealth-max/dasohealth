@@ -29,7 +29,6 @@ const BLANK: Omit<FollowUp, 'id' | 'createdAt'> = {
   vaLeftPost: '',
   complications: '',
   notes: '',
-  smsReminderSent: false,
   needsDoctorReview: false,
   completedById: '',
   completedByName: '',
@@ -82,6 +81,7 @@ export default function FollowUpsPage() {
   }
 
   async function complete(followUp: FollowUp) {
+    if (!confirm(`Mark ${followUp.milestone} follow-up for "${followUp.patientName}" as completed?`)) return;
     const result = await actionUpdateFollowUp(followUp.id, {
       ...followUp,
       status: 'Completed',

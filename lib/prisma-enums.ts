@@ -1,5 +1,4 @@
 // Bidirectional maps between Prisma TypeScript enum keys and app display strings.
-// Prisma uses camelCase keys; the DB (and app types) use display strings with spaces/hyphens.
 
 // ─── CampaignType ─────────────────────────────────────────────────────────────
 const CT_TO_APP: Record<string, string> = {
@@ -9,15 +8,6 @@ const CT_TO_APP: Record<string, string> = {
 const CT_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(CT_TO_APP).map(([k, v]) => [v, k]));
 export const campaignTypeToApp = (k: string) => CT_TO_APP[k] ?? k;
 export const campaignTypeFromApp = (v: string) => CT_FROM_APP[v] ?? v;
-
-// ─── FacilityType ─────────────────────────────────────────────────────────────
-const FT_TO_APP: Record<string, string> = {
-  Hospital: 'Hospital', Clinic: 'Clinic', MobileUnit: 'Mobile Unit',
-  School: 'School', CommunityCentre: 'Community Centre',
-};
-const FT_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(FT_TO_APP).map(([k, v]) => [v, k]));
-export const facilityTypeToApp = (k: string) => FT_TO_APP[k] ?? k;
-export const facilityTypeFromApp = (v: string) => FT_FROM_APP[v] ?? v;
 
 // ─── VaGrade ──────────────────────────────────────────────────────────────────
 const VA_TO_APP: Record<string, string> = {
@@ -58,35 +48,8 @@ export const lensTypeFromApp = (v: string) => LT_FROM_APP[v] ?? v;
 
 // ─── FollowUpMilestone ────────────────────────────────────────────────────────
 const FM_TO_APP: Record<string, string> = {
-  Day1: 'Day 1', Week1: 'Week 1', Month1: 'Month 1', Month3: 'Month 3',
+  Day1: 'Day 1', Week1: 'Week 1',
 };
 const FM_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(FM_TO_APP).map(([k, v]) => [v, k]));
 export const followUpMilestoneToApp = (k: string) => FM_TO_APP[k] ?? k;
 export const followUpMilestoneFromApp = (v: string) => FM_FROM_APP[v] ?? v;
-
-// ─── ReferralSource ───────────────────────────────────────────────────────────
-const RS_TO_APP: Record<string, string> = {
-  CHW: 'CHW', Volunteer: 'Volunteer', School: 'School',
-  Facility: 'Facility', Self: 'Self', CommunityLeader: 'Community Leader',
-};
-const RS_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(RS_TO_APP).map(([k, v]) => [v, k]));
-export const referralSourceToApp = (k: string) => RS_TO_APP[k] ?? k;
-export const referralSourceFromApp = (v: string) => RS_FROM_APP[v] ?? v;
-
-// ─── OutreachType ─────────────────────────────────────────────────────────────
-const OT_TO_APP: Record<string, string> = {
-  AwarenessCampaign: 'Awareness Campaign', CommunityMeeting: 'Community Meeting',
-  RadioBroadcast: 'Radio Broadcast', SchoolVisit: 'School Visit',
-  HealthFair: 'Health Fair', CHWTraining: 'CHW Training',
-};
-const OT_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(OT_TO_APP).map(([k, v]) => [v, k]));
-export const outreachTypeToApp = (k: string) => OT_TO_APP[k] ?? k;
-export const outreachTypeFromApp = (v: string) => OT_FROM_APP[v] ?? v;
-
-// ─── TransportStatus ──────────────────────────────────────────────────────────
-const TS_TO_APP: Record<string, string> = {
-  Scheduled: 'Scheduled', InTransit: 'In-Transit', Completed: 'Completed', Cancelled: 'Cancelled',
-};
-const TS_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(TS_TO_APP).map(([k, v]) => [v, k]));
-export const transportStatusToApp = (k: string) => TS_TO_APP[k] ?? k;
-export const transportStatusFromApp = (v: string) => TS_FROM_APP[v] ?? v;

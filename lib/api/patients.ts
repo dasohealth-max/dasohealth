@@ -26,11 +26,8 @@ export function fromPrisma(row: PrismaPatient): Patient {
       ? (row.consentDate as Date).toISOString().split('T')[0]
       : '',
     campaignId: row.campaignId ?? undefined,
-    locationId: row.locationId ?? undefined,
     referralSource: row.referralSource,
     notes: row.notes ?? undefined,
-    lat: row.lat ?? undefined,
-    lng: row.lng ?? undefined,
     registeredById: row.registeredById,
     registeredByName: row.registeredByName,
     screeningStatus: row.screeningStatus as Patient['screeningStatus'],

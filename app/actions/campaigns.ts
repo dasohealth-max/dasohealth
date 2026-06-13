@@ -24,7 +24,6 @@ const CampaignSchema = z.object({
   targetScreenings: z.number().int().min(0),
   targetSurgeries: z.number().int().min(1),
   targetFollowUps: z.number().int().min(0),
-  locationIds: z.array(z.string()),
   description: z.string(),
 });
 

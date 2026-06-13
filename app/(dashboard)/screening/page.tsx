@@ -22,7 +22,6 @@ const BLANK: Omit<Screening, 'id' | 'createdAt'> = {
   patientId: '',
   patientName: '',
   campaignId: '',
-  locationId: '',
   region: '',
   operationDistrict: '',
   screenedBy: '',
@@ -135,6 +134,7 @@ export default function ScreeningPage() {
   }
 
   async function remove(screening: Screening) {
+    if (!confirm(`Delete screening record for "${screening.patientName}"? This cannot be undone.`)) return;
     const result = await actionDeleteScreening(screening.id);
     if (result.ok) setScreenings((rows) => rows.filter((row) => row.id !== screening.id));
   }

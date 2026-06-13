@@ -32,7 +32,6 @@ const BLANK: Omit<Campaign, 'id' | 'createdAt'> = {
   targetScreenings: 0,
   targetSurgeries: 800,
   targetFollowUps: 0,
-  locationIds: [],
   description: '',
 };
 
@@ -139,9 +138,8 @@ export default function CampaignsPage() {
   }
 
   function openEdit(campaign: Campaign) {
-    const editable = Object.fromEntries(
-      Object.entries(campaign).filter(([key]) => key !== 'id' && key !== 'createdAt')
-    ) as CampaignForm;
+    const { id: _id, createdAt: _ca, ...editable } = campaign;
+    void _id; void _ca;
     setForm(editable);
     setEditing(campaign);
     setSaveError('');
@@ -177,6 +175,7 @@ export default function CampaignsPage() {
   }
 
   async function remove(campaign: Campaign) {
+    if (!confirm(`Delete campaign "${campaign.name}"? This will remove all associated patient records, screenings, surgeries, and follow-ups. This cannot be undone.`)) return;
     const result = await actionDeleteCampaign(campaign.id);
     if (result.ok) setCampaigns((rows) => rows.filter((row) => row.id !== campaign.id));
   }
@@ -439,7 +438,6 @@ function createBulkDefaults(): BulkCampaignForm[] {
     targetScreenings: area.defaultSurgeryTarget * 2,
     targetSurgeries: area.defaultSurgeryTarget,
     targetFollowUps: area.defaultSurgeryTarget,
-    locationIds: [],
     description: '',
   }));
 }
