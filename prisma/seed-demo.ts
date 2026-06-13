@@ -1,447 +1,390 @@
 import { config } from 'dotenv';
+import { readFileSync } from 'fs';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../lib/generated/prisma/client';
+import { createClient } from '@supabase/supabase-js';
+
 config({ path: '.env.local' });
 
-import { PrismaClient } from '../lib/generated/prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+const DEMO = 'DEMO_REGIONAL_WORKFLOW_V1';
+const DEMO_PASSWORD = 'Demo123!';
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL!,
-  ssl: { rejectUnauthorized: false },
+const REGIONAL_CAMPAIGN_AREAS = [
+  { region: 'Banadir / Mogadishu', defaultDistrict: 'Mogadishu', defaultSurgeryTarget: 800 },
+  { region: 'Koofur Galbeed Somalia', defaultDistrict: 'Baydhabo', defaultSurgeryTarget: 400 },
+  { region: 'Hiiraan State', defaultDistrict: 'Beledweyne', defaultSurgeryTarget: 400 },
+  { region: 'Hirshabelle State', defaultDistrict: 'Jowhar', defaultSurgeryTarget: 400 },
+  { region: 'Jubaland', defaultDistrict: 'Kismaayo', defaultSurgeryTarget: 400 },
+  { region: 'Galmudug', defaultDistrict: 'Dhuusamareeb', defaultSurgeryTarget: 400 },
+  { region: 'Puntland', defaultDistrict: 'Puntland / selected city', defaultSurgeryTarget: 400 },
+  { region: 'Khatumo State', defaultDistrict: 'Laascanood', defaultSurgeryTarget: 400 },
+  { region: 'Somaliland', defaultDistrict: 'Boorama', defaultSurgeryTarget: 400 },
+] as const;
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({
+    connectionString: process.env.DATABASE_URL!,
+    ssl: { rejectUnauthorized: false },
+  }),
 });
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const prisma = new PrismaClient({ adapter } as any);
 
-const D = '[DEMO]'; // tag stored in notes/description fields
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } },
+);
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function pick<T>(arr: readonly T[], i: number): T { return arr[i % arr.length]; }
-function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
-function ago(days: number): Date { return addDays(new Date(), -days); }
-
-// ---------------------------------------------------------------------------
-// Reference data
-// ---------------------------------------------------------------------------
-const MALE_NAMES = [
-  'Abdi Mohamed','Hassan Ali','Mohamed Ahmed','Omar Ibrahim','Yusuf Hassan',
-  'Abdullahi Said','Mukhtar Osman','Dalmar Jama','Bashir Farah','Idris Warsame',
-  'Salad Nur','Ahmed Duale','Ismail Shire','Zakariye Muse','Guled Salah',
-  'Deeq Ahmed','Faarax Ibrahim','Saciid Abubakar','Cabdi Xasan','Maxamed Cumar',
-  'Xuseen Farah','Nuur Cali','Khadar Mohamed','Liibaan Hassan','Mahad Osman',
-  'Sharif Ibrahim','Tahlil Warsame','Aden Farah','Barre Hassan','Cawil Ibrahim',
-  'Dayib Jama','Egal Muse','Faisal Salad','Gaas Warsame','Hiil Ahmed',
-  'Jawaab Hassan','Kaahin Farah','Laascaanood Ali','Nimco Ibrahim','Ogle Jama',
-];
-const FEMALE_NAMES = [
-  'Faadumo Ali','Hodan Mohamed','Sagal Hassan','Nasteho Ahmed','Maryan Osman',
-  'Ikran Jama','Fartun Said','Halimo Nur','Caasha Warsame','Anab Hassan',
-  'Amina Mohamed','Ifrah Omar','Lul Ahmed','Ruqiyo Ibrahim','Khadra Salad',
-  'Safia Osman','Deeqa Maxamed','Nimo Bashir','Asad Ibrahim','Bile Farah',
-  'Caado Cali','Daaliya Hassan','Ebyan Farah','Filsan Abdi','Garaad Jama',
-  'Hibo Warsame','Istar Mohamed','Jawahir Shire','Kiin Muse','Layla Salah',
-  'Mursal Ahmed','Nuurto Ibrahim','Qamar Ali','Roda Farah','Timiro Abdi',
-  'Ubah Mohamed','Waris Omar','Xaawo Jama','Yurub Hassan','Zuhur Farah',
-];
-const OCCUPATIONS = [
-  'Farmer','Teacher','Trader','Housewife','Fisherman','Herder',
-  'Civil Servant','Carpenter','Tailor','Driver','Nurse','Business Owner',
-];
-const OFFICERS = [
-  'Dr. Amina Hassan','Dr. Yusuf Mohamed','Dr. Faadumo Nur','Dr. Ahmed Ibrahim','Dr. Hodan Salah',
-];
-const SURGEONS = [
-  'Dr. Mohamed Hassan','Dr. Abdi Nur','Dr. Faadumo Warsame','Dr. Omar Jama',
-];
-
-// Prisma-side enum names (before @map)
-const VA_POOR  = ['V6_36','V6_60','LT6_60','CF','HM'] as const;
-const VA_GOOD  = ['V6_6','V6_9','V6_12','V6_18'] as const;
-const VA_MID   = ['V6_18','V6_24','V6_36'] as const;
-
-// ---------------------------------------------------------------------------
-// CLEAR
-// ---------------------------------------------------------------------------
-async function clearDemo() {
-  console.log('🗑  Removing demo data …');
-  await prisma.followUp.deleteMany({ where: { notes: { contains: D } } });
-  await prisma.transportJob.deleteMany({ where: { notes: { contains: D } } });
-  await prisma.outreachActivity.deleteMany({ where: { notes: { contains: D } } });
-  await prisma.inventoryItem.deleteMany({ where: { notes: { contains: D } } });
-  await prisma.referral.deleteMany({ where: { notes: { contains: D } } });
-  await prisma.surgery.deleteMany({ where: { intraopNotes: { contains: D } } });
-  await prisma.screening.deleteMany({ where: { notes: { contains: D } } });
-  await prisma.patient.deleteMany({ where: { patientCode: { startsWith: 'DEMO-' } } });
-  await prisma.campaign.deleteMany({ where: { description: { contains: D } } });
-  await prisma.location.deleteMany({ where: { code: { startsWith: 'DEMO-' } } });
-  console.log('✅ Done — all demo data removed.');
+function dateOffset(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date;
 }
 
-// ---------------------------------------------------------------------------
-// SEED
-// ---------------------------------------------------------------------------
-async function seedDemo() {
-  const existing = await prisma.location.count({ where: { code: { startsWith: 'DEMO-' } } });
-  if (existing > 0) {
-    console.log('⚠️  Demo data already exists. Run with --clear first.\n   npx tsx prisma/seed-demo.ts --clear');
+function isoDate(days: number) {
+  return dateOffset(days).toISOString().split('T')[0];
+}
+
+function patientCode(index: number) {
+  return `DEMO-${String(index).padStart(4, '0')}`;
+}
+
+async function clearDemo() {
+  const patients = await prisma.patient.findMany({
+    where: { patientCode: { startsWith: 'DEMO-' } },
+    select: { id: true },
+  });
+  const patientIds = patients.map((patient) => patient.id);
+  const campaigns = await prisma.campaign.findMany({
+    where: { description: { contains: DEMO } },
+    select: { id: true },
+  });
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+
+  await prisma.auditLog.deleteMany({ where: { details: { contains: DEMO } } });
+  await prisma.followUp.deleteMany({ where: { OR: [{ patientId: { in: patientIds } }, { campaignId: { in: campaignIds } }] } });
+  await prisma.surgery.deleteMany({ where: { OR: [{ patientId: { in: patientIds } }, { campaignId: { in: campaignIds } }] } });
+  await prisma.screening.deleteMany({ where: { OR: [{ patientId: { in: patientIds } }, { campaignId: { in: campaignIds } }] } });
+  await prisma.patient.deleteMany({ where: { id: { in: patientIds } } });
+  await prisma.campaign.deleteMany({ where: { id: { in: campaignIds } } });
+
+  const { data } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+  const demoUsers = data?.users.filter((user) =>
+    user.email?.endsWith('@demo.eyecare.local') ||
+    user.user_metadata?.demoMarker === DEMO
+  ) ?? [];
+
+  for (const user of demoUsers) {
+    await supabaseAdmin.auth.admin.deleteUser(user.id);
+  }
+}
+
+async function ensureSchema() {
+  const sql = readFileSync('prisma/migrations/20260613120000_focus_regional_campaign_workflow/migration.sql', 'utf8');
+  const statements = sql.split(';').map((statement) => statement.trim()).filter(Boolean);
+  for (const statement of statements) {
+    await prisma.$executeRawUnsafe(statement);
+  }
+}
+
+async function main() {
+  await ensureSchema();
+
+  if (process.argv.includes('--clear')) {
+    await clearDemo();
+    console.log('Cleared focused workflow demo data.');
     return;
   }
 
-  console.log('🌱 Seeding demo data …\n');
+  await clearDemo();
 
-  // ── 1. LOCATIONS (10) ──────────────────────────────────────────────────
-  const LOC_DEF = [
-    { name:'Mogadishu Eye Centre',        code:'DEMO-MOG-01', facilityType:'Hospital',       district:'Hodan',           region:'Banaadir',            lat: 2.0469, lng:45.3182, phone:'+252612000001' },
-    { name:'Kismayo General Hospital',    code:'DEMO-KIS-01', facilityType:'Hospital',       district:'Kismayo',         region:'Jubba Hoose',          lat:-0.3582, lng:42.5454, phone:'+252614000002' },
-    { name:'Garowe Regional Eye Clinic',  code:'DEMO-GAR-01', facilityType:'Clinic',         district:'Garowe',          region:'Nugaal',               lat: 8.4054, lng:48.4845, phone:'+252615000003' },
-    { name:'Bosaso Specialist Hospital',  code:'DEMO-BOS-01', facilityType:'Hospital',       district:'Bosaso',          region:'Bari',                 lat:11.2841, lng:49.1780, phone:'+252618000004' },
-    { name:'Baidoa District Hospital',    code:'DEMO-BAI-01', facilityType:'Hospital',       district:'Baidoa',          region:'Bay',                  lat: 3.1188, lng:43.6481, phone:'+252617000005' },
-    { name:'Hargeisa Group Hospital',     code:'DEMO-HAR-01', facilityType:'Hospital',       district:'Hargeisa',        region:'Woqooyi Galbeed',      lat: 9.5583, lng:44.0751, phone:'+252634000006' },
-    { name:'Beledweyne Community Clinic', code:'DEMO-BEL-01', facilityType:'Clinic',         district:'Beledweyne',      region:'Hiiraan',              lat: 4.7351, lng:45.2039, phone:'+252616000007' },
-    { name:'Jowhar Mobile Eye Unit',      code:'DEMO-JOW-01', facilityType:'MobileUnit',     district:'Jowhar',          region:'Shabeellaha Dhexe',    lat: 2.7826, lng:45.5035, phone:'+252619000008' },
-    { name:'Afgooye Health Centre',       code:'DEMO-AFG-01', facilityType:'CommunityCentre',district:'Afgooye',         region:'Shabeellaha Hoose',    lat: 2.1408, lng:45.1196, phone:'+252620000009' },
-    { name:'Berbera Eye Camp',            code:'DEMO-BER-01', facilityType:'MobileUnit',     district:'Berbera',         region:'Sahil',                lat:10.4395, lng:45.0144, phone:'+252625000010' },
-  ];
-  const locations = await Promise.all(
-    LOC_DEF.map(d => prisma.location.create({ data: { ...d, facilityType: d.facilityType as any } }))
-  );
-  console.log(`  ✓ ${locations.length} locations`);
-
-  // ── 2. CAMPAIGNS (6) ──────────────────────────────────────────────────
-  type CampDef = { name:string; type:string; status:string; start:Date; end:Date; budget:number; donors:string; tS:number; tSurg:number; tF:number; desc:string; locIdxs:number[] };
-  const CAMP_DEF: CampDef[] = [
-    { name:'Jubba Vision 2026',              type:'Cataract',        status:'Active',    start:ago(120), end:addDays(new Date(),60),  budget:85000,  donors:'CBMO, Seeing is Believing',  tS:500, tSurg:200, tF:800,  desc:`Primary cataract campaign for Lower Jubba region. ${D}`,                               locIdxs:[1] },
-    { name:'Mogadishu Sight Restoration',    type:'Cataract',        status:'Active',    start:ago(90),  end:addDays(new Date(),90),  budget:120000, donors:'Fred Hollows Foundation',    tS:800, tSurg:300, tF:1200, desc:`High-volume urban cataract programme for Banaadir region. ${D}`,                       locIdxs:[0] },
-    { name:'Puntland Eye Health Drive',      type:'General',         status:'Completed', start:ago(200), end:ago(30),                budget:65000,  donors:'USAID, WHO',                 tS:400, tSurg:150, tF:600,  desc:`Comprehensive eye health campaign covering Nugaal and Bari regions. ${D}`,            locIdxs:[2,3] },
-    { name:'Somaliland Cataract Mission Q1', type:'Cataract',        status:'Completed', start:ago(180), end:ago(60),                budget:72000,  donors:'Orbis International',        tS:450, tSurg:180, tF:720,  desc:`Cataract surgical mission for Woqooyi Galbeed and Sahil regions. ${D}`,               locIdxs:[5,9] },
-    { name:'Bay Region School Eye Health',   type:'SchoolEyeHealth', status:'Active',    start:ago(45),  end:addDays(new Date(),45), budget:28000,  donors:'UNICEF',                     tS:1200,tSurg:20,  tF:60,   desc:`School-age children eye screening and glasses distribution in Baidoa. ${D}`,           locIdxs:[4] },
-    { name:'Central Somalia Vision Care',    type:'General',         status:'Active',    start:ago(30),  end:addDays(new Date(),120),budget:55000,  donors:'Islamic Relief',             tS:600, tSurg:200, tF:800,  desc:`Multi-district campaign covering Hiiraan and Middle Shabelle. ${D}`,                   locIdxs:[6,7,8] },
-  ];
-  const campaigns = await Promise.all(
-    CAMP_DEF.map(async ({ locIdxs, tS, tSurg, tF, start, end, ...d }) => {
-      const c = await prisma.campaign.create({ data: {
-        name: d.name, type: d.type as any, status: d.status as any,
-        startDate: start, endDate: end, budget: d.budget, donors: d.donors,
-        targetScreenings: tS, targetSurgeries: tSurg, targetFollowUps: tF, description: d.desc,
-      }});
-      await Promise.all(locIdxs.map(li =>
-        prisma.campaignLocation.create({ data: { campaignId: c.id, locationId: locations[li].id } })
-      ));
-      return c;
-    })
-  );
-  console.log(`  ✓ ${campaigns.length} campaigns`);
-
-  // campaign index → [campIdx, locIdx] pairs used to assign patients
-  const CL: [number,number][] = [
-    [0,1],[0,1],[1,0],[1,0],[2,2],[2,3],[3,5],[3,9],[4,4],[5,6],[5,7],[5,8],
+  const managerNames = [
+    'Abdullahi Hassan',
+    'Hodan Mohamed',
+    'Yusuf Ali',
+    'Amina Warsame',
+    'Sahra Ahmed',
+    'Omar Farah',
+    'Maryan Osman',
+    'Khalid Jama',
+    'Ifrah Nur',
   ];
 
-  // ── 3. PATIENTS (84) ──────────────────────────────────────────────────
-  const patients = [];
-  for (let i = 0; i < 84; i++) {
-    const male = i % 2 === 0;
-    const name = male ? MALE_NAMES[Math.floor(i/2) % MALE_NAMES.length] : FEMALE_NAMES[Math.floor(i/2) % FEMALE_NAMES.length];
-    const [cIdx, lIdx] = CL[i % CL.length];
-    const loc = LOC_DEF[lIdx];
-    const dob = ago((45 + i % 30) * 365 + i * 13);
+  const superAdmin = await createDemoAuthUser({
+    email: 'super.admin@demo.eyecare.local',
+    name: 'Demo Super Admin',
+    role: 'Super Administrator',
+    assignedRegion: undefined,
+    color: '#0d9488',
+  });
 
-    const p = await prisma.patient.create({ data: {
-      patientCode:      `DEMO-${String(i+1).padStart(4,'0')}`,
-      fullName:         name,
-      dateOfBirth:      dob,
-      sex:              male ? 'Male' : 'Female',
-      phone:            `+25261${String(3000000 + i * 17).padStart(7,'0')}`,
-      district:         loc.district,
-      region:           loc.region,
-      occupation:       pick(OCCUPATIONS, i),
-      disabilityStatus: i % 9 === 0 ? 'Visual' : 'None',
-      consentGiven:     true,
-      consentDate:      ago(115 - i),
-      campaignId:       campaigns[cIdx].id,
-      locationId:       locations[lIdx].id,
-      referralSource:   pick(['CHW','Self','Community Leader','Facility','Volunteer'], i),
-      notes:            D,
-      lat:              loc.lat + Math.sin(i) * 0.04,
-      lng:              loc.lng + Math.cos(i) * 0.04,
-    }});
-    patients.push({ p, cIdx, lIdx });
+  const projectManagers: { id: string; name: string; region: string }[] = [];
+  for (const [index, area] of REGIONAL_CAMPAIGN_AREAS.entries()) {
+    const manager = await createDemoAuthUser({
+      email: `pm.${slug(area.region)}@demo.eyecare.local`,
+      name: managerNames[index],
+      role: 'Project Manager',
+      assignedRegion: area.region,
+      color: '#f59e0b',
+    });
+    projectManagers.push({
+      id: manager.id,
+      name: manager.name,
+      region: area.region,
+    });
+
+    await createDemoAuthUser({
+      email: `clerk.${slug(area.region)}@demo.eyecare.local`,
+      name: `Demo Clerk ${area.region}`,
+      role: 'Data Clerk',
+      assignedRegion: area.region,
+      color: '#64748b',
+    });
+
+    await createDemoAuthUser({
+      email: `screener.${slug(area.region)}@demo.eyecare.local`,
+      name: `Demo Screener ${area.region}`,
+      role: 'Screening Officer',
+      assignedRegion: area.region,
+      color: '#06b6d4',
+    });
   }
-  console.log(`  ✓ ${patients.length} patients`);
 
-  // ── 4. SCREENINGS (78) ────────────────────────────────────────────────
-  type ScreenRow = { screening: Awaited<ReturnType<typeof prisma.screening.create>>; needsSurgery: boolean };
-  const screenings: ScreenRow[] = [];
+  const campaigns = await Promise.all(REGIONAL_CAMPAIGN_AREAS.map((area, index) => {
+    const manager = projectManagers[index];
+    const isLazyRegion = area.region === 'Khatumo State';
+    return prisma.campaign.create({
+      data: {
+        name: `${area.region} Cataract Surgery Campaign`,
+        type: 'Cataract',
+        status: isLazyRegion ? 'Planned' : 'Active',
+        region: area.region,
+        operationDistrict: area.region === 'Galmudug' ? 'Guriceel' : area.defaultDistrict,
+        projectManagerId: manager.id,
+        projectManagerName: manager.name,
+        startDate: new Date(isoDate(-20 - index)),
+        endDate: new Date(isoDate(40 + index)),
+        budget: area.defaultSurgeryTarget * 35,
+        donors: 'Demo donor pool',
+        targetScreenings: area.defaultSurgeryTarget * 2,
+        targetSurgeries: area.defaultSurgeryTarget,
+        targetFollowUps: area.defaultSurgeryTarget * 2,
+        description: `${DEMO} seeded campaign for visual testing.`,
+      },
+    });
+  }));
 
-  for (let i = 0; i < 78; i++) {
-    const { p, cIdx, lIdx } = patients[i];
-    const hasCataract      = i % 3 === 0;
-    const hasGlaucoma      = i % 7 === 0;
-    const poorVision       = hasCataract || i % 4 === 0;
-    const rec              = hasCataract ? 'ReferForSurgery'
-                           : i % 5 === 0 ? 'Glasses'
-                           : i % 6 === 0 ? 'FurtherInvestigation'
-                           : i % 8 === 0 ? 'FollowUp'
-                           : 'Discharge';
-    const screenedAt = ago(85 - i % 70);
+  let patientIndex = 1;
+  for (const [regionIndex, campaign] of campaigns.entries()) {
+    const manager = projectManagers[regionIndex];
+    const volumeByRegion: Record<string, number> = {
+      'Banadir / Mogadishu': 18,
+      'Koofur Galbeed Somalia': 10,
+      'Hiiraan State': 7,
+      'Hirshabelle State': 5,
+      Jubaland: 9,
+      Galmudug: 8,
+      Puntland: 4,
+      'Khatumo State': 0,
+      Somaliland: 2,
+    };
+    const volume = volumeByRegion[campaign.region] ?? 4;
 
-    const s = await prisma.screening.create({ data: {
-      patientId:          p.id,
-      patientName:        p.fullName,
-      campaignId:         campaigns[cIdx].id,
-      locationId:         locations[lIdx].id,
-      screenedBy:         pick(OFFICERS, i),
-      screenedAt,
-      vaRightUnaided:     poorVision ? pick(VA_POOR, i)  : pick(VA_GOOD, i),
-      vaLeftUnaided:      poorVision ? pick(VA_MID, i)   : pick(VA_GOOD, i),
-      vaRightCorrected:   hasCataract ? null : pick(VA_GOOD, i),
-      vaLeftCorrected:    hasCataract ? null : pick(VA_GOOD, i),
-      iopRight:           hasGlaucoma ? 22 + (i % 8) : 14 + (i % 5),
-      iopLeft:            hasGlaucoma ? 21 + (i % 8) : 13 + (i % 5),
-      cataractSuspected:  hasCataract,
-      glaucomaSuspected:  hasGlaucoma,
-      diabeticRetinopathy:i % 15 === 0,
-      medicalHistory:     i % 3 === 0 ? 'Hypertension' : i % 7 === 0 ? 'Diabetes mellitus type 2' : '',
-      currentMedications: i % 5 === 0 ? 'Metformin 500mg BD' : '',
-      otherFindings:      hasCataract ? 'Mature cataract, absent red reflex' : hasGlaucoma ? 'Increased cup-to-disc ratio 0.7' : '',
-      recommendation:     rec as any,
-      notes:              D,
-    }});
-    screenings.push({ screening: s, needsSurgery: hasCataract });
-  }
-  console.log(`  ✓ ${screenings.length} screenings`);
+    for (let i = 0; i < volume; i += 1) {
+      const fullName = `${['Ahmed Ali', 'Fatima Hassan', 'Mohamed Osman', 'Asha Yusuf', 'Hassan Warsame', 'Sahra Noor'][i % 6]} ${campaign.region.split(' ')[0]} ${i + 1}`;
+      const patient = await prisma.patient.create({
+        data: {
+          patientCode: patientCode(patientIndex),
+          fullName,
+          dateOfBirth: new Date(`${1950 + (i % 35)}-02-15`),
+          sex: i % 2 === 0 ? 'Male' : 'Female',
+          phone: `+25261${String(700000 + patientIndex).padStart(6, '0')}`,
+          email: null,
+          district: campaign.operationDistrict,
+          region: campaign.region,
+          operationDistrict: campaign.operationDistrict,
+          occupation: ['Farmer', 'Teacher', 'Trader', 'Retired'][i % 4],
+          education: ['None', 'Primary', 'Secondary'][i % 3],
+          disabilityStatus: i % 7 === 0 ? 'Visual' : 'None',
+          insuranceStatus: 'None',
+          emergencyContact: 'Family contact',
+          emergencyPhone: `+25261${String(800000 + patientIndex).padStart(6, '0')}`,
+          consentGiven: true,
+          consentDate: dateOffset(-10),
+          campaignId: campaign.id,
+          referralSource: 'Campaign walk-in',
+          notes: `${DEMO} seeded patient`,
+          registeredById: `demo-clerk-${regionIndex + 1}`,
+          registeredByName: `Demo Data Clerk ${regionIndex + 1}`,
+          screeningStatus: i % 5 === 4 ? 'Awaiting Screening' : 'Screened',
+        },
+      });
 
-  // ── 5. SURGERIES (36) ────────────────────────────────────────────────
-  const LENS   = ['PMMA','FoldableAcrylic','Hydrophilic','Hydrophobic'] as const;
-  const EYES   = ['Right','Left','Both'] as const;
-  const SURG_STATUS = ['Completed','Completed','Completed','Completed','Completed','InTheatre','Scheduled'] as const;
+      if (i % 5 !== 4) {
+        const needsSurgery = i % 3 !== 2;
+        const screening = await prisma.screening.create({
+          data: {
+            patientId: patient.id,
+            patientName: patient.fullName,
+            campaignId: campaign.id,
+            region: campaign.region,
+            operationDistrict: campaign.operationDistrict,
+            screenedBy: `Demo Screener ${regionIndex + 1}`,
+            screenedById: `demo-screener-${regionIndex + 1}`,
+            screenedByName: `Demo Screener ${regionIndex + 1}`,
+            screenedAt: dateOffset(-8 + i),
+            vaRightUnaided: needsSurgery ? 'V6_60' : 'V6_18',
+            vaLeftUnaided: needsSurgery ? 'LT6_60' : 'V6_24',
+            cataractSuspected: needsSurgery,
+            glaucomaSuspected: i % 6 === 0,
+            diabeticRetinopathy: i % 8 === 0,
+            otherFindings: needsSurgery ? 'Lens opacity visible' : 'Mild refractive error',
+            medicalHistory: 'No major history reported',
+            currentMedications: '',
+            recommendation: needsSurgery ? 'ReferForSurgery' : 'Glasses',
+            notes: `${DEMO} seeded screening`,
+          },
+        });
 
-  const surgeries: Awaited<ReturnType<typeof prisma.surgery.create>>[] = [];
-  let si = 0;
-  for (let i = 0; i < screenings.length && si < 36; i++) {
-    if (!screenings[i].needsSurgery) continue;
-    const { screening: sc } = screenings[i];
-    const { p, cIdx, lIdx } = patients[i];
-    const status      = pick(SURG_STATUS, si);
-    const scheduledAt = addDays(new Date(sc.screenedAt), 14 + (si % 12));
-    const done        = status === 'Completed';
+        if (needsSurgery) {
+          const status = i % 4 === 0 ? 'Completed' : i % 7 === 0 ? 'Postponed' : 'Scheduled';
+          const performedAt = status === 'Completed' ? dateOffset(-2 - (i % 4)) : null;
+          const surgery = await prisma.surgery.create({
+            data: {
+              patientId: patient.id,
+              patientName: patient.fullName,
+              campaignId: campaign.id,
+              region: campaign.region,
+              operationDistrict: campaign.operationDistrict,
+              createdFromScreeningId: screening.id,
+              surgeonName: `Demo Doctor ${regionIndex + 1}`,
+              eye: i % 2 === 0 ? 'Right' : 'Left',
+              lensType: 'FoldableAcrylic',
+              scheduledAt: dateOffset(i % 4 === 0 ? -3 : 5 + i),
+              performedAt,
+              status,
+              preOpVa: '6/60',
+              postOpVa: status === 'Completed' ? '6/18' : null,
+              complications: '',
+              intraopNotes: `${DEMO} seeded surgery`,
+              completedById: status === 'Completed' ? `demo-screener-${regionIndex + 1}` : '',
+              completedByName: status === 'Completed' ? `Demo Screener ${regionIndex + 1}` : '',
+            },
+          });
 
-    const surg = await prisma.surgery.create({ data: {
-      patientId:    p.id,
-      patientName:  p.fullName,
-      campaignId:   campaigns[cIdx].id,
-      locationId:   locations[lIdx].id,
-      surgeonName:  pick(SURGEONS, si),
-      eye:          pick(EYES, si),
-      lensType:     pick(LENS, si),
-      scheduledAt,
-      performedAt:  done ? scheduledAt : null,
-      status:       status as any,
-      preOpVa:      'LT6_60',
-      postOpVa:     done ? pick(['6/6','6/9','6/12','6/18'], si) : null,
-      complications:si % 9 === 0 ? 'Posterior capsule rupture — managed intraoperatively' : '',
-      intraopNotes: D,
-    }});
-    surgeries.push(surg);
-    si++;
-  }
-  console.log(`  ✓ ${surgeries.length} surgeries`);
+          if (status === 'Completed' && performedAt) {
+            for (const [milestone, days] of [['Day1', 1], ['Week1', 7]] as const) {
+              await prisma.followUp.create({
+                data: {
+                  patientId: patient.id,
+                  patientName: patient.fullName,
+                  surgeryId: surgery.id,
+                  campaignId: campaign.id,
+                  region: campaign.region,
+                  milestone,
+                  dueDate: new Date(performedAt.getTime() + days * 86400_000),
+                  completedAt: days === 1 ? dateOffset(-1) : null,
+                  status: days === 1 ? 'Completed' : i % 8 === 0 ? 'Overdue' : 'Pending',
+                  vaRightPost: days === 1 ? '6/24' : null,
+                  vaLeftPost: days === 1 ? '6/24' : null,
+                  complications: i % 8 === 0 ? 'Redness and discomfort reported' : '',
+                  notes: `${DEMO} seeded follow-up`,
+                  smsReminderSent: false,
+                  needsDoctorReview: i % 8 === 0,
+                  completedById: days === 1 ? `demo-screener-${regionIndex + 1}` : '',
+                  completedByName: days === 1 ? `Demo Screener ${regionIndex + 1}` : '',
+                },
+              });
+            }
+          }
+        }
+      }
 
-  // ── 6. FOLLOW-UPS (for completed surgeries) ──────────────────────────
-  const MILESTONES = [
-    { m:'Day1',   off:1  },
-    { m:'Week1',  off:7  },
-    { m:'Month1', off:30 },
-    { m:'Month3', off:90 },
-  ] as const;
-  let fuCount = 0;
-  for (const surg of surgeries) {
-    if (surg.status !== 'Completed') continue;
-    const { p, cIdx } = patients.find(x => x.p.id === surg.patientId)!;
-    for (const { m, off } of MILESTONES) {
-      const dueDate   = addDays(new Date(surg.performedAt!), off);
-      const isPast    = dueDate < new Date();
-      const completed = isPast && fuCount % 6 !== 0; // ~83% completion
-      await prisma.followUp.create({ data: {
-        patientId:   p.id,
-        patientName: p.fullName,
-        surgeryId:   surg.id,
-        campaignId:  campaigns[cIdx].id,
-        milestone:   m as any,
-        dueDate,
-        status:      completed ? 'Completed' : isPast ? 'Overdue' : 'Pending',
-        completedAt: completed ? addDays(dueDate, fuCount % 2) : null,
-        vaRightPost: completed ? pick(['6/6','6/9','6/12','6/18'], fuCount) : null,
-        vaLeftPost:  completed ? pick(['6/6','6/9','6/12'], fuCount) : null,
-        smsReminderSent: isPast,
-        notes: D,
-      }});
-      fuCount++;
+      patientIndex += 1;
     }
+
+    await prisma.auditLog.create({
+      data: {
+        actor: `${superAdmin.name} (Super Administrator)`,
+        actorId: superAdmin.id,
+        actorName: superAdmin.name,
+        actorRole: 'Super Administrator',
+        action: 'demo-seed',
+        entity: 'Campaign',
+        entityId: campaign.id,
+        region: campaign.region,
+        campaignId: campaign.id,
+        details: `${DEMO} seeded workflow data for ${campaign.region}`,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actor: `${manager.name} (Project Manager)`,
+        actorId: manager.id,
+        actorName: manager.name,
+        actorRole: 'Project Manager',
+        action: 'demo-seed',
+        entity: 'Campaign',
+        entityId: campaign.id,
+        region: campaign.region,
+        campaignId: campaign.id,
+        details: `${DEMO} seeded workflow data for ${campaign.region}`,
+      },
+    });
   }
-  console.log(`  ✓ ${fuCount} follow-ups`);
 
-  // ── 7. REFERRALS (30) ────────────────────────────────────────────────
-  const REF_SOURCES  = ['CHW','Volunteer','School','Facility','Self','CommunityLeader'] as const;
-  const REF_STATUSES = ['Pending','Contacted','Screened','Converted','Lost'] as const;
-  for (let i = 0; i < 30; i++) {
-    const { p, cIdx, lIdx } = patients[i + 12 < patients.length ? i + 12 : i];
-    const status    = pick(REF_STATUSES, i);
-    const refDate   = ago(55 - i % 45);
-    const contacted = ['Contacted','Screened','Converted'].includes(status);
-    const screened  = ['Screened','Converted'].includes(status);
-    await prisma.referral.create({ data: {
-      patientName:  p.fullName,
-      patientPhone: p.phone,
-      source:       pick(REF_SOURCES, i),
-      referredBy:   pick(OFFICERS, i),
-      campaignId:   campaigns[cIdx].id,
-      locationId:   locations[lIdx].id,
-      status:       status as any,
-      referredAt:   refDate,
-      contactedAt:  contacted ? addDays(refDate, 2 + i % 3)  : null,
-      screenedAt:   screened  ? addDays(refDate, 7 + i % 5)  : null,
-      convertedAt:  status === 'Converted' ? addDays(refDate, 14 + i % 7) : null,
-      notes:        D,
-    }});
-  }
-  console.log('  ✓ 30 referrals');
-
-  // ── 8. OUTREACH (20) ─────────────────────────────────────────────────
-  const OUTREACH_TYPES  = ['AwarenessCampaign','CommunityMeeting','RadioBroadcast','SchoolVisit','HealthFair','CHWTraining'] as const;
-  const OUTREACH_TITLES = [
-    'Cataract Awareness Drive – Hodan District',
-    'CHW Training Session – Kismayo',
-    'Radio Eye Health Programme – Radio Mogadishu',
-    'School Vision Screening – Baidoa Primary School',
-    'Eye Health Fair – Garowe Central Market',
-    'Community Meeting on Blindness Prevention – Bosaso',
-    'School Visit – Sheikh Ahmed Secondary',
-    'CHW Refresher Training – Beledweyne',
-    'Radio Broadcast – Puntland FM',
-    'Eye Health Fair – Hargeisa Stadium Grounds',
-    'Awareness Campaign – Afgooye Village',
-    'Community Meeting – Jowhar District Hall',
-    'School Vision Day – Bosaso Girls School',
-    'CHW Training – Berbera Coastal Communities',
-    'Radio Programme – HornAfrik Radio',
-    'Eye Health Fair – Baidoa Hospital Grounds',
-    'Community Screening Session – Hodan',
-    'School Visit – Garowe Model Primary School',
-    'Awareness March – Kismayo Town Centre',
-    'Blindness Prevention Workshop – Hargeisa',
-  ];
-  for (let i = 0; i < 20; i++) {
-    const [cIdx, lIdx] = CL[i % CL.length];
-    await prisma.outreachActivity.create({ data: {
-      type:         pick(OUTREACH_TYPES, i),
-      title:        OUTREACH_TITLES[i],
-      date:         ago(95 - i * 4),
-      locationId:   locations[lIdx].id,
-      locationName: locations[lIdx].name,
-      campaignId:   campaigns[cIdx].id,
-      reach:        60  + i * 22 + (i % 7) * 12,
-      conversions:  6   + i * 3  + (i % 5),
-      conductedBy:  pick(OFFICERS, i),
-      notes:        D,
-    }});
-  }
-  console.log('  ✓ 20 outreach activities');
-
-  // ── 9. INVENTORY (25) ────────────────────────────────────────────────
-  type InvRow = { sku:string; name:string; cat:string; qty:number; reorder:number; unit:string; supplier:string; lIdx:number; expDays:number|null };
-  const INV: InvRow[] = [
-    { sku:'DEMO-IOL-PMMA-220', name:'PMMA IOL 22.0D',                      cat:'IOL',        qty:120, reorder:30, unit:'units',   supplier:'Aurolab India',   lIdx:0, expDays:365  },
-    { sku:'DEMO-IOL-PMMA-215', name:'PMMA IOL 21.5D',                      cat:'IOL',        qty:95,  reorder:30, unit:'units',   supplier:'Aurolab India',   lIdx:1, expDays:365  },
-    { sku:'DEMO-IOL-FOLD-220', name:'Foldable Acrylic IOL 22.0D',          cat:'IOL',        qty:60,  reorder:20, unit:'units',   supplier:'Alcon',           lIdx:0, expDays:540  },
-    { sku:'DEMO-IOL-FOLD-210', name:'Foldable Acrylic IOL 21.0D',          cat:'IOL',        qty:45,  reorder:20, unit:'units',   supplier:'Alcon',           lIdx:5, expDays:540  },
-    { sku:'DEMO-IOL-HYDRO-220',name:'Hydrophobic IOL 22.0D',               cat:'IOL',        qty:30,  reorder:15, unit:'units',   supplier:'Rayner UK',       lIdx:2, expDays:480  },
-    { sku:'DEMO-MED-TIMOLOL',  name:'Timolol Eye Drops 0.5%',              cat:'Medication', qty:80,  reorder:20, unit:'bottles', supplier:'IDA Foundation',  lIdx:0, expDays:180  },
-    { sku:'DEMO-MED-BETAX',    name:'Betaxolol Eye Drops 0.5%',            cat:'Medication', qty:55,  reorder:15, unit:'bottles', supplier:'IDA Foundation',  lIdx:2, expDays:210  },
-    { sku:'DEMO-MED-DEXA',     name:'Dexamethasone Eye Drops 0.1%',        cat:'Medication', qty:200, reorder:50, unit:'bottles', supplier:'IDA Foundation',  lIdx:0, expDays:270  },
-    { sku:'DEMO-MED-CIPRO',    name:'Ciprofloxacin Eye Drops 0.3%',        cat:'Medication', qty:150, reorder:40, unit:'bottles', supplier:'MSF Pharmacy',    lIdx:1, expDays:240  },
-    { sku:'DEMO-MED-MOXY',     name:'Moxifloxacin Eye Drops 0.5%',        cat:'Medication', qty:12,  reorder:20, unit:'bottles', supplier:'MSF Pharmacy',    lIdx:5, expDays:90   }, // LOW
-    { sku:'DEMO-MED-PHENYL',   name:'Phenylephrine 2.5% Eye Drops',        cat:'Medication', qty:45,  reorder:15, unit:'bottles', supplier:'IDA Foundation',  lIdx:3, expDays:160  },
-    { sku:'DEMO-EQUIP-SLAMP',  name:'Slit Lamp Haag-Streit BQ 900',        cat:'Equipment',  qty:3,   reorder:1,  unit:'units',   supplier:'Haag-Streit',     lIdx:0, expDays:null },
-    { sku:'DEMO-EQUIP-PHACO',  name:'Phacoemulsification Machine (Alcon)', cat:'Equipment',  qty:2,   reorder:1,  unit:'units',   supplier:'Alcon Centurion', lIdx:0, expDays:null },
-    { sku:'DEMO-EQUIP-TONO',   name:'Non-Contact Tonometer (Nidek)',       cat:'Equipment',  qty:4,   reorder:1,  unit:'units',   supplier:'Nidek',           lIdx:2, expDays:null },
-    { sku:'DEMO-EQUIP-AUTORF', name:'Auto Refractor / Keratometer',        cat:'Equipment',  qty:3,   reorder:1,  unit:'units',   supplier:'Topcon',          lIdx:5, expDays:null },
-    { sku:'DEMO-CON-VISCO',    name:'OVD Viscoelastic 1.4% Sodium Hyaluronate', cat:'Consumable', qty:200, reorder:50, unit:'syringes', supplier:'Carl Zeiss', lIdx:0, expDays:300 },
-    { sku:'DEMO-CON-SUTURE10', name:'Suture 10-0 Nylon (Ethilon)',         cat:'Consumable', qty:150, reorder:30, unit:'packs',   supplier:'Ethicon',         lIdx:0, expDays:720  },
-    { sku:'DEMO-CON-BSS',      name:'Balanced Salt Solution BSS 500ml',    cat:'Consumable', qty:180, reorder:40, unit:'bottles', supplier:'Alcon',           lIdx:0, expDays:400  },
-    { sku:'DEMO-CON-DRAPE',    name:'Disposable Surgical Drape (Pack 10)', cat:'Consumable', qty:60,  reorder:20, unit:'packs',   supplier:'Medline',         lIdx:1, expDays:1000 },
-    { sku:'DEMO-CON-GLOVES7',  name:'Sterile Surgical Gloves Size 7 ×50', cat:'Consumable', qty:40,  reorder:10, unit:'boxes',   supplier:'Ansell',          lIdx:0, expDays:600  },
-    { sku:'DEMO-CON-NEEDLES',  name:'Retrobulbar Needle 23G (Pack 10)',    cat:'Consumable', qty:8,   reorder:20, unit:'packs',   supplier:'BD Medical',      lIdx:0, expDays:400  }, // LOW
-    { sku:'DEMO-PPE-MASK',     name:'Surgical Face Masks (Box 50)',        cat:'PPE',        qty:120, reorder:30, unit:'boxes',   supplier:'Local Supplier',  lIdx:0, expDays:500  },
-    { sku:'DEMO-PPE-GOWN',     name:'Disposable Surgical Gowns (Pack 10)',cat:'PPE',        qty:80,  reorder:20, unit:'packs',   supplier:'Medline',         lIdx:1, expDays:600  },
-    { sku:'DEMO-PPE-GOGGLES',  name:'Protective Eye Goggles',              cat:'PPE',        qty:35,  reorder:10, unit:'units',   supplier:'Local Supplier',  lIdx:5, expDays:null },
-    { sku:'DEMO-CON-GAUZE',    name:'Sterile Cotton Gauze Swabs (×100)',   cat:'Consumable', qty:90,  reorder:25, unit:'packs',   supplier:'Local Supplier',  lIdx:2, expDays:800  },
-  ];
-  for (const it of INV) {
-    await prisma.inventoryItem.create({ data: {
-      sku:         it.sku,
-      name:        it.name,
-      category:    it.cat as any,
-      quantity:    it.qty,
-      reorderLevel:it.reorder,
-      unit:        it.unit,
-      supplier:    it.supplier,
-      locationId:  locations[it.lIdx].id,
-      expiryDate:  it.expDays !== null ? addDays(new Date(), it.expDays) : null,
-      notes:       D,
-    }});
-  }
-  console.log(`  ✓ ${INV.length} inventory items`);
-
-  // ── 10. TRANSPORT (20) ───────────────────────────────────────────────
-  const VEHICLES = ['Toyota HiLux PK-001','Land Cruiser PK-002','Ambulance AMB-003','Minibus MB-004','Land Cruiser PK-005'];
-  const DRIVERS  = ['Hassan Abdi','Mohamed Warsame','Omar Nur','Abdullahi Jama','Yusuf Ahmed'];
-  const TR_STATUS = ['Completed','Completed','Completed','InTransit','Scheduled'] as const;
-
-  for (let i = 0; i < 20; i++) {
-    const { p, lIdx } = patients[(i * 4) % patients.length];
-    const scheduledAt = ago(25 - i);
-    const status      = pick(TR_STATUS, i);
-    const done        = status === 'Completed';
-    await prisma.transportJob.create({ data: {
-      patientId:      p.id,
-      patientName:    p.fullName,
-      vehicle:        pick(VEHICLES, i),
-      driver:         pick(DRIVERS, i),
-      pickupLocation: `${LOC_DEF[lIdx].district} Village, ${LOC_DEF[lIdx].region}`,
-      dropLocation:   locations[lIdx].name,
-      scheduledAt,
-      completedAt:    done ? scheduledAt : null,
-      cost:           25 + i * 8,
-      status:         status as any,
-      notes:          D,
-    }});
-  }
-  console.log('  ✓ 20 transport jobs');
-
-  console.log(`
-✅ Demo seeding complete!
-
-   Records created:
-   • 10 locations     • 6 campaigns      • 84 patients
-   • 78 screenings    • 36 surgeries     • ${fuCount} follow-ups
-   • 30 referrals     • 20 outreach      • 25 inventory items
-   • 20 transport jobs
-
-   To remove all demo data:
-   npx tsx prisma/seed-demo.ts --clear
-`);
+  console.log(`Seeded focused workflow demo data: ${campaigns.length} campaigns, ${patientIndex - 1} patients.`);
+  console.log(`Seeded demo auth users: 1 Super Admin, ${REGIONAL_CAMPAIGN_AREAS.length} Project Managers, ${REGIONAL_CAMPAIGN_AREAS.length} Data Clerks, ${REGIONAL_CAMPAIGN_AREAS.length} Screening Officers.`);
+  console.log(`Demo password for all demo users: ${DEMO_PASSWORD}`);
+  console.log('Example logins:');
+  console.log('  super.admin@demo.eyecare.local');
+  console.log('  pm.galmudug@demo.eyecare.local');
+  console.log('  clerk.galmudug@demo.eyecare.local');
+  console.log('  screener.galmudug@demo.eyecare.local');
+  console.log('Run `npm run clear:demo` to delete this demo data.');
 }
 
-// ---------------------------------------------------------------------------
-async function main() {
-  if (process.argv.includes('--clear')) {
-    await clearDemo();
-  } else {
-    await seedDemo();
-  }
+function slug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+}
+
+function initials(name: string) {
+  return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+}
+
+async function createDemoAuthUser(input: {
+  email: string;
+  name: string;
+  role: 'Super Administrator' | 'Project Manager' | 'Data Clerk' | 'Screening Officer';
+  assignedRegion?: string;
+  color: string;
+}) {
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: input.email,
+    password: DEMO_PASSWORD,
+    email_confirm: true,
+    user_metadata: {
+      name: input.name,
+      role: input.role,
+      assignedRegion: input.assignedRegion,
+      initials: initials(input.name),
+      color: input.color,
+      demoMarker: DEMO,
+    },
+  });
+
+  if (error) throw error;
+  return { id: data.user.id, name: input.name };
 }
 
 main()
-  .catch(e => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

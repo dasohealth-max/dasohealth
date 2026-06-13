@@ -39,6 +39,7 @@ export interface SessionUser {
   email: string;
   name: string;
   role: string;
+  assignedRegion?: string;
   initials: string;
   color: string;
 }
@@ -54,6 +55,7 @@ function toSessionUser(user: {
     email:    user.email ?? '',
     name:     String(m.name     ?? ''),
     role:     String(m.role     ?? ''),
+    assignedRegion: m.assignedRegion ? String(m.assignedRegion) : undefined,
     initials: String(m.initials ?? ''),
     color:    String(m.color    ?? '#0d9488'),
   };
@@ -88,6 +90,6 @@ export function usePermissions() {
     user:        sessionUser,
     can:         (module: AppModule, action: Action) => can(role, module, action),
     canAccess:   (module: AppModule) => canAccess(role, module),
-    maskPatient: mustMaskPatient(role),
+    maskPatient: mustMaskPatient(),
   };
 }

@@ -12,6 +12,7 @@ export function fromPrisma(row: Row): FollowUp {
     patientName: row.patientName,
     surgeryId: row.surgeryId,
     campaignId: row.campaignId,
+    region: row.region,
     milestone: followUpMilestoneToApp(row.milestone) as FollowUp['milestone'],
     dueDate: (row.dueDate as Date).toISOString().split('T')[0],
     completedAt: row.completedAt ? (row.completedAt as Date).toISOString() : undefined,
@@ -21,12 +22,15 @@ export function fromPrisma(row: Row): FollowUp {
     complications: row.complications,
     notes: row.notes,
     smsReminderSent: row.smsReminderSent,
+    needsDoctorReview: row.needsDoctorReview,
+    completedById: row.completedById,
+    completedByName: row.completedByName,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
 
-export async function getAllFollowUps(): Promise<FollowUp[]> {
-  const rows = await prisma.followUp.findMany({ orderBy: { dueDate: 'asc' } });
+export async function getAllFollowUps(where: { region?: string } = {}): Promise<FollowUp[]> {
+  const rows = await prisma.followUp.findMany({ where, orderBy: { dueDate: 'asc' } });
   return rows.map(fromPrisma);
 }
 
@@ -37,6 +41,7 @@ export async function createFollowUp(data: Omit<FollowUp, 'id' | 'createdAt'>): 
       patientName: data.patientName,
       surgeryId: data.surgeryId,
       campaignId: data.campaignId,
+      region: data.region,
       milestone: followUpMilestoneFromApp(data.milestone) as never,
       dueDate: new Date(data.dueDate),
       completedAt: data.completedAt ? new Date(data.completedAt) : null,
@@ -46,6 +51,9 @@ export async function createFollowUp(data: Omit<FollowUp, 'id' | 'createdAt'>): 
       complications: data.complications,
       notes: data.notes,
       smsReminderSent: data.smsReminderSent,
+      needsDoctorReview: data.needsDoctorReview,
+      completedById: data.completedById,
+      completedByName: data.completedByName,
     },
   });
   return fromPrisma(row);
@@ -59,6 +67,7 @@ export async function updateFollowUp(id: string, data: Omit<FollowUp, 'id' | 'cr
       patientName: data.patientName,
       surgeryId: data.surgeryId,
       campaignId: data.campaignId,
+      region: data.region,
       milestone: followUpMilestoneFromApp(data.milestone) as never,
       dueDate: new Date(data.dueDate),
       completedAt: data.completedAt ? new Date(data.completedAt) : null,
@@ -68,6 +77,9 @@ export async function updateFollowUp(id: string, data: Omit<FollowUp, 'id' | 'cr
       complications: data.complications,
       notes: data.notes,
       smsReminderSent: data.smsReminderSent,
+      needsDoctorReview: data.needsDoctorReview,
+      completedById: data.completedById,
+      completedByName: data.completedByName,
     },
   });
   return fromPrisma(row);
@@ -77,11 +89,11 @@ export async function deleteFollowUp(id: string): Promise<void> {
   await prisma.followUp.delete({ where: { id } });
 }
 
-export async function checkAndMarkOverdue(): Promise<void> {
+export async function checkAndMarkOverdue(where: { region?: string } = {}): Promise<void> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   await prisma.followUp.updateMany({
-    where: { status: { in: ['Pending', 'Due'] as never[] }, dueDate: { lt: today } },
+    where: { ...where, status: { in: ['Pending', 'Due'] as never[] }, dueDate: { lt: today } },
     data: { status: 'Overdue' as never },
   });
 }

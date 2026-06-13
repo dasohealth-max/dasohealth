@@ -1,390 +1,314 @@
 'use client';
-import { useState, useEffect } from 'react';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { Campaign, FollowUp, Patient, Screening, Surgery, SurgeryStatus } from '@/types';
+import { getAllCampaigns } from '@/app/actions/campaigns';
+import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllPatients } from '@/app/actions/patients';
 import { getAllScreenings } from '@/app/actions/screenings';
 import { getAllSurgeries } from '@/app/actions/surgeries';
-import { getAllFollowUps } from '@/app/actions/follow_ups';
-import { getAllCampaigns } from '@/app/actions/campaigns';
-import { getAllReferrals } from '@/app/actions/referrals';
-import { getAllOutreachActivities } from '@/app/actions/outreach';
-import type { Patient, Screening, Surgery, FollowUp, Campaign, Referral, OutreachActivity } from '@/types';
-import {
-  BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from 'recharts';
-import {
-  Users, Microscope, Scissors, CalendarCheck,
-  TrendingUp, TrendingDown, Activity, AlertTriangle,
-} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { formatDate } from '@/lib/utils';
-import Link from 'next/link';
+import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
+import {
+  AlertTriangle,
+  Activity,
+  CheckCircle,
+  ClipboardList,
+  Eye,
+  Stethoscope,
+  Target,
+  TrendingUp,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Funnel,
+  FunnelChart,
+  LabelList,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
-const COLORS = ['#0d9488', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6'];
+type RegionStatus = 'No Campaign' | 'No Activity' | 'Behind' | 'Active' | 'Strong';
 
-function StatCard({
-  label, value, sub, icon: Icon, color, trend,
-}: {
-  label: string; value: string | number; sub: string;
-  icon: React.ElementType; color: string; trend?: number;
-}) {
-  return (
-    <Card className="border-0 shadow-sm hover:shadow-md transition-shadow">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-            <p className="text-2xl font-bold text-slate-900">{value}</p>
-            <p className="text-xs text-slate-400 mt-1">{sub}</p>
-          </div>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
-            <Icon size={20} className="text-white" />
-          </div>
-        </div>
-        {trend !== undefined && (
-          <div className={`flex items-center gap-1 mt-3 text-xs font-medium ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-            {trend >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-            {trend >= 0 ? '+' : ''}{trend}% vs last month
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+const SURGERY_STATUSES: SurgeryStatus[] = ['Scheduled', 'In-Theatre', 'Completed', 'Postponed', 'Cancelled'];
+const STATUS_COLORS = ['#0f766e', '#2563eb', '#16a34a', '#f59e0b', '#dc2626'];
+const FUNNEL_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#16a34a', '#f59e0b'];
 
 export default function DashboardPage() {
-  const [patients, setPatients]     = useState<Patient[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
-  const [followUps, setFollowUps]   = useState<FollowUp[]>([]);
-  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
-  const [referrals, setReferrals]   = useState<Referral[]>([]);
-  const [outreach, setOutreach]     = useState<OutreachActivity[]>([]);
+  const [surgeries, setSurgeries] = useState<Surgery[]>([]);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
 
   useEffect(() => {
-    Promise.all([
-      getAllPatients(), getAllScreenings(), getAllSurgeries(),
-      getAllFollowUps(), getAllCampaigns(), getAllReferrals(),
-      getAllOutreachActivities(),
-    ]).then(([p, sc, sg, f, c, r, o]) => {
-      setPatients(p); setScreenings(sc); setSurgeries(sg);
-      setFollowUps(f); setCampaigns(c); setReferrals(r); setOutreach(o);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.all([getAllCampaigns(), getAllPatients(), getAllScreenings(), getAllSurgeries(), getAllFollowUps()])
+      .then(([campaignRows, patientRows, screeningRows, surgeryRows, followUpRows]) => {
+        setCampaigns(campaignRows);
+        setPatients(patientRows);
+        setScreenings(screeningRows);
+        setSurgeries(surgeryRows);
+        setFollowUps(followUpRows);
+      });
   }, []);
 
-  // ── Computed KPI ─────────────────────────────────────────────────────────────
-  const overdue        = followUps.filter((f) => f.status === 'Overdue').length;
-  const activeCampaigns = campaigns.filter((c) => c.status === 'Active').length;
-  const pendingReferrals = referrals.filter((r) => r.status === 'Pending').length;
-  const completedSurgeries = surgeries.filter((s) => s.status === 'Completed').length;
+  const completed = surgeries.filter((item) => item.status === 'Completed').length;
+  const scheduled = surgeries.filter((item) => item.status === 'Scheduled').length;
+  const overdue = followUps.filter((item) => item.status === 'Overdue').length;
+  const doctorReview = followUps.filter((item) => item.needsDoctorReview).length;
+  const target = campaigns.reduce((sum, campaign) => sum + campaign.targetSurgeries, 0);
+  const completionRate = target ? Math.round((completed / target) * 100) : 0;
 
-  // ── Real gender distribution from store ──────────────────────────────────────
-  const genderData = [
-    { name: 'Female', value: patients.filter((p) => p.sex === 'Female').length },
-    { name: 'Male',   value: patients.filter((p) => p.sex === 'Male').length },
-    { name: 'Other',  value: patients.filter((p) => p.sex === 'Other').length },
-  ].filter((d) => d.value > 0);
-
-  // ── Real referral source counts from store ────────────────────────────────────
-  const srcMap: Record<string, number> = {};
-  referrals.forEach((r) => { srcMap[r.source] = (srcMap[r.source] ?? 0) + 1; });
-  const referralSrc = Object.entries(srcMap)
-    .map(([source, count]) => ({ source, count }))
-    .sort((a, b) => b.count - a.count);
-
-  // ── Monthly activity from screening dates (last 6 months) ────────────────────
-  const now = new Date();
-  const monthlyData = Array.from({ length: 6 }).map((_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    const monthLabel = d.toLocaleString('default', { month: 'short' });
-    const y = d.getFullYear();
-    const m = d.getMonth();
-
-    const inMonth = (iso: string) => {
-      const dd = new Date(iso);
-      return dd.getFullYear() === y && dd.getMonth() === m;
-    };
+  const regionRows = useMemo(() => REGIONAL_CAMPAIGN_AREAS.map((area) => {
+    const regionCampaigns = campaigns.filter((campaign) => campaign.region === area.region);
+    const primaryCampaign = regionCampaigns[0];
+    const campaignIds = new Set(regionCampaigns.map((campaign) => campaign.id));
+    const regionPatients = patients.filter((patient) => patient.region === area.region || (patient.campaignId && campaignIds.has(patient.campaignId)));
+    const regionScreenings = screenings.filter((screening) => screening.region === area.region || campaignIds.has(screening.campaignId));
+    const regionSurgeries = surgeries.filter((surgery) => surgery.region === area.region || campaignIds.has(surgery.campaignId));
+    const regionFollowUps = followUps.filter((followUp) => followUp.region === area.region || campaignIds.has(followUp.campaignId));
+    const regionCompleted = regionSurgeries.filter((surgery) => surgery.status === 'Completed').length;
+    const regionTarget = regionCampaigns.reduce((sum, campaign) => sum + campaign.targetSurgeries, 0) || area.defaultSurgeryTarget;
+    const pct = regionTarget ? Math.round((regionCompleted / regionTarget) * 100) : 0;
+    const riskFollowUps = regionFollowUps.filter((followUp) => followUp.status === 'Overdue').length;
+    const reviewCount = regionFollowUps.filter((followUp) => followUp.needsDoctorReview).length;
+    const status = getRegionStatus(regionCampaigns.length, regionPatients.length, pct);
 
     return {
-      month: monthLabel,
-      screenings: screenings.filter((s) => inMonth(s.screenedAt)).length,
-      surgeries:  surgeries.filter((s) => inMonth(s.scheduledAt)).length,
-      followUps:  followUps.filter((f) => inMonth(f.dueDate)).length,
+      region: area.region,
+      district: primaryCampaign?.operationDistrict ?? area.defaultDistrict,
+      manager: primaryCampaign?.projectManagerName ?? 'Unassigned',
+      target: regionTarget,
+      patients: regionPatients.length,
+      screenings: regionScreenings.length,
+      completed: regionCompleted,
+      pct,
+      overdue: riskFollowUps,
+      doctorReview: reviewCount,
+      status,
     };
-  });
+  }), [campaigns, followUps, patients, screenings, surgeries]);
 
-  // ── Disability breakdown ──────────────────────────────────────────────────────
-  const disabilityMap: Record<string, number> = {};
-  patients.forEach((p) => {
-    disabilityMap[p.disabilityStatus] = (disabilityMap[p.disabilityStatus] ?? 0) + 1;
-  });
-  const disabilityData = Object.entries(disabilityMap)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+  const funnelData = [
+    { name: 'Registered', value: patients.length },
+    { name: 'Screened', value: screenings.length },
+    { name: 'Scheduled', value: scheduled },
+    { name: 'Completed Surgery', value: completed },
+    { name: 'Follow-up Done', value: followUps.filter((item) => item.status === 'Completed').length },
+  ];
 
-  // ── Recent patients ───────────────────────────────────────────────────────────
-  const recentPatients = [...patients]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.patientCode.localeCompare(a.patientCode))
-    .slice(0, 5);
+  const surgeryStatusData = SURGERY_STATUSES.map((status) => ({
+    name: status,
+    value: surgeries.filter((surgery) => surgery.status === status).length,
+  })).filter((item) => item.value > 0);
+
+  const riskData = regionRows
+    .map((row) => ({ region: shortRegion(row.region), overdue: row.overdue, review: row.doctorReview }))
+    .filter((row) => row.overdue || row.review);
 
   return (
-    <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Executive Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">EyeCare Somalia · All campaigns overview</p>
-        </div>
-        <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse inline-block" />
-          {activeCampaigns} Active Campaign{activeCampaigns !== 1 ? 's' : ''}
-        </Badge>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
+        <p className="text-sm text-slate-500">Regional performance, workflow volume, and follow-up risk</p>
       </div>
 
-      {/* Alert banners */}
-      {(overdue > 0 || pendingReferrals > 0) && (
-        <div className="flex flex-wrap gap-3">
-          {overdue > 0 && (
-            <Link href="/followups">
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-sm text-red-700 font-medium cursor-pointer hover:bg-red-100 transition-colors">
-                <AlertTriangle size={15} /> {overdue} overdue follow-up{overdue !== 1 ? 's' : ''}
-              </div>
-            </Link>
-          )}
-          {pendingReferrals > 0 && (
-            <Link href="/referrals">
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-700 font-medium cursor-pointer hover:bg-amber-100 transition-colors">
-                <Activity size={15} /> {pendingReferrals} referral{pendingReferrals !== 1 ? 's' : ''} awaiting contact
-              </div>
-            </Link>
-          )}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+        <Metric title="Campaigns" value={campaigns.length} icon={Target} />
+        <Metric title="Patients" value={patients.length} icon={ClipboardList} />
+        <Metric title="Screened" value={screenings.length} icon={Eye} />
+        <Metric title="Scheduled" value={scheduled} icon={Stethoscope} />
+        <Metric title="Completed" value={completed} icon={CheckCircle} />
+        <Metric title="Target Done" value={`${completionRate}%`} icon={TrendingUp} />
+      </div>
+
+      {(overdue > 0 || doctorReview > 0) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          <AlertTriangle size={16} />
+          <span>{overdue} overdue follow-up{overdue === 1 ? '' : 's'}</span>
+          <span className="text-amber-400">|</span>
+          <span>{doctorReview} need doctor review</span>
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Patients"  value={patients.length.toLocaleString()}    sub="Registered beneficiaries"  icon={Users}        color="bg-teal-500"   trend={12} />
-        <StatCard label="Screenings"      value={screenings.length.toLocaleString()}  sub="Eye assessments done"      icon={Microscope}   color="bg-indigo-500" trend={8}  />
-        <StatCard label="Surgeries"       value={surgeries.length.toLocaleString()}   sub={`${completedSurgeries} completed`} icon={Scissors} color="bg-amber-500" trend={15} />
-        <StatCard label="Follow-ups"      value={followUps.length.toLocaleString()}   sub={`${overdue} overdue`}      icon={CalendarCheck} color="bg-purple-500" trend={-3} />
-      </div>
-
-      {/* Monthly trend + Gender */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 border-0 shadow-sm">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+        <Card className="border-0 shadow-sm xl:col-span-3">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-slate-700">Monthly Activity (Last 6 Months)</CardTitle>
+            <CardTitle className="text-sm text-slate-700">Region Surgery Performance</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyData} barSize={12} barGap={3}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.1)', fontSize: 12 }} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="screenings" name="Screenings" fill="#0d9488" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="surgeries"  name="Surgeries"  fill="#6366f1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="followUps"  name="Follow-ups" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={regionRows} margin={{ left: 0, right: 8, top: 8, bottom: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="region" tickFormatter={shortRegion} tick={{ fontSize: 11 }} angle={-20} textAnchor="end" height={56} interval={0} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(value, name) => [formatChartValue(value), name === 'completed' ? 'Completed' : 'Target']} labelFormatter={(value) => String(value)} />
+                <Bar dataKey="target" fill="#d1d5db" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="completed" fill="#0f766e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm xl:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-slate-700">Patient Gender</CardTitle>
+            <CardTitle className="text-sm text-slate-700">Patient Workflow Funnel</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col items-center">
-            {genderData.length > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie data={genderData} dataKey="value" cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3}>
-                      {genderData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 10, fontSize: 12 }} formatter={(v) => [`${v} patients`]} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="flex flex-wrap justify-center gap-3 mt-1">
-                  {genderData.map((g, i) => {
-                    const pct = patients.length ? Math.round((g.value / patients.length) * 100) : 0;
-                    return (
-                      <div key={g.name} className="flex items-center gap-1.5 text-xs text-slate-600">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i] }} />
-                        {g.name} — {g.value} ({pct}%)
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <FunnelChart>
+                <Tooltip formatter={(value) => formatChartValue(value)} />
+                <Funnel dataKey="value" data={funnelData} isAnimationActive={false}>
+                  <LabelList position="right" fill="#334155" stroke="none" dataKey="name" fontSize={12} />
+                  {funnelData.map((entry, index) => <Cell key={entry.name} fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} />)}
+                </Funnel>
+              </FunnelChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm xl:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-700">Surgery Status</CardTitle>
+          </CardHeader>
+          <CardContent className="h-64">
+            {surgeryStatusData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={surgeryStatusData} dataKey="value" nameKey="name" outerRadius={82} label>
+                    {surgeryStatusData.map((entry, index) => <Cell key={entry.name} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatChartValue(value)} />
+                </PieChart>
+              </ResponsiveContainer>
             ) : (
-              <p className="text-slate-400 text-sm py-10">No patients yet</p>
+              <EmptyChart>No surgeries yet</EmptyChart>
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Referral sources + Campaign progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="border-0 shadow-sm">
+        <Card className="border-0 shadow-sm xl:col-span-3">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-slate-700">Referral Sources</CardTitle>
+            <CardTitle className="text-sm text-slate-700">Follow-up Risk by Region</CardTitle>
           </CardHeader>
-          <CardContent>
-            {referralSrc.length > 0 ? (
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={referralSrc} layout="vertical" barSize={12}>
-                  <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <YAxis dataKey="source" type="category" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={70} />
-                  <Tooltip contentStyle={{ borderRadius: 10, fontSize: 12 }} />
-                  <Bar dataKey="count" name="Referrals" fill="#0d9488" radius={[0, 4, 4, 0]} />
+          <CardContent className="h-64">
+            {riskData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={riskData} margin={{ left: 0, right: 8, top: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="region" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip formatter={(value, name) => [formatChartValue(value), name === 'overdue' ? 'Overdue' : 'Doctor review']} />
+                  <Bar dataKey="overdue" stackId="risk" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="review" stackId="risk" fill="#dc2626" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-slate-400 text-sm py-10 text-center">No referrals yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2 border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-slate-700">Campaign Progress</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {campaigns.length === 0 && (
-              <p className="text-slate-400 text-sm text-center py-6">No campaigns yet</p>
-            )}
-            {campaigns.map((c) => {
-              const cs  = screenings.filter((s) => s.campaignId === c.id).length;
-              const csg = surgeries.filter((s)  => s.campaignId === c.id).length;
-              const pct = c.targetScreenings
-                ? Math.min(100, Math.round((cs / c.targetScreenings) * 100))
-                : 0;
-              return (
-                <div key={c.id}>
-                  <div className="flex items-center justify-between mb-1.5 gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">{c.name}</p>
-                      <p className="text-xs text-slate-400">{cs} / {c.targetScreenings} screenings · {csg} surgeries</p>
-                    </div>
-                    <Badge variant="outline" className={
-                      c.status === 'Active'    ? 'border-emerald-200 text-emerald-700 bg-emerald-50 shrink-0' :
-                      c.status === 'Planned'   ? 'border-amber-200 text-amber-700 bg-amber-50 shrink-0' :
-                      'border-slate-200 text-slate-600 bg-slate-50 shrink-0'
-                    }>{c.status}</Badge>
-                  </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-teal-400 to-teal-600 rounded-full transition-all duration-700"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">{pct}% of screening target</p>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Disability + Outreach summary */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Disability distribution */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-slate-700">Disability Distribution</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {disabilityData.length === 0 && <p className="text-slate-400 text-sm py-6 text-center">No data</p>}
-            {disabilityData.map((d, i) => {
-              const pct = patients.length ? Math.round((d.value / patients.length) * 100) : 0;
-              return (
-                <div key={d.name} className="flex items-center gap-2">
-                  <span className="text-xs text-slate-600 w-20 shrink-0">{d.name}</span>
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: COLORS[i % COLORS.length] }} />
-                  </div>
-                  <span className="text-xs text-slate-500 w-12 text-right shrink-0">{d.value} ({pct}%)</span>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        {/* Outreach summary */}
-        <Card className="lg:col-span-2 border-0 shadow-sm">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-slate-700">Recent Outreach Activities</CardTitle>
-            <Link href="/outreach" className="text-xs text-teal-600 font-medium hover:underline">View all →</Link>
-          </CardHeader>
-          <CardContent>
-            {outreach.length === 0 ? (
-              <p className="text-slate-400 text-sm text-center py-6">No outreach activities logged</p>
-            ) : (
-              <div className="space-y-2">
-                {[...outreach].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4).map((o) => (
-                  <div key={o.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{o.title}</p>
-                      <p className="text-xs text-slate-400">{o.type} · {o.locationName} · {formatDate(o.date)}</p>
-                    </div>
-                    <div className="text-right shrink-0 ml-4">
-                      <p className="text-sm font-bold text-teal-600">{o.reach.toLocaleString()}</p>
-                      <p className="text-[10px] text-slate-400">reached</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <EmptyChart>No follow-up risk</EmptyChart>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent patients table */}
       <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-slate-700">Recently Registered Patients</CardTitle>
-          <Link href="/patients" className="text-xs text-teal-600 font-medium hover:underline">View all →</Link>
+        <CardHeader>
+          <CardTitle className="text-sm text-slate-700">Region Accountability</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  {['Patient Code', 'Name', 'Sex', 'Phone', 'Campaign', 'Registered'].map((h) => (
-                    <th key={h} className="text-left pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wide pr-4 whitespace-nowrap">{h}</th>
-                  ))}
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left text-sm">
+            <thead className="border-b border-slate-100 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="py-2 pr-3">Region</th>
+                <th className="py-2 pr-3">District</th>
+                <th className="py-2 pr-3">Project Manager</th>
+                <th className="py-2 pr-3">Patients</th>
+                <th className="py-2 pr-3">Screened</th>
+                <th className="py-2 pr-3">Completed</th>
+                <th className="py-2 pr-3">Progress</th>
+                <th className="py-2 pr-3">Risk</th>
+                <th className="py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {regionRows.map((row) => (
+                <tr key={row.region} className="text-slate-700">
+                  <td className="py-3 pr-3 font-medium text-slate-900">{row.region}</td>
+                  <td className="py-3 pr-3">{row.district}</td>
+                  <td className="py-3 pr-3">{row.manager}</td>
+                  <td className="py-3 pr-3">{row.patients.toLocaleString()}</td>
+                  <td className="py-3 pr-3">{row.screenings.toLocaleString()}</td>
+                  <td className="py-3 pr-3">{row.completed.toLocaleString()} / {row.target.toLocaleString()}</td>
+                  <td className="py-3 pr-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.min(row.pct, 100)}%` }} />
+                      </div>
+                      <span className="w-10 text-xs text-slate-500">{row.pct}%</span>
+                    </div>
+                  </td>
+                  <td className="py-3 pr-3 text-xs text-slate-500">{row.overdue} overdue, {row.doctorReview} review</td>
+                  <td className="py-3"><StatusBadge status={row.status} /></td>
                 </tr>
-              </thead>
-              <tbody>
-                {recentPatients.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-8 text-slate-400 text-sm">No patients registered yet.</td></tr>
-                )}
-                {recentPatients.map((p) => {
-                  const camp = campaigns.find((c) => c.id === p.campaignId);
-                  return (
-                    <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                      <td className="py-3 pr-4 font-mono text-xs text-teal-700 font-semibold whitespace-nowrap">{p.patientCode}</td>
-                      <td className="py-3 pr-4 font-medium text-slate-800 whitespace-nowrap">{p.fullName}</td>
-                      <td className="py-3 pr-4 text-slate-600">{p.sex}</td>
-                      <td className="py-3 pr-4 text-slate-600 whitespace-nowrap">{p.phone}</td>
-                      <td className="py-3 pr-4 whitespace-nowrap">
-                        {camp ? (
-                          <Badge variant="outline" className="text-xs border-indigo-200 text-indigo-700 bg-indigo-50">{camp.type}</Badge>
-                        ) : '—'}
-                      </td>
-                      <td className="py-3 text-slate-400 text-xs whitespace-nowrap">{formatDate(p.createdAt)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
     </div>
   );
+}
+
+function getRegionStatus(campaignCount: number, patientCount: number, pct: number): RegionStatus {
+  if (!campaignCount) return 'No Campaign';
+  if (!patientCount) return 'No Activity';
+  if (pct >= 75) return 'Strong';
+  if (pct >= 25) return 'Active';
+  return 'Behind';
+}
+
+function shortRegion(region: string) {
+  return region
+    .replace(' / Mogadishu', '')
+    .replace(' Somalia', '')
+    .replace(' State', '');
+}
+
+function formatChartValue(value: unknown) {
+  return Number(value ?? 0).toLocaleString();
+}
+
+function Metric({ title, value, icon: Icon }: { title: string; value: number | string; icon: typeof Activity }) {
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardContent className="flex items-center gap-3 p-4">
+        <div className="rounded-xl bg-teal-50 p-2 text-teal-700"><Icon size={18} /></div>
+        <div>
+          <p className="text-xs font-medium text-slate-500">{title}</p>
+          <p className="text-lg font-bold text-slate-900">{value}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyChart({ children }: { children: string }) {
+  return <div className="flex h-full items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">{children}</div>;
+}
+
+function StatusBadge({ status }: { status: RegionStatus }) {
+  const classes: Record<RegionStatus, string> = {
+    'No Campaign': 'bg-slate-100 text-slate-600',
+    'No Activity': 'bg-red-50 text-red-700',
+    Behind: 'bg-amber-50 text-amber-700',
+    Active: 'bg-blue-50 text-blue-700',
+    Strong: 'bg-emerald-50 text-emerald-700',
+  };
+  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes[status]}`}>{status}</span>;
 }

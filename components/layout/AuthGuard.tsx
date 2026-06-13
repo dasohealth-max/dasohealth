@@ -6,13 +6,9 @@ import { Eye } from 'lucide-react';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  // mounted = component is running in the browser (not SSR)
-  // authReady = session check complete
-  const [mounted,   setMounted]   = useState(false);
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     getSession().then((session) => {
       if (!session) {
         router.replace('/login');
@@ -23,7 +19,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   // While checking auth or before mount, show branded loading screen
-  if (!mounted || !authReady) {
+  if (!authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">

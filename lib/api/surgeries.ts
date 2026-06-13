@@ -11,7 +11,10 @@ export function fromPrisma(row: Row): Surgery {
     patientId: row.patientId,
     patientName: row.patientName,
     campaignId: row.campaignId,
-    locationId: row.locationId,
+    locationId: row.locationId ?? undefined,
+    region: row.region,
+    operationDistrict: row.operationDistrict,
+    createdFromScreeningId: row.createdFromScreeningId ?? undefined,
     surgeonId: row.surgeonId ?? '',
     surgeonName: row.surgeonName ?? '',
     eye: row.eye as Surgery['eye'],
@@ -23,12 +26,14 @@ export function fromPrisma(row: Row): Surgery {
     postOpVA: row.postOpVa ?? undefined,
     complications: row.complications,
     intraopNotes: row.intraopNotes,
+    completedById: row.completedById,
+    completedByName: row.completedByName,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
 
-export async function getAllSurgeries(): Promise<Surgery[]> {
-  const rows = await prisma.surgery.findMany({ orderBy: { scheduledAt: 'desc' } });
+export async function getAllSurgeries(where: { region?: string } = {}): Promise<Surgery[]> {
+  const rows = await prisma.surgery.findMany({ where, orderBy: { scheduledAt: 'desc' } });
   return rows.map(fromPrisma);
 }
 
@@ -38,7 +43,10 @@ export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Pr
       patientId: data.patientId,
       patientName: data.patientName,
       campaignId: data.campaignId,
-      locationId: data.locationId,
+      locationId: data.locationId || null,
+      region: data.region,
+      operationDistrict: data.operationDistrict,
+      createdFromScreeningId: data.createdFromScreeningId || null,
       surgeonId: data.surgeonId || null,
       surgeonName: data.surgeonName || null,
       eye: data.eye as never,
@@ -50,6 +58,8 @@ export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Pr
       postOpVa: data.postOpVA || null,
       complications: data.complications,
       intraopNotes: data.intraopNotes,
+      completedById: data.completedById,
+      completedByName: data.completedByName,
     },
   });
   return fromPrisma(row);
@@ -62,7 +72,10 @@ export async function updateSurgery(id: string, data: Omit<Surgery, 'id' | 'crea
       patientId: data.patientId,
       patientName: data.patientName,
       campaignId: data.campaignId,
-      locationId: data.locationId,
+      locationId: data.locationId || null,
+      region: data.region,
+      operationDistrict: data.operationDistrict,
+      createdFromScreeningId: data.createdFromScreeningId || null,
       surgeonId: data.surgeonId || null,
       surgeonName: data.surgeonName || null,
       eye: data.eye as never,
@@ -74,6 +87,8 @@ export async function updateSurgery(id: string, data: Omit<Surgery, 'id' | 'crea
       postOpVa: data.postOpVA || null,
       complications: data.complications,
       intraopNotes: data.intraopNotes,
+      completedById: data.completedById,
+      completedByName: data.completedByName,
     },
   });
   return fromPrisma(row);

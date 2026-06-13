@@ -1,43 +1,20 @@
-// ─── Core domain types ────────────────────────────────────────────────────────
-
 export type Role =
   | 'Super Administrator'
   | 'Project Manager'
-  | 'Campaign Manager'
-  | 'Hospital Coordinator'
   | 'Data Clerk'
-  | 'Screening Officer'
-  | 'Ophthalmologist'
-  | 'Surgeon'
-  | 'Follow-Up Officer'
-  | 'Outreach Officer'
-  | 'Logistics Officer'
-  | 'Inventory Officer'
-  | 'MEAL Officer'
-  | 'Finance Officer'
-  | 'Donor User';
+  | 'Screening Officer';
 
 export interface User {
   id: string;
   name: string;
   email: string;
   role: Role;
+  assignedRegion?: string;
   initials: string;
   color: string;
   active: boolean;
   createdAt: string;
 }
-
-export interface Organisation {
-  id: string;
-  name: string;
-  country: string;
-  region: string;
-  logo?: string;
-  createdAt: string;
-}
-
-// ─── Campaign ─────────────────────────────────────────────────────────────────
 
 export type CampaignType = 'Cataract' | 'School Eye Health' | 'Diabetic Retinopathy' | 'Glaucoma' | 'General';
 export type CampaignStatus = 'Planned' | 'Active' | 'Completed' | 'Suspended';
@@ -47,6 +24,10 @@ export interface Campaign {
   name: string;
   type: CampaignType;
   status: CampaignStatus;
+  region: string;
+  operationDistrict: string;
+  projectManagerId: string;
+  projectManagerName: string;
   startDate: string;
   endDate: string;
   budget: number;
@@ -58,26 +39,6 @@ export interface Campaign {
   description: string;
   createdAt: string;
 }
-
-// ─── Location ─────────────────────────────────────────────────────────────────
-
-export type FacilityType = 'Hospital' | 'Clinic' | 'Mobile Unit' | 'School' | 'Community Centre';
-
-export interface Location {
-  id: string;
-  name: string;
-  code: string;
-  facilityType: FacilityType;
-  district: string;
-  region: string;
-  country: string;
-  lat: number;
-  lng: number;
-  phone?: string;
-  createdAt: string;
-}
-
-// ─── Patient ──────────────────────────────────────────────────────────────────
 
 export type Sex = 'Male' | 'Female' | 'Other';
 export type DisabilityStatus = 'None' | 'Visual' | 'Hearing' | 'Mobility' | 'Cognitive' | 'Multiple';
@@ -92,6 +53,7 @@ export interface Patient {
   email?: string;
   district: string;
   region: string;
+  operationDistrict: string;
   occupation?: string;
   education?: string;
   disabilityStatus: DisabilityStatus;
@@ -106,10 +68,11 @@ export interface Patient {
   notes?: string;
   lat?: number;
   lng?: number;
+  registeredById: string;
+  registeredByName: string;
+  screeningStatus: 'Awaiting Screening' | 'Screened';
   createdAt: string;
 }
-
-// ─── Screening ────────────────────────────────────────────────────────────────
 
 export type VAGrade = '6/6' | '6/9' | '6/12' | '6/18' | '6/24' | '6/36' | '6/60' | '<6/60' | 'CF' | 'HM' | 'PL' | 'NPL';
 
@@ -118,8 +81,12 @@ export interface Screening {
   patientId: string;
   patientName: string;
   campaignId: string;
-  locationId: string;
+  locationId?: string;
+  region: string;
+  operationDistrict: string;
   screenedBy: string;
+  screenedById: string;
+  screenedByName: string;
   screenedAt: string;
   vaRightUnaided: VAGrade;
   vaLeftUnaided: VAGrade;
@@ -138,8 +105,6 @@ export interface Screening {
   createdAt: string;
 }
 
-// ─── Surgery ──────────────────────────────────────────────────────────────────
-
 export type SurgeryEye = 'Right' | 'Left' | 'Both';
 export type LensType = 'PMMA' | 'Foldable Acrylic' | 'Hydrophilic' | 'Hydrophobic';
 export type SurgeryStatus = 'Scheduled' | 'In-Theatre' | 'Completed' | 'Cancelled' | 'Postponed';
@@ -149,7 +114,10 @@ export interface Surgery {
   patientId: string;
   patientName: string;
   campaignId: string;
-  locationId: string;
+  locationId?: string;
+  region: string;
+  operationDistrict: string;
+  createdFromScreeningId?: string;
   surgeonId: string;
   surgeonName: string;
   eye: SurgeryEye;
@@ -161,33 +129,10 @@ export interface Surgery {
   postOpVA?: string;
   complications: string;
   intraopNotes: string;
+  completedById: string;
+  completedByName: string;
   createdAt: string;
 }
-
-// ─── Referral ─────────────────────────────────────────────────────────────────
-
-export type ReferralSource = 'CHW' | 'Volunteer' | 'School' | 'Facility' | 'Self' | 'Community Leader';
-export type ReferralStatus = 'Pending' | 'Contacted' | 'Screened' | 'Converted' | 'Lost';
-
-export interface Referral {
-  id: string;
-  screeningId?: string;       // links back to the originating Screening record
-  patientName: string;
-  patientPhone: string;
-  source: ReferralSource;
-  referredBy: string;
-  campaignId: string;
-  locationId: string;
-  status: ReferralStatus;
-  referredAt: string;
-  contactedAt?: string;
-  screenedAt?: string;
-  convertedAt?: string;
-  notes: string;
-  createdAt: string;
-}
-
-// ─── Follow-up ────────────────────────────────────────────────────────────────
 
 export type FollowUpMilestone = 'Day 1' | 'Week 1' | 'Month 1' | 'Month 3';
 export type FollowUpStatus = 'Pending' | 'Due' | 'Overdue' | 'Completed' | 'Missed';
@@ -198,6 +143,7 @@ export interface FollowUp {
   patientName: string;
   surgeryId: string;
   campaignId: string;
+  region: string;
   milestone: FollowUpMilestone;
   dueDate: string;
   completedAt?: string;
@@ -207,75 +153,25 @@ export interface FollowUp {
   complications: string;
   notes: string;
   smsReminderSent: boolean;
+  needsDoctorReview: boolean;
+  completedById: string;
+  completedByName: string;
   createdAt: string;
 }
-
-// ─── Inventory ────────────────────────────────────────────────────────────────
-
-export type InventoryCategory = 'IOL' | 'Medication' | 'Equipment' | 'Consumable' | 'PPE';
-
-export interface InventoryItem {
-  id: string;
-  sku: string;
-  name: string;
-  category: InventoryCategory;
-  quantity: number;
-  reorderLevel: number;
-  unit: string;
-  expiryDate?: string;
-  supplier: string;
-  locationId: string;
-  notes: string;
-  createdAt: string;
-}
-
-// ─── Outreach ─────────────────────────────────────────────────────────────────
-
-export type OutreachType = 'Awareness Campaign' | 'Community Meeting' | 'Radio Broadcast' | 'School Visit' | 'Health Fair' | 'CHW Training';
-
-export interface OutreachActivity {
-  id: string;
-  type: OutreachType;
-  title: string;
-  date: string;
-  locationId: string;
-  locationName: string;
-  campaignId: string;
-  reach: number;
-  conversions: number;
-  conductedBy: string;
-  notes: string;
-  createdAt: string;
-}
-
-// ─── Transport ────────────────────────────────────────────────────────────────
-
-export type TransportStatus = 'Scheduled' | 'In-Transit' | 'Completed' | 'Cancelled';
-
-export interface TransportJob {
-  id: string;
-  patientId: string;
-  patientName: string;
-  vehicle: string;
-  driver: string;
-  pickupLocation: string;
-  dropLocation: string;
-  scheduledAt: string;
-  completedAt?: string;
-  cost: number;
-  status: TransportStatus;
-  notes: string;
-  createdAt: string;
-}
-
-// ─── Audit log ────────────────────────────────────────────────────────────────
 
 export interface AuditLog {
   id: string;
   actor: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
   action: string;
   entity: string;
   entityId: string;
+  region?: string;
+  campaignId?: string;
   details: string;
+  before?: unknown;
+  after?: unknown;
   createdAt: string;
 }

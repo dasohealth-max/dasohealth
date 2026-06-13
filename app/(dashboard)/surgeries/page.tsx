@@ -1,286 +1,237 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { formatDate } from '@/lib/utils';
-import type { Surgery, SurgeryStatus, SurgeryEye, LensType, Patient, Campaign, Location, User } from '@/types';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { LensType, Surgery, SurgeryEye, SurgeryStatus } from '@/types';
+import { actionDeleteSurgery, actionUpdateSurgery, getAllSurgeries } from '@/app/actions/surgeries';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineForm from '@/components/forms/InlineForm';
-import { Plus, Pencil, Trash2, X, AlertTriangle, UserCheck } from 'lucide-react';
+import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
-import { getAllSurgeries, actionCreateSurgery, actionUpdateSurgery, actionDeleteSurgery } from '@/app/actions/surgeries';
-import { getAllPatients } from '@/app/actions/patients';
-import { getAllCampaigns } from '@/app/actions/campaigns';
-import { getAllLocations } from '@/app/actions/locations';
-import { actionGetAllUsers } from '@/app/actions/users';
+import { CheckCircle, Pencil, Search, Trash2, X } from 'lucide-react';
 
-const STATUSES: SurgeryStatus[] = ['Scheduled','In-Theatre','Completed','Cancelled','Postponed'];
-const COL: Record<SurgeryStatus, { bg: string; border: string; badge: string }> = {
-  Scheduled:    { bg:'bg-blue-50',   border:'border-blue-200',   badge:'bg-blue-100 text-blue-700' },
-  'In-Theatre': { bg:'bg-amber-50',  border:'border-amber-200',  badge:'bg-amber-100 text-amber-700' },
-  Completed:    { bg:'bg-green-50',  border:'border-green-200',  badge:'bg-green-100 text-green-700' },
-  Cancelled:    { bg:'bg-red-50',    border:'border-red-200',    badge:'bg-red-100 text-red-700' },
-  Postponed:    { bg:'bg-slate-50',  border:'border-slate-200',  badge:'bg-slate-100 text-slate-600' },
+const STATUSES: SurgeryStatus[] = ['Scheduled', 'In-Theatre', 'Completed', 'Cancelled', 'Postponed'];
+const EYES: SurgeryEye[] = ['Right', 'Left', 'Both'];
+const LENSES: LensType[] = ['PMMA', 'Foldable Acrylic', 'Hydrophilic', 'Hydrophobic'];
+
+const BLANK: Omit<Surgery, 'id' | 'createdAt'> = {
+  patientId: '',
+  patientName: '',
+  campaignId: '',
+  locationId: '',
+  region: '',
+  operationDistrict: '',
+  createdFromScreeningId: '',
+  surgeonId: '',
+  surgeonName: '',
+  eye: 'Right',
+  lensType: 'Foldable Acrylic',
+  scheduledAt: '',
+  performedAt: '',
+  status: 'Scheduled',
+  preOpVA: '',
+  postOpVA: '',
+  complications: '',
+  intraopNotes: '',
+  completedById: '',
+  completedByName: '',
 };
-const BLANK: Omit<Surgery,'id'|'createdAt'> = {
-  patientId:'', patientName:'', campaignId:'', locationId:'',
-  surgeonId:'', surgeonName:'', eye:'Right', lensType:'Foldable Acrylic',
-  scheduledAt:'', performedAt:'', status:'Scheduled',
-  preOpVA:'', postOpVA:'', complications:'', intraopNotes:'',
-};
-function toLocal(iso: string) {
+
+function toLocal(iso?: string) {
   if (!iso) return '';
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)) return iso.slice(0,16);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return `${iso}T00:00`;
-  try { const d = new Date(iso); const p = (n:number) => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; } catch { return ''; }
+  const date = new Date(iso);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export default function SurgeryPage() {
+export default function SurgeriesPage() {
   const { can } = usePermissions();
-
-  const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
-  const [patients, setPatients]     = useState<Patient[]>([]);
-  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
-  const [locations, setLocations]   = useState<Location[]>([]);
-  const [surgeons, setSurgeons]     = useState<User[]>([]);
-  const [isLoading, setIsLoading]   = useState(true);
-  const [saveError, setSaveError]   = useState('');
-  const [showForm, setShowForm]     = useState(false);
-  const [editing, setEditing]       = useState<Surgery | null>(null);
-  const [deleteId, setDeleteId]     = useState<string | null>(null);
-  const [form, setForm]             = useState<typeof BLANK>(BLANK);
-  const [assigningId, setAssigningId]         = useState<string | null>(null);
-  const [assignSurgeonId, setAssignSurgeonId] = useState('');
+  const [surgeries, setSurgeries] = useState<Surgery[]>([]);
+  const [form, setForm] = useState(BLANK);
+  const [editing, setEditing] = useState<Surgery | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | SurgeryStatus>('all');
+  const [regionFilter, setRegionFilter] = useState('all');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getAllSurgeries(), getAllPatients(), getAllCampaigns(), getAllLocations(), actionGetAllUsers()])
-      .then(([s, p, c, l, usersResult]) => {
-        setSurgeries(s); setPatients(p); setCampaigns(c); setLocations(l);
-        if (usersResult.ok) {
-          setSurgeons(usersResult.data.filter((u) => ['Ophthalmologist','Surgeon','Super Administrator'].includes(u.role)));
-        }
-        setIsLoading(false);
-      });
+    getAllSurgeries().then((rows) => {
+      setSurgeries(rows);
+      setIsLoading(false);
+    });
   }, []);
 
-  const unassignedCount = surgeries.filter((s) => !s.surgeonId).length;
+  const regions = useMemo(() => Array.from(new Set(surgeries.map((surgery) => surgery.region))).sort(), [surgeries]);
+  const filteredSurgeries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return surgeries.filter((surgery) => {
+      const matchesSearch = !q ||
+        surgery.patientName.toLowerCase().includes(q) ||
+        surgery.region.toLowerCase().includes(q) ||
+        surgery.operationDistrict.toLowerCase().includes(q) ||
+        surgery.surgeonName.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === 'all' || surgery.status === statusFilter;
+      const matchesRegion = regionFilter === 'all' || surgery.region === regionFilter;
+      return matchesSearch && matchesStatus && matchesRegion;
+    });
+  }, [regionFilter, search, statusFilter, surgeries]);
 
-  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
-  function openEdit(s: Surgery) {
-    setEditing(s);
-    const { id, createdAt, ...r } = s;
-    setForm({ ...r, scheduledAt: toLocal(r.scheduledAt), performedAt: r.performedAt ? toLocal(r.performedAt) : '', postOpVA: r.postOpVA ?? '' });
+  function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function openEdit(surgery: Surgery) {
+    const editable = Object.fromEntries(
+      Object.entries(surgery).filter(([key]) => key !== 'id' && key !== 'createdAt')
+    ) as typeof BLANK;
+    setEditing(surgery);
+    setForm({
+      ...editable,
+      scheduledAt: toLocal(editable.scheduledAt),
+      performedAt: toLocal(editable.performedAt),
+      postOpVA: editable.postOpVA ?? '',
+    });
     setSaveError('');
     setShowForm(true);
   }
-  function cancel() { setShowForm(false); setEditing(null); }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
-  function handlePatient(pid: string | null) { if (!pid) return; const p = patients.find((x) => x.id === pid); set('patientId', pid); if (p) set('patientName', p.fullName); }
-  function handleSurgeon(uid2: string | null) { if (!uid2) return; const u = surgeons.find((x) => x.id === uid2); set('surgeonId', uid2); if (u) set('surgeonName', u.name); }
 
   async function save() {
+    if (!editing) return;
     setSaveError('');
-    if (editing) {
-      const res = await actionUpdateSurgery(editing.id, form);
-      if (!res.ok) { setSaveError(res.error); return; }
-      setSurgeries((prev) => prev.map((s) => s.id === editing.id ? res.data : s));
-    } else {
-      const res = await actionCreateSurgery(form);
-      if (!res.ok) { setSaveError(res.error); return; }
-      setSurgeries((prev) => [res.data, ...prev]);
+    const result = await actionUpdateSurgery(editing.id, form);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
     }
-    cancel();
+    setSurgeries((rows) => rows.map((row) => row.id === editing.id ? result.data : row));
+    setShowForm(false);
+    setEditing(null);
   }
 
-  async function changeStatus(s: Surgery, status: SurgeryStatus) {
-    const updated = { ...s, status, ...(status === 'Completed' ? { performedAt: new Date().toISOString() } : {}) };
-    const res = await actionUpdateSurgery(s.id, updated);
-    if (res.ok) setSurgeries((prev) => prev.map((x) => x.id === s.id ? res.data : x));
+  async function setStatus(surgery: Surgery, status: SurgeryStatus) {
+    const performedAt = status === 'Completed' ? (surgery.performedAt ?? new Date().toISOString()) : surgery.performedAt;
+    const result = await actionUpdateSurgery(surgery.id, { ...surgery, status, performedAt });
+    if (result.ok) setSurgeries((rows) => rows.map((row) => row.id === surgery.id ? result.data : row));
   }
 
-  async function confirmAssign(s: Surgery) {
-    const u = surgeons.find((x) => x.id === assignSurgeonId);
-    if (!u) return;
-    const res = await actionUpdateSurgery(s.id, { ...s, surgeonId: u.id, surgeonName: u.name });
-    if (res.ok) { setSurgeries((prev) => prev.map((x) => x.id === s.id ? res.data : x)); setAssigningId(null); }
+  async function remove(surgery: Surgery) {
+    const result = await actionDeleteSurgery(surgery.id);
+    if (result.ok) setSurgeries((rows) => rows.filter((row) => row.id !== surgery.id));
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Surgery Board</h1>
-          <p className="text-sm text-slate-500">
-            {isLoading ? 'Loading...' : `${surgeries.length} surgeries · ${surgeries.filter((s) => s.status === 'Completed').length} completed`}
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">Surgeries</h1>
+          <p className="text-sm text-slate-500">{surgeries.filter((surgery) => surgery.status === 'Completed').length} completed of {surgeries.length} surgery records</p>
         </div>
-        {can('surgeries','create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />Schedule Surgery</Button>}
-        {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
+        {showForm && <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
       </div>
 
       {showForm && (
-        <InlineForm title={editing ? `Edit Surgery - ${editing.patientName}` : 'Schedule Surgery'}
-          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Schedule'}
-          saveDisabled={!form.patientId || !form.campaignId || !form.locationId}>
-          {saveError && <p className="text-xs text-red-600 mb-2">{saveError}</p>}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="col-span-2">
-              <Label className="text-xs mb-1 block">Patient *</Label>
-              <Select value={form.patientId} onValueChange={handlePatient}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{patients.map((p) => <SelectItem key={p.id} value={p.id}>{p.fullName}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Campaign *</Label>
-              <Select value={form.campaignId} onValueChange={(v) => set('campaignId', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Location *</Label>
-              <Select value={form.locationId} onValueChange={(v) => set('locationId', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs mb-1 block">Surgeon</Label>
-              <Select value={form.surgeonId} onValueChange={handleSurgeon}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{surgeons.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Eye</Label>
-              <Select value={form.eye} onValueChange={(v) => set('eye', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{(['Right','Left','Both'] as SurgeryEye[]).map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Lens Type</Label>
-              <Select value={form.lensType} onValueChange={(v) => set('lensType', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{(['PMMA','Foldable Acrylic','Hydrophilic','Hydrophobic'] as LensType[]).map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs mb-1 block">Status</Label>
-              <Select value={form.status} onValueChange={(v) => set('status', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label className="text-xs mb-1 block">Scheduled Date</Label><Input type="datetime-local" value={form.scheduledAt} onChange={(e) => set('scheduledAt', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Pre-op VA</Label><Input value={form.preOpVA} onChange={(e) => set('preOpVA', e.target.value)} className="rounded-xl" placeholder="e.g. 6/60" /></div>
-            <div><Label className="text-xs mb-1 block">Post-op VA</Label><Input value={form.postOpVA ?? ''} onChange={(e) => set('postOpVA', e.target.value)} className="rounded-xl" placeholder="e.g. 6/12" /></div>
-            <div className="col-span-2"><Label className="text-xs mb-1 block">Complications</Label><Input value={form.complications} onChange={(e) => set('complications', e.target.value)} className="rounded-xl" placeholder="None or describe" /></div>
-            <div className="col-span-2">
-              <Label className="text-xs mb-1 block">Intra-op Notes</Label>
-              <textarea value={form.intraopNotes} onChange={(e) => set('intraopNotes', e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 resize-none h-14" />
-            </div>
+        <InlineForm
+          title={editing ? `Edit ${editing.patientName}` : 'Update Surgery'}
+          onClose={() => setShowForm(false)}
+          onSave={save}
+          saveLabel="Update Surgery"
+          saveDisabled={!form.patientId || !form.campaignId || !form.scheduledAt || (form.status === 'Completed' && !form.performedAt)}
+        >
+          {saveError && <p className="mb-2 text-xs text-red-600">{saveError}</p>}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="md:col-span-2"><Label className="mb-1 block text-xs">Patient</Label><Input value={form.patientName} disabled className="rounded-xl bg-slate-50" /></div>
+            <div><Label className="mb-1 block text-xs">Region</Label><Input value={form.region} disabled className="rounded-xl bg-slate-50" /></div>
+            <div><Label className="mb-1 block text-xs">Operation District</Label><Input value={form.operationDistrict} disabled className="rounded-xl bg-slate-50" /></div>
+            <div><Label className="mb-1 block text-xs">Doctor / Surgeon</Label><Input value={form.surgeonName} onChange={(e) => set('surgeonName', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Eye</Label><Select value={form.eye} onValueChange={(value) => { if (value) set('eye', value as SurgeryEye); }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{EYES.map((eye) => <SelectItem key={eye} value={eye}>{eye}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="mb-1 block text-xs">Lens</Label><Select value={form.lensType} onValueChange={(value) => { if (value) set('lensType', value as LensType); }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{LENSES.map((lens) => <SelectItem key={lens} value={lens}>{lens}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="mb-1 block text-xs">Status</Label><Select value={form.status} onValueChange={(value) => { if (value) set('status', value as SurgeryStatus); }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="mb-1 block text-xs">Scheduled Date</Label><Input type="datetime-local" value={form.scheduledAt} onChange={(e) => set('scheduledAt', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Actual Surgery Date</Label><Input type="datetime-local" value={form.performedAt ?? ''} onChange={(e) => set('performedAt', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Pre-op VA</Label><Input value={form.preOpVA} onChange={(e) => set('preOpVA', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Post-op VA</Label><Input value={form.postOpVA ?? ''} onChange={(e) => set('postOpVA', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-2"><Label className="mb-1 block text-xs">Complications</Label><Input value={form.complications} onChange={(e) => set('complications', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-4"><Label className="mb-1 block text-xs">Notes</Label><textarea value={form.intraopNotes} onChange={(e) => set('intraopNotes', e.target.value)} className="h-16 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" /></div>
           </div>
         </InlineForm>
       )}
 
-      {unassignedCount > 0 && can('surgeries', 'edit') && (
-        <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-          <AlertTriangle size={15} className="shrink-0 text-amber-600" />
-          <span><strong>{unassignedCount}</strong> {unassignedCount === 1 ? 'surgery is' : 'surgeries are'} missing a surgeon assignment.</span>
-        </div>
-      )}
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_180px_220px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient, doctor, region, district..." className="rounded-xl pl-9" />
+            </div>
+            <Select value={statusFilter} onValueChange={(value) => { if (value) setStatusFilter(value as 'all' | SurgeryStatus); }}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={regionFilter} onValueChange={(value) => { if (value) setRegionFilter(value); }}>
+              <SelectTrigger className="rounded-xl"><SelectValue placeholder="Region" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All regions</SelectItem>
+                {regions.map((region) => <SelectItem key={region} value={region}>{region}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12 text-slate-400 text-sm">Loading...</div>
-      ) : (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 items-start">
-          {(['Scheduled','In-Theatre','Completed','Cancelled'] as SurgeryStatus[]).map((status) => {
-            const c = COL[status];
-            const items = surgeries.filter((s) => s.status === status);
-            return (
-              <div key={status} className={`rounded-2xl border-2 ${c.border} ${c.bg} p-3 min-h-[160px]`}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${c.badge}`}>{status}</span>
-                  <span className="text-xs text-slate-400 font-medium">{items.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {items.map((s) => (
-                    <div key={s.id} className={`bg-white rounded-xl p-3 shadow-sm border border-white/80 hover:shadow-md transition-shadow ${editing?.id === s.id ? 'ring-1 ring-teal-400' : ''}`}>
-                      <div className="flex items-start justify-between gap-1 mb-1.5">
-                        <div>
-                          <p className="font-semibold text-sm text-slate-800 leading-tight">{s.patientName}</p>
-                          <p className="text-xs text-slate-400">{s.eye} Eye · {s.lensType}</p>
-                        </div>
-                        <div className="flex gap-0.5 shrink-0">
-                          {can('surgeries','edit') && <button onClick={() => openEdit(s)} className="p-1 rounded hover:bg-slate-100 text-slate-400"><Pencil size={11} /></button>}
-                          {can('surgeries','delete') && <button onClick={() => setDeleteId(s.id)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"><Trash2 size={11} /></button>}
-                        </div>
+      <Card className="overflow-hidden border-0 shadow-sm">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50">
+                <tr>{['Patient', 'Region', 'Status', 'Eye / Lens', 'Scheduled', 'Actual Date', 'Doctor', 'Completed By', 'Notes', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
+              </thead>
+              <tbody>
+                {isLoading && <tr><td colSpan={10} className="py-12 text-center text-sm text-slate-400">Loading surgeries...</td></tr>}
+                {!isLoading && filteredSurgeries.map((surgery) => (
+                  <tr key={surgery.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-800">{surgery.patientName}</td>
+                    <td className="px-4 py-3 text-slate-600">{surgery.region}<p className="text-xs text-slate-400">{surgery.operationDistrict}</p></td>
+                    <td className="px-4 py-3"><StatusBadge status={surgery.status} /></td>
+                    <td className="px-4 py-3 text-slate-600">{surgery.eye} / {surgery.lensType}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{formatDateTime(surgery.scheduledAt)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '-'}</td>
+                    <td className="px-4 py-3 text-slate-600">{surgery.surgeonName || '-'}</td>
+                    <td className="px-4 py-3 text-slate-600">{surgery.completedByName || '-'}</td>
+                    <td className="max-w-[220px] truncate px-4 py-3 text-xs text-slate-500" title={surgery.intraopNotes || surgery.complications}>{surgery.intraopNotes || surgery.complications || '-'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        {surgery.status !== 'Completed' && can('surgeries', 'edit') && <button onClick={() => setStatus(surgery, 'Completed')} className="rounded-lg bg-green-50 px-2 py-1 text-xs font-medium text-green-700"><CheckCircle size={12} className="mr-1 inline" />Complete</button>}
+                        {can('surgeries', 'edit') && <button onClick={() => openEdit(surgery)} className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Pencil size={14} /></button>}
+                        {can('surgeries', 'delete') && <button onClick={() => remove(surgery)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>}
                       </div>
-                      {s.surgeonId ? (
-                        <p className="text-xs font-medium text-teal-700 bg-teal-50 rounded-full px-2 py-0.5 inline-flex items-center gap-1 mb-1">
-                          <UserCheck size={10} />{s.surgeonName}
-                        </p>
-                      ) : (
-                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                          <span className="text-[10px] font-semibold bg-orange-100 text-orange-700 rounded-full px-2 py-0.5">Surgeon Not Assigned</span>
-                          {can('surgeries','edit') && assigningId !== s.id && (
-                            <button onClick={() => { setAssigningId(s.id); setAssignSurgeonId(''); }}
-                              className="text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full px-2 py-0.5 transition-colors">
-                              Assign
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {assigningId === s.id && (
-                        <div className="mt-1.5 pt-1.5 border-t border-slate-100 space-y-1.5 mb-1">
-                          <Select value={assignSurgeonId} onValueChange={(v) => v && setAssignSurgeonId(v)}>
-                            <SelectTrigger className="rounded-lg h-7 text-xs"><SelectValue placeholder="Select surgeon..." /></SelectTrigger>
-                            <SelectContent>{surgeons.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
-                          </Select>
-                          <div className="flex gap-1">
-                            <button disabled={!assignSurgeonId} onClick={() => confirmAssign(s)}
-                              className="flex-1 text-[10px] font-semibold bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg px-2 py-1 transition-colors">
-                              Confirm
-                            </button>
-                            <button onClick={() => setAssigningId(null)}
-                              className="text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg px-2 py-1 transition-colors">
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      <p className="text-xs text-slate-400 mb-1.5">{s.scheduledAt ? formatDate(s.scheduledAt) : '--'}</p>
-                      {s.preOpVA  ? <p className="text-xs text-slate-500">Pre: <span className="font-mono font-medium">{s.preOpVA}</span></p>  : null}
-                      {s.postOpVA ? <p className="text-xs text-green-600">Post: <span className="font-mono font-medium">{s.postOpVA}</span></p> : null}
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {status === 'Scheduled'  && <button onClick={() => changeStatus(s,'In-Theatre')} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium hover:bg-amber-200">-&gt; Theatre</button>}
-                        {status === 'In-Theatre' && <button onClick={() => changeStatus(s,'Completed')}  className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium hover:bg-green-200">-&gt; Done</button>}
-                        {['Scheduled','In-Theatre'].includes(status) && <button onClick={() => changeStatus(s,'Cancelled')} className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-600 font-medium hover:bg-red-200">Cancel</button>}
-                      </div>
-                    </div>
-                  ))}
-                  {items.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Empty</p>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader><AlertDialogTitle>Delete Surgery?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={async () => { if (deleteId) { await actionDeleteSurgery(deleteId); setSurgeries((prev) => prev.filter((s) => s.id !== deleteId)); } setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                    </td>
+                  </tr>
+                ))}
+                {!isLoading && filteredSurgeries.length === 0 && <tr><td colSpan={10} className="py-12 text-center text-sm text-slate-400">No surgeries found.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
+}
+
+function StatusBadge({ status }: { status: SurgeryStatus }) {
+  const classes: Record<SurgeryStatus, string> = {
+    Scheduled: 'bg-blue-50 text-blue-700',
+    'In-Theatre': 'bg-indigo-50 text-indigo-700',
+    Completed: 'bg-emerald-50 text-emerald-700',
+    Cancelled: 'bg-red-50 text-red-700',
+    Postponed: 'bg-amber-50 text-amber-700',
+  };
+  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes[status]}`}>{status}</span>;
 }

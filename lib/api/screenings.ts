@@ -11,8 +11,12 @@ export function fromPrisma(row: Row): Screening {
     patientId: row.patientId,
     patientName: row.patientName,
     campaignId: row.campaignId,
-    locationId: row.locationId,
+    locationId: row.locationId ?? undefined,
+    region: row.region,
+    operationDistrict: row.operationDistrict,
     screenedBy: row.screenedBy,
+    screenedById: row.screenedById,
+    screenedByName: row.screenedByName,
     screenedAt: (row.screenedAt as Date).toISOString(),
     vaRightUnaided: vaGradeToApp(row.vaRightUnaided) as Screening['vaRightUnaided'],
     vaLeftUnaided: vaGradeToApp(row.vaLeftUnaided) as Screening['vaLeftUnaided'],
@@ -32,8 +36,8 @@ export function fromPrisma(row: Row): Screening {
   };
 }
 
-export async function getAllScreenings(): Promise<Screening[]> {
-  const rows = await prisma.screening.findMany({ orderBy: { screenedAt: 'desc' } });
+export async function getAllScreenings(where: { region?: string } = {}): Promise<Screening[]> {
+  const rows = await prisma.screening.findMany({ where, orderBy: { screenedAt: 'desc' } });
   return rows.map(fromPrisma);
 }
 
@@ -43,8 +47,12 @@ export async function createScreening(data: Omit<Screening, 'id' | 'createdAt'>)
       patientId: data.patientId,
       patientName: data.patientName,
       campaignId: data.campaignId,
-      locationId: data.locationId,
+      locationId: data.locationId || null,
+      region: data.region,
+      operationDistrict: data.operationDistrict,
       screenedBy: data.screenedBy,
+      screenedById: data.screenedById,
+      screenedByName: data.screenedByName,
       screenedAt: new Date(data.screenedAt),
       vaRightUnaided: vaGradeFromApp(data.vaRightUnaided) as never,
       vaLeftUnaided: vaGradeFromApp(data.vaLeftUnaided) as never,
@@ -72,8 +80,12 @@ export async function updateScreening(id: string, data: Omit<Screening, 'id' | '
       patientId: data.patientId,
       patientName: data.patientName,
       campaignId: data.campaignId,
-      locationId: data.locationId,
+      locationId: data.locationId || null,
+      region: data.region,
+      operationDistrict: data.operationDistrict,
       screenedBy: data.screenedBy,
+      screenedById: data.screenedById,
+      screenedByName: data.screenedByName,
       screenedAt: new Date(data.screenedAt),
       vaRightUnaided: vaGradeFromApp(data.vaRightUnaided) as never,
       vaLeftUnaided: vaGradeFromApp(data.vaLeftUnaided) as never,

@@ -1,531 +1,224 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import { formatDate } from '@/lib/utils';
-import type { Patient, Sex, DisabilityStatus, Campaign, Location } from '@/types';
-import { getAllPatients, actionCreatePatient, actionUpdatePatient, actionDeletePatient } from '@/app/actions/patients';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { Campaign, DisabilityStatus, Patient, Sex } from '@/types';
+import { actionCreatePatient, actionDeletePatient, actionUpdatePatient, getAllPatients } from '@/app/actions/patients';
 import { getAllCampaigns } from '@/app/actions/campaigns';
-import { getAllLocations } from '@/app/actions/locations';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Search, Pencil, Trash2, Eye, Phone, MapPin, X, UserPlus,
-  ChevronLeft, ChevronRight, QrCode, ArrowLeft, Save, Navigation, AlertTriangle, Printer,
-} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import InlineForm from '@/components/forms/InlineForm';
+import { formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
-import LocationMapPicker from '@/components/ui/LocationMapPicker';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { QRCodeSVG } from 'qrcode.react';
+import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
-const PAGE_SIZE = 10;
+const SEXES: Sex[] = ['Female', 'Male', 'Other'];
+const DISABILITIES: DisabilityStatus[] = ['None', 'Visual', 'Hearing', 'Mobility', 'Cognitive', 'Multiple'];
 
 const BLANK: Omit<Patient, 'id' | 'patientCode' | 'createdAt'> = {
-  fullName: '', dateOfBirth: '', sex: 'Female', phone: '', email: '',
-  district: '', region: '', occupation: '', education: '',
-  disabilityStatus: 'None', insuranceStatus: 'None',
-  emergencyContact: '', emergencyPhone: '',
-  consentGiven: true, consentDate: new Date().toISOString().split('T')[0],
-  campaignId: '', locationId: '', referralSource: 'CHW', notes: '',
-  lat: undefined, lng: undefined,
+  fullName: '',
+  dateOfBirth: '',
+  sex: 'Female',
+  phone: '',
+  email: '',
+  district: '',
+  region: '',
+  operationDistrict: '',
+  occupation: '',
+  education: '',
+  disabilityStatus: 'None',
+  insuranceStatus: 'None',
+  emergencyContact: '',
+  emergencyPhone: '',
+  consentGiven: true,
+  consentDate: new Date().toISOString().split('T')[0],
+  campaignId: '',
+  locationId: '',
+  referralSource: 'Campaign walk-in',
+  notes: '',
+  registeredById: '',
+  registeredByName: '',
+  screeningStatus: 'Awaiting Screening',
 };
 
-// ─── DisabilityBadge ─────────────────────────────────────────────────────────
-function DisabilityBadge({ status }: { status: DisabilityStatus }) {
-  const color = status === 'None' ? 'bg-slate-100 text-slate-500' :
-    status === 'Visual' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700';
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${color}`}>{status}</span>;
-}
-
-// ─── Native styled select ─────────────────────────────────────────────────────
-function Sel({ value, onChange, children, className = '' }: {
-  value: string; onChange: (v: string) => void;
-  children: React.ReactNode; className?: string;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 cursor-pointer transition-colors ${className}`}
-    >
-      {children}
-    </select>
-  );
-}
-
-// ─── Full-page Patient Form ───────────────────────────────────────────────────
-function PatientFullForm({
-  editing, form, setForm, campaigns, locations, onSave, onCancel, isValid, patients, saveError,
-}: {
-  editing: Patient | null;
-  form: typeof BLANK;
-  setForm: React.Dispatch<React.SetStateAction<typeof BLANK>>;
-  campaigns: Campaign[];
-  locations: Location[];
-  onSave: () => void;
-  onCancel: () => void;
-  isValid: boolean;
-  patients: Patient[];
-  saveError?: string | null;
-}) {
-  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function set(k: keyof typeof BLANK, v: any) {
-    if (v === null || v === undefined) return;
-    setForm((f) => ({ ...f, [k]: v }));
-  }
-
-  function handlePhoneChange(value: string) {
-    set('phone', value);
-    const trimmed = value.trim();
-    if (!trimmed) { setDuplicateWarning(null); return; }
-    const match = patients.find((p) => p.phone.trim() === trimmed && p.id !== editing?.id);
-    setDuplicateWarning(match ? `${match.fullName} (${match.patientCode})` : null);
-  }
-
-  function handleMapSelect(d: { district: string; region: string; lat: number; lng: number }) {
-    setForm((f) => ({ ...f, district: d.district, region: d.region, lat: d.lat, lng: d.lng }));
-  }
-
-  const field = 'w-full h-9 rounded-xl border border-slate-200 px-3 text-sm text-slate-800 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-colors placeholder:text-slate-400';
-
-  return (
-    <div className="-m-4 sm:-m-6 bg-slate-50 flex flex-col" style={{ height: 'calc(100vh - 3.5rem)' }}>
-      {/* Top bar */}
-      <div className="bg-white border-b border-slate-100 px-6 py-3.5 flex items-center justify-between shadow-sm shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={onCancel} className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors">
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h1 className="text-base font-bold text-slate-900">
-              {editing ? `Edit Patient — ${editing.fullName}` : 'Register New Patient'}
-            </h1>
-            <p className="text-xs text-slate-400">Fill in all required fields (*) then save</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onCancel} className="rounded-xl text-slate-600">Cancel</Button>
-          <Button
-            onClick={onSave}
-            disabled={!isValid}
-            className="bg-teal-600 hover:bg-teal-700 text-white rounded-xl gap-2 disabled:opacity-50"
-          >
-            <Save size={14} />
-            {editing ? 'Update Patient' : 'Register Patient'}
-          </Button>
-        </div>
-      </div>
-
-      {saveError && (
-        <div className="bg-red-50 border-b border-red-200 px-6 py-2.5 text-sm text-red-700 font-medium flex items-center gap-2 shrink-0">
-          <AlertTriangle size={14} className="shrink-0" />
-          {saveError}
-        </div>
-      )}
-
-      {/* Body — two columns */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-
-        {/* ── Left: Form fields ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
-          {/* 1. Identity */}
-          <section>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">1. Patient Identity</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="md:col-span-3">
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Full Name *</Label>
-                <input value={form.fullName} onChange={(e) => set('fullName', e.target.value)}
-                  className={`${field} ${!form.fullName.trim() ? 'border-red-300 focus:border-red-400' : ''}`}
-                  placeholder="e.g. Hodan Ali Omar" />
-                {!form.fullName.trim() && <p className="text-[11px] text-red-500 mt-0.5">Required</p>}
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Date of Birth *</Label>
-                <input type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)}
-                  className={`${field} ${!form.dateOfBirth ? 'border-red-300' : ''}`} />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Sex *</Label>
-                <Sel value={form.sex} onChange={(v) => set('sex', v as Sex)}>
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                  <option value="Other">Other</option>
-                </Sel>
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Referral Source</Label>
-                <Sel value={form.referralSource} onChange={(v) => set('referralSource', v)}>
-                  {['CHW','Self','School','Facility','Community Leader','Volunteer'].map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </Sel>
-              </div>
-            </div>
-          </section>
-
-          {/* 2. Contact */}
-          <section>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">2. Contact Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Phone Number *</Label>
-                <input value={form.phone} onChange={(e) => handlePhoneChange(e.target.value)}
-                  className={`${field} ${!form.phone.trim() ? 'border-red-300' : ''}`}
-                  placeholder="+252 61 …" />
-                {!form.phone.trim() && <p className="text-[11px] text-red-500 mt-0.5">Required</p>}
-                {duplicateWarning && (
-                  <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg p-3 text-sm">
-                    <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-                    <span>Warning: A patient with this phone number already exists — <strong>{duplicateWarning}</strong>. You can still save if this is intentional.</span>
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Email (optional)</Label>
-                <input type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)}
-                  className={field} placeholder="patient@example.com" />
-              </div>
-            </div>
-          </section>
-
-          {/* 3. Location — auto-filled from map */}
-          <section>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">3. Location (from map →)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">District</Label>
-                <input value={form.district} onChange={(e) => set('district', e.target.value)}
-                  className={field} placeholder="Auto-filled from map" />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Region</Label>
-                <input value={form.region} onChange={(e) => set('region', e.target.value)}
-                  className={field} placeholder="Auto-filled from map" />
-              </div>
-              {form.lat !== undefined && form.lng !== undefined && (
-                <div className="md:col-span-2 flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-xl px-3 py-2">
-                  <Navigation size={13} className="text-teal-600 shrink-0" />
-                  <p className="text-xs text-teal-700 font-medium">
-                    GPS: {form.lat.toFixed(4)}°, {form.lng.toFixed(4)}°
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 4. Programme */}
-          <section>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">4. Programme</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Campaign</Label>
-                <Sel value={form.campaignId ?? ''} onChange={(v) => set('campaignId', v)}>
-                  <option value="">— Select campaign —</option>
-                  {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </Sel>
-              </div>
-            </div>
-          </section>
-
-          {/* 5. Demographics */}
-          <section>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">5. Demographics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Occupation</Label>
-                <input value={form.occupation ?? ''} onChange={(e) => set('occupation', e.target.value)}
-                  className={field} placeholder="e.g. Farmer, Teacher" />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Education Level</Label>
-                <Sel value={form.education ?? ''} onChange={(v) => set('education', v)}>
-                  <option value="">— Select —</option>
-                  {['None','Primary','Secondary','University','Vocational'].map((e) => (
-                    <option key={e} value={e}>{e}</option>
-                  ))}
-                </Sel>
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Disability Status</Label>
-                <Sel value={form.disabilityStatus} onChange={(v) => set('disabilityStatus', v as DisabilityStatus)}>
-                  {(['None','Visual','Hearing','Mobility','Cognitive','Multiple'] as DisabilityStatus[]).map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </Sel>
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Insurance Status</Label>
-                <Sel value={form.insuranceStatus} onChange={(v) => set('insuranceStatus', v)}>
-                  {['None','Government','Private','NGO-Sponsored'].map((i) => (
-                    <option key={i} value={i}>{i}</option>
-                  ))}
-                </Sel>
-              </div>
-            </div>
-          </section>
-
-          {/* 6. Emergency */}
-          <section>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">6. Emergency Contact</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Emergency Contact Name</Label>
-                <input value={form.emergencyContact} onChange={(e) => set('emergencyContact', e.target.value)}
-                  className={field} placeholder="Full name" />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Emergency Phone</Label>
-                <input value={form.emergencyPhone} onChange={(e) => set('emergencyPhone', e.target.value)}
-                  className={field} placeholder="+252 …" />
-              </div>
-            </div>
-          </section>
-
-          {/* 7. Consent */}
-          <section className="pb-8">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">7. Informed Consent</h3>
-            <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-3">
-              <p className="text-xs text-teal-800 leading-relaxed">
-                The patient has been informed about the eye health programme, data collection, and how their information will be used.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="md:col-span-2">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={form.consentGiven}
-                    onChange={(e) => set('consentGiven', e.target.checked)}
-                    className="w-4 h-4 accent-teal-600 rounded" />
-                  <span className="text-sm font-medium text-slate-700">Patient has given informed consent</span>
-                </label>
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Consent Date</Label>
-                <input type="date" value={form.consentDate} onChange={(e) => set('consentDate', e.target.value)}
-                  className={field} />
-              </div>
-              <div>
-                <Label className="text-xs mb-1 block font-medium text-slate-600">Notes</Label>
-                <textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-500 resize-none h-20 placeholder:text-slate-400"
-                  placeholder="Any additional notes…" />
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* ── Right: Map ── */}
-        <div className="w-[400px] xl:w-[460px] shrink-0 border-l border-slate-100 bg-white p-4 flex flex-col gap-3 overflow-y-auto">
-          <div>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">GPS Location</h3>
-            <p className="text-[11px] text-slate-400">Search a city or click anywhere on the map</p>
-          </div>
-          <div className="flex-1 min-h-0">
-            <LocationMapPicker
-              lat={form.lat}
-              lng={form.lng}
-              onLocationSelect={handleMapSelect}
-            />
-          </div>
-          {(form.district || form.region) && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1 shrink-0">
-              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Selected Location</p>
-              {form.district && <p className="text-sm font-medium text-slate-700"><span className="text-slate-400 text-xs">District:</span> {form.district}</p>}
-              {form.region && <p className="text-sm font-medium text-slate-700"><span className="text-slate-400 text-xs">Region:</span> {form.region}</p>}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PatientsPage() {
-  const { can, maskPatient } = usePermissions();
-
-  const [patients, setPatients]   = useState<Patient[]>([]);
+  const { can, role } = usePermissions();
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const [search, setSearch]     = useState('');
-  const [page, setPage]         = useState(1);
+  const [form, setForm] = useState(BLANK);
+  const [editing, setEditing] = useState<Patient | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing]   = useState<Patient | null>(null);
-  const [viewPt, setViewPt]     = useState<Patient | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm]         = useState<typeof BLANK>(BLANK);
-  const [qrPatient, setQrPatient] = useState<Patient | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getAllPatients(), getAllCampaigns(), getAllLocations()])
-      .then(([p, c, l]) => { setPatients(p); setCampaigns(c); setLocations(l); })
-      .catch((e: Error) => setLoadError(e.message))
-      .finally(() => setIsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.all([getAllPatients(), getAllCampaigns()]).then(([patientRows, campaignRows]) => {
+      setPatients(patientRows);
+      setCampaigns(campaignRows);
+      const defaultCampaign = campaignRows.find((campaign) => campaign.status === 'Active') ?? campaignRows[0];
+      if (defaultCampaign) {
+        setForm((current) => applyCampaignContext(current, defaultCampaign));
+      }
+      setIsLoading(false);
+    });
   }, []);
 
-  const filtered = patients.filter((p) =>
-    p.fullName.toLowerCase().includes(search.toLowerCase()) ||
-    p.patientCode.toLowerCase().includes(search.toLowerCase()) ||
-    p.phone.includes(search),
-  );
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return patients;
+    return patients.filter((patient) =>
+      patient.fullName.toLowerCase().includes(q) ||
+      patient.patientCode.toLowerCase().includes(q) ||
+      patient.phone.includes(q) ||
+      patient.region.toLowerCase().includes(q),
+    );
+  }, [patients, search]);
 
-  const isValid = form.fullName.trim().length > 0 && form.dateOfBirth.length > 0 && form.phone.trim().length > 0;
+  function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
 
-  function openAdd() { setEditing(null); setForm(BLANK); setShowForm(true); }
-  function openEdit(p: Patient) {
-    setEditing(p);
-    const { id, patientCode, createdAt, ...rest } = p;
-    setForm(rest);
+  function chooseCampaign(campaignId: string) {
+    const campaign = campaigns.find((item) => item.id === campaignId);
+    if (!campaign) return;
+    setForm((current) => applyCampaignContext(current, campaign));
+  }
+
+  function openAdd() {
+    setEditing(null);
+    const defaultCampaign = campaigns.find((campaign) => campaign.status === 'Active') ?? campaigns[0];
+    setForm(defaultCampaign ? applyCampaignContext(BLANK, defaultCampaign) : BLANK);
+    setSaveError('');
     setShowForm(true);
   }
-  function cancel() { setShowForm(false); setEditing(null); }
+
+  function openEdit(patient: Patient) {
+    const editable = Object.fromEntries(
+      Object.entries(patient).filter(([key]) => key !== 'id' && key !== 'patientCode' && key !== 'createdAt')
+    ) as typeof BLANK;
+    setEditing(patient);
+    setForm(editable);
+    setSaveError('');
+    setShowForm(true);
+  }
 
   async function save() {
-    setSaveError(null);
-    if (editing) {
-      const result = await actionUpdatePatient(editing.id, form);
-      if (!result.ok) { setSaveError(result.error); return; }
-      setPatients((prev) => prev.map((p) => p.id === editing.id ? result.data : p));
-    } else {
-      const result = await actionCreatePatient(form);
-      if (!result.ok) { setSaveError(result.error); return; }
-      setPatients((prev) => [result.data, ...prev]);
+    setSaveError('');
+    const result = editing
+      ? await actionUpdatePatient(editing.id, form)
+      : await actionCreatePatient(form);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
     }
-    setShowForm(false); setEditing(null);
+    setPatients((rows) => editing
+      ? rows.map((row) => row.id === editing.id ? result.data : row)
+      : [result.data, ...rows]);
+    setShowForm(false);
+    setEditing(null);
   }
 
-  // ── Full-page form mode ──
-  if (showForm) {
-    return (
-      <PatientFullForm
-        editing={editing}
-        form={form}
-        setForm={setForm}
-        campaigns={campaigns}
-        locations={locations}
-        onSave={save}
-        onCancel={cancel}
-        isValid={isValid}
-        patients={patients}
-        saveError={saveError}
-      />
-    );
+  async function remove(patient: Patient) {
+    const result = await actionDeletePatient(patient.id);
+    if (result.ok) setPatients((rows) => rows.filter((row) => row.id !== patient.id));
   }
 
-  // ── Loading / error ──
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24 text-slate-400">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm">Loading patients...</p>
-        </div>
-      </div>
-    );
-  }
-  if (loadError) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="text-center max-w-sm">
-          <AlertTriangle size={32} className="text-amber-500 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-700">Failed to load patients</p>
-          <p className="text-xs text-slate-400 mt-1">{loadError}</p>
-        </div>
-      </div>
-    );
-  }
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === form.campaignId);
+  const clerkCampaignLocked = role === 'Data Clerk' && !!selectedCampaign;
 
-  // ── List mode ──
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Patients</h1>
-          <p className="text-sm text-slate-500">{patients.length} registered beneficiaries</p>
+          <p className="text-sm text-slate-500">Register patients into a regional campaign and screening queue</p>
         </div>
-        {can('patients', 'create') && (
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
-          >
-            <UserPlus size={15} /> Add Patient
-          </button>
-        )}
+        {can('patients', 'create') && !showForm && <Button onClick={openAdd} className="gap-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700"><Plus size={15} />Register Patient</Button>}
+        {showForm && <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
       </div>
 
-      {/* Search */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-          <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search name, code, phone…" className="pl-9 rounded-xl border-slate-200" />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-              <X size={14} />
-            </button>
-          )}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {[
-            { label: 'All',    count: patients.length,                                   color: 'bg-slate-100 text-slate-700' },
-            { label: 'Female', count: patients.filter((p) => p.sex === 'Female').length,  color: 'bg-pink-100 text-pink-700' },
-            { label: 'Male',   count: patients.filter((p) => p.sex === 'Male').length,    color: 'bg-blue-100 text-blue-700' },
-          ].map(({ label, count, color }) => (
-            <span key={label} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${color}`}>{label}: {count}</span>
-          ))}
-        </div>
+      {showForm && (
+        <InlineForm
+          title={editing ? `Edit ${editing.fullName}` : 'Register Patient'}
+          onClose={() => setShowForm(false)}
+          onSave={save}
+          saveLabel={editing ? 'Update Patient' : 'Register Patient'}
+          saveDisabled={!form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId}
+        >
+          {saveError && <p className="mb-2 text-xs text-red-600">{saveError}</p>}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="md:col-span-2"><Label className="mb-1 block text-xs">Full Name *</Label><Input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Date of Birth *</Label><Input type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} className="rounded-xl" /></div>
+            <div>
+              <Label className="mb-1 block text-xs">Sex</Label>
+              <Select value={form.sex} onValueChange={(value) => { if (value) set('sex', value as Sex); }}>
+                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>{SEXES.map((sex) => <SelectItem key={sex} value={sex}>{sex}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><Label className="mb-1 block text-xs">Phone *</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Email</Label><Input type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-2">
+              <Label className="mb-1 block text-xs">Campaign *</Label>
+              {clerkCampaignLocked ? (
+                <Input value={`${selectedCampaign.name} | ${selectedCampaign.region}`} disabled className="rounded-xl bg-slate-50" />
+              ) : (
+                <Select value={form.campaignId ?? ''} onValueChange={(value) => { if (value) chooseCampaign(value); }}>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select campaign" /></SelectTrigger>
+                  <SelectContent>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} | {campaign.region}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+              <p className="mt-1 text-xs text-slate-400">Region and operation district are locked from the selected campaign.</p>
+            </div>
+            <div><Label className="mb-1 block text-xs">Region</Label><Input value={form.region} disabled className="rounded-xl bg-slate-50" /></div>
+            <div><Label className="mb-1 block text-xs">Operation District</Label><Input value={form.operationDistrict} disabled className="rounded-xl bg-slate-50" /></div>
+            <div><Label className="mb-1 block text-xs">Occupation</Label><Input value={form.occupation ?? ''} onChange={(e) => set('occupation', e.target.value)} className="rounded-xl" /></div>
+            <div>
+              <Label className="mb-1 block text-xs">Disability Status</Label>
+              <Select value={form.disabilityStatus} onValueChange={(value) => { if (value) set('disabilityStatus', value as DisabilityStatus); }}>
+                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>{DISABILITIES.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><Label className="mb-1 block text-xs">Emergency Contact</Label><Input value={form.emergencyContact} onChange={(e) => set('emergencyContact', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">Emergency Phone</Label><Input value={form.emergencyPhone} onChange={(e) => set('emergencyPhone', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-4"><Label className="mb-1 block text-xs">Notes</Label><textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} className="h-16 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" /></div>
+          </div>
+        </InlineForm>
+      )}
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patients..." className="rounded-xl pl-9" />
       </div>
 
-      {/* Table */}
-      <Card className="border-0 shadow-sm overflow-hidden">
+      <Card className="overflow-hidden border-0 shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  {['Patient Code','Full Name','Sex / DOB','Phone','District','Disability','Campaign','Registered',''].map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
+              <thead className="border-b border-slate-100 bg-slate-50">
+                <tr>{['Code', 'Patient', 'Phone', 'Region', 'Campaign', 'Screening', 'Registered By', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
               </thead>
               <tbody>
-                {paged.length === 0 && (
-                  <tr><td colSpan={9} className="text-center py-12 text-slate-400 text-sm">No patients found.</td></tr>
-                )}
-                {paged.map((p) => {
-                  const camp = campaigns.find((c) => c.id === p.campaignId);
+                {isLoading && <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">Loading patients...</td></tr>}
+                {!isLoading && filtered.map((patient) => {
+                  const campaign = campaigns.find((item) => item.id === patient.campaignId);
                   return (
-                    <tr key={p.id} className={`border-b border-slate-50 hover:bg-slate-50/70 transition-colors ${editing?.id === p.id ? 'bg-teal-50/40' : ''}`}>
-                      <td className="px-4 py-3 font-mono text-xs text-teal-700 font-semibold whitespace-nowrap">{maskPatient ? '***' : p.patientCode}</td>
-                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{maskPatient ? '— Masked —' : p.fullName}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{p.sex} · {maskPatient ? '••••' : (p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : '—')}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{maskPatient ? '•••••••••' : p.phone}</td>
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{p.district}</td>
-                      <td className="px-4 py-3 whitespace-nowrap"><DisabilityBadge status={p.disabilityStatus} /></td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {camp ? <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5 font-medium">{camp.type}</span> : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDate(p.createdAt)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => setViewPt(p)} className="p-1.5 rounded-lg hover:bg-teal-50 text-slate-400 hover:text-teal-600 transition-colors" title="View"><Eye size={14} /></button>
-                          <button onClick={() => setQrPatient(p)} className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors" title="ID Card"><QrCode size={14} /></button>
-                          {can('patients', 'edit') && <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors" title="Edit"><Pencil size={14} /></button>}
-                          {can('patients', 'delete') && <button onClick={() => setDeleteId(p.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14} /></button>}
+                    <tr key={patient.id} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{patient.patientCode}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{patient.fullName}<span className="ml-2 text-xs text-slate-400">{formatDate(patient.dateOfBirth)}</span></td>
+                      <td className="px-4 py-3 text-slate-600">{patient.phone}</td>
+                      <td className="px-4 py-3 text-slate-600">{patient.region}</td>
+                      <td className="px-4 py-3 text-slate-600">{campaign?.name ?? '-'}</td>
+                      <td className="px-4 py-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">{patient.screeningStatus}</span></td>
+                      <td className="px-4 py-3 text-slate-600">{patient.registeredByName || '-'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          {can('patients', 'edit') && <button onClick={() => openEdit(patient)} className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Pencil size={14} /></button>}
+                          {can('patients', 'delete') && <button onClick={() => remove(patient)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>}
                         </div>
                       </td>
                     </tr>
@@ -534,147 +227,18 @@ export default function PatientsPage() {
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-            <p className="text-xs text-slate-400">{filtered.length} patient{filtered.length !== 1 ? 's' : ''} · page {page} of {totalPages}</p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronLeft size={14} /></button>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronRight size={14} /></button>
-            </div>
-          </div>
         </CardContent>
       </Card>
-
-      {/* View detail inline card */}
-      {viewPt && (
-        <Card className="border-0 shadow-md ring-1 ring-slate-200">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center">
-                  <Eye size={14} className="text-teal-600" />
-                </div>
-                {viewPt.fullName}
-                <span className="font-mono text-xs text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-full">{viewPt.patientCode}</span>
-              </h3>
-              <button onClick={() => setViewPt(null)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400"><X size={16} /></button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div><p className="text-xs text-slate-400 font-medium">Sex / DOB</p><p className="font-medium">{viewPt.sex} · {viewPt.dateOfBirth}</p></div>
-              <div><p className="text-xs text-slate-400 font-medium flex items-center gap-1"><Phone size={10} />Phone</p><p>{viewPt.phone}</p></div>
-              <div><p className="text-xs text-slate-400 font-medium flex items-center gap-1"><MapPin size={10} />District</p><p>{viewPt.district}, {viewPt.region}</p></div>
-              <div><p className="text-xs text-slate-400 font-medium">Disability</p><DisabilityBadge status={viewPt.disabilityStatus} /></div>
-              <div><p className="text-xs text-slate-400 font-medium">Insurance</p><p>{viewPt.insuranceStatus}</p></div>
-              <div><p className="text-xs text-slate-400 font-medium">Referral</p><p>{viewPt.referralSource}</p></div>
-              {viewPt.lat !== undefined && viewPt.lng !== undefined && (
-                <div><p className="text-xs text-slate-400 font-medium flex items-center gap-1"><Navigation size={10} />GPS</p>
-                  <p className="font-mono text-xs">{viewPt.lat.toFixed(3)}, {viewPt.lng.toFixed(3)}</p></div>
-              )}
-              <div><p className="text-xs text-slate-400 font-medium">Consent</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${viewPt.consentGiven ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                  {viewPt.consentGiven ? '✓ Given' : '✗ Not given'}
-                </span>
-              </div>
-            </div>
-            {viewPt.notes && <p className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-xl p-3">{viewPt.notes}</p>}
-            <div className="mt-4 flex gap-2">
-              {can('patients', 'edit') && (
-                <button onClick={() => { setViewPt(null); openEdit(viewPt); }}
-                  className="flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors">
-                  <Pencil size={13} /> Edit
-                </button>
-              )}
-              <button onClick={() => setViewPt(null)}
-                className="flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors">
-                Close
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Print isolation style */}
-      <style>{`@media print { * { visibility: hidden !important; } #qr-patient-card, #qr-patient-card * { visibility: visible !important; } #qr-patient-card { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; } }`}</style>
-
-      {/* QR ID Card modal */}
-      {qrPatient && (
-        <Dialog open={!!qrPatient} onOpenChange={(open) => { if (!open) setQrPatient(null); }}>
-          <DialogContent showCloseButton={false} className="max-w-sm rounded-2xl p-0 overflow-hidden">
-            <div id="qr-patient-card" className="bg-white">
-              <div className="bg-teal-600 px-6 py-4 text-white">
-                <p className="text-xs font-semibold uppercase tracking-widest opacity-80">Patient ID Card</p>
-                <h2 className="text-lg font-bold mt-0.5">{qrPatient.fullName}</h2>
-                <p className="text-sm font-mono opacity-80">{qrPatient.patientCode}</p>
-              </div>
-              <div className="px-6 py-5 flex gap-5">
-                <div className="flex-1 grid grid-cols-1 gap-2.5 text-sm">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Date of Birth</p>
-                    <p className="text-slate-700 font-medium">{formatDate(qrPatient.dateOfBirth)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Sex</p>
-                    <p className="text-slate-700 font-medium capitalize">{qrPatient.sex}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Phone</p>
-                    <p className="text-slate-700 font-medium">{maskPatient ? '•••••••••' : qrPatient.phone}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">District</p>
-                    <p className="text-slate-700 font-medium">{qrPatient.district}, {qrPatient.region}</p>
-                  </div>
-                </div>
-                <div className="flex flex-col items-center justify-center">
-                  <QRCodeSVG
-                    value={JSON.stringify({ id: qrPatient.id, code: qrPatient.patientCode, name: qrPatient.fullName })}
-                    size={130}
-                    fgColor="#0d9488"
-                    bgColor="#ffffff"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1.5">Scan to verify</p>
-                </div>
-              </div>
-              <div className="px-6 pb-5 flex gap-2 print:hidden">
-                <button
-                  onClick={() => window.print()}
-                  className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors flex-1 justify-center"
-                >
-                  <Printer size={14} /> Print Card
-                </button>
-                <button
-                  onClick={() => setQrPatient(null)}
-                  className="flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Delete confirm */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader><AlertDialogTitle>Delete Patient?</AlertDialogTitle>
-            <AlertDialogDescription>This will permanently remove the patient record. This cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (deleteId) {
-                  const result = await actionDeletePatient(deleteId);
-                  if (!result.ok) { setSaveError(result.error); }
-                  else { setPatients((prev) => prev.filter((p) => p.id !== deleteId)); }
-                }
-                setDeleteId(null);
-              }}
-              className="bg-red-600 hover:bg-red-700 rounded-xl"
-            >Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
+}
+
+function applyCampaignContext(form: typeof BLANK, campaign: Campaign): typeof BLANK {
+  return {
+    ...form,
+    campaignId: campaign.id,
+    region: campaign.region,
+    operationDistrict: campaign.operationDistrict,
+    district: campaign.operationDistrict,
+  };
 }

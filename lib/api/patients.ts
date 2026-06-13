@@ -14,6 +14,7 @@ export function fromPrisma(row: PrismaPatient): Patient {
     email: row.email ?? undefined,
     district: row.district,
     region: row.region,
+    operationDistrict: row.operationDistrict,
     occupation: row.occupation ?? undefined,
     education: row.education ?? undefined,
     disabilityStatus: row.disabilityStatus as Patient['disabilityStatus'],
@@ -30,12 +31,16 @@ export function fromPrisma(row: PrismaPatient): Patient {
     notes: row.notes ?? undefined,
     lat: row.lat ?? undefined,
     lng: row.lng ?? undefined,
+    registeredById: row.registeredById,
+    registeredByName: row.registeredByName,
+    screeningStatus: row.screeningStatus as Patient['screeningStatus'],
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
 
-export async function getAllPatients(): Promise<Patient[]> {
+export async function getAllPatients(where: { region?: string } = {}): Promise<Patient[]> {
   const rows = await prisma.patient.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
   });
   return rows.map(fromPrisma);

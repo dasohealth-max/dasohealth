@@ -10,9 +10,9 @@ import { cn } from '@/lib/utils';
 
 const DEMOS = [
   { email: 'admin@eyecare.org',   pass: 'admin123',  label: 'Super Admin',     desc: 'Full access',        icon: Shield,         color: 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100' },
-  { email: 'dr.sara@eyecare.org', pass: 'doctor123', label: 'Ophthalmologist', desc: 'Clinical access',    icon: UserRound,      color: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100' },
+  { email: 'screener@eyecare.org', pass: 'screen123', label: 'Screener', desc: 'Screening & follow-up', icon: UserRound,      color: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100' },
   { email: 'pm@eyecare.org',      pass: 'pm123',     label: 'Project Manager', desc: 'Campaign & reports', icon: BarChart3,      color: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
-  { email: 'donor@eyecare.org',   pass: 'donor123',  label: 'Donor',           desc: 'Aggregate view',     icon: HeartHandshake, color: 'bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100' },
+  { email: 'clerk@eyecare.org',   pass: 'clerk123',  label: 'Data Clerk',      desc: 'Patient registration', icon: HeartHandshake, color: 'bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100' },
 ];
 
 function LoginForm() {

@@ -11,8 +11,7 @@ import {
 import { getAllPatients } from '@/app/actions/patients';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
-import { getAllReferrals } from '@/app/actions/referrals';
-import type { Patient, Campaign, FollowUp, Referral } from '@/types';
+import type { Patient, Campaign, FollowUp } from '@/types';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -28,18 +27,15 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const [patients, setPatients]   = useState<Patient[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [referrals, setReferrals] = useState<Referral[]>([]);
 
   useEffect(() => {
-    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps(), getAllReferrals()])
-      .then(([p, c, f, r]) => { setPatients(p); setCampaigns(c); setFollowUps(f); setReferrals(r); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps()])
+      .then(([p, c, f]) => { setPatients(p); setCampaigns(c); setFollowUps(f); });
   }, []);
 
   // Real notification count
   const overdueCount  = followUps.filter((f) => f.status === 'Overdue').length;
-  const pendingCount  = referrals.filter((r) => r.status === 'Pending').length;
-  const notifCount    = overdueCount + pendingCount;
+  const notifCount    = overdueCount;
 
   // Close search on outside click
   useEffect(() => {
@@ -157,7 +153,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         )}
         {showResults && q.length >= 2 && !hasResults && (
           <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-100 px-3 py-3 z-50">
-            <p className="text-sm text-slate-400 text-center">No results for "{q}"</p>
+            <p className="text-sm text-slate-400 text-center">No results for &quot;{q}&quot;</p>
           </div>
         )}
       </div>
@@ -173,7 +169,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       {/* Notifications — use div inside Link to avoid <a><button> nesting */}
       <Link
         href="/followups"
-        title="View overdue follow-ups & pending referrals"
+        title="View overdue follow-ups"
         className="relative p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors flex items-center justify-center"
       >
         <Bell size={18} />

@@ -1,185 +1,460 @@
 'use client';
-import { useState, useEffect } from 'react';
-import type { Campaign, CampaignType, CampaignStatus, Screening, Surgery } from '@/types';
-import { getAllCampaigns, actionCreateCampaign, actionUpdateCampaign, actionDeleteCampaign } from '@/app/actions/campaigns';
-import { getAllScreenings } from '@/app/actions/screenings';
-import { getAllSurgeries } from '@/app/actions/surgeries';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { Campaign, CampaignStatus, CampaignType, User } from '@/types';
+import { actionCreateCampaign, actionCreateCampaignsBulk, actionDeleteCampaign, actionUpdateCampaign, getAllCampaigns } from '@/app/actions/campaigns';
+import { actionGetAllUsers } from '@/app/actions/users';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineForm from '@/components/forms/InlineForm';
-import { Plus, Pencil, Trash2, Megaphone, Calendar, DollarSign, Target, X } from 'lucide-react';
+import { defaultOperationDistrict, defaultSurgeryTarget, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
+import { Calendar, MapPin, Pencil, Plus, RotateCcw, Target, Trash2, UserRound, X } from 'lucide-react';
+
+const TYPES: CampaignType[] = ['Cataract', 'School Eye Health', 'Diabetic Retinopathy', 'Glaucoma', 'General'];
+const STATUSES: CampaignStatus[] = ['Planned', 'Active', 'Completed', 'Suspended'];
 
 const BLANK: Omit<Campaign, 'id' | 'createdAt'> = {
-  name: '', type: 'Cataract', status: 'Planned', startDate: '', endDate: '',
-  budget: 0, donors: '', targetScreenings: 0, targetSurgeries: 0, targetFollowUps: 0,
-  locationIds: [], description: '',
+  name: '',
+  type: 'Cataract',
+  status: 'Planned',
+  region: 'Banadir / Mogadishu',
+  operationDistrict: 'Mogadishu',
+  projectManagerId: '',
+  projectManagerName: '',
+  startDate: '',
+  endDate: '',
+  budget: 0,
+  donors: '',
+  targetScreenings: 0,
+  targetSurgeries: 800,
+  targetFollowUps: 0,
+  locationIds: [],
+  description: '',
 };
-const STATUS_COLORS: Record<CampaignStatus, string> = {
-  Active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  Planned: 'bg-amber-100 text-amber-700 border-amber-200',
-  Completed: 'bg-slate-100 text-slate-600 border-slate-200',
-  Suspended: 'bg-red-100 text-red-700 border-red-200',
-};
+
+type CampaignForm = typeof BLANK;
+type BulkCampaignForm = CampaignForm & { enabled: boolean };
 
 export default function CampaignsPage() {
-  const { can } = usePermissions();
-  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
-  const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [surgeries, setSurgeries]   = useState<Surgery[]>([]);
-  const [isLoading, setIsLoading]   = useState(true);
-  const [saveError, setSaveError]   = useState('');
-  const [showForm, setShowForm]     = useState(false);
-  const [editing, setEditing]       = useState<Campaign | null>(null);
-  const [deleteId, setDeleteId]     = useState<string | null>(null);
-  const [form, setForm]             = useState<typeof BLANK>(BLANK);
+  const { can, role } = usePermissions();
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [form, setForm] = useState<CampaignForm>(BLANK);
+  const [bulkForms, setBulkForms] = useState<BulkCampaignForm[]>(() => createBulkDefaults());
+  const [editing, setEditing] = useState<Campaign | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  const isSuperAdmin = role === 'Super Administrator';
+
+  const managers = useMemo(
+    () => users.filter((u) => u.role === 'Project Manager' && (!form.region || u.assignedRegion === form.region)),
+    [form.region, users],
+  );
+
+  const enabledBulkForms = bulkForms.filter((campaign) => campaign.enabled);
+  const bulkSaveDisabled = enabledBulkForms.length === 0 || enabledBulkForms.some((campaign) => (
+    !campaign.name ||
+    !campaign.region ||
+    !campaign.operationDistrict ||
+    !campaign.projectManagerId ||
+    !campaign.startDate ||
+    !campaign.endDate ||
+    campaign.targetSurgeries < 1
+  ));
 
   useEffect(() => {
-    Promise.all([getAllCampaigns(), getAllScreenings(), getAllSurgeries()])
-      .then(([c, s, sg]) => { setCampaigns(c); setScreenings(s); setSurgeries(sg); setIsLoading(false); });
+    Promise.all([getAllCampaigns(), actionGetAllUsers()]).then(([campaignRows, userResult]) => {
+      setCampaigns(campaignRows);
+      if (userResult.ok) setUsers(userResult.data);
+      setIsLoading(false);
+    });
   }, []);
 
-  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
-  function openEdit(c: Campaign) { setEditing(c); const { id, createdAt, ...r } = c; setForm(r); setSaveError(''); setShowForm(true); }
-  function cancel() { setShowForm(false); setEditing(null); }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function setField(k: keyof typeof BLANK, v: any) { setForm((f) => ({ ...f, [k]: v })); }
+  function set<K extends keyof CampaignForm>(key: K, value: CampaignForm[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function chooseRegion(region: string) {
+    setForm((current) => ({
+      ...current,
+      region,
+      operationDistrict: defaultOperationDistrict(region),
+      targetSurgeries: defaultSurgeryTarget(region),
+      projectManagerId: '',
+      projectManagerName: '',
+    }));
+  }
+
+  function chooseManager(id: string) {
+    const manager = users.find((u) => u.id === id);
+    setForm((current) => ({
+      ...current,
+      projectManagerId: id,
+      projectManagerName: manager?.name ?? '',
+    }));
+  }
+
+  function updateBulk(index: number, patch: Partial<BulkCampaignForm>) {
+    setBulkForms((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row));
+  }
+
+  function chooseBulkRegion(index: number, region: string) {
+    updateBulk(index, {
+      region,
+      operationDistrict: defaultOperationDistrict(region),
+      targetSurgeries: defaultSurgeryTarget(region),
+      targetScreenings: defaultSurgeryTarget(region) * 2,
+      targetFollowUps: defaultSurgeryTarget(region),
+      projectManagerId: '',
+      projectManagerName: '',
+      name: `${region} Cataract Surgery Campaign`,
+    });
+  }
+
+  function chooseBulkManager(index: number, id: string) {
+    const manager = users.find((u) => u.id === id);
+    updateBulk(index, {
+      projectManagerId: id,
+      projectManagerName: manager?.name ?? '',
+    });
+  }
+
+  function resetBulkDefaults() {
+    setBulkForms(createBulkDefaults());
+    setSaveError('');
+  }
+
+  function openAdd() {
+    setForm(BLANK);
+    setBulkForms(createBulkDefaults());
+    setEditing(null);
+    setSaveError('');
+    setShowForm(true);
+  }
+
+  function openEdit(campaign: Campaign) {
+    const editable = Object.fromEntries(
+      Object.entries(campaign).filter(([key]) => key !== 'id' && key !== 'createdAt')
+    ) as CampaignForm;
+    setForm(editable);
+    setEditing(campaign);
+    setSaveError('');
+    setShowForm(true);
+  }
 
   async function save() {
     setSaveError('');
-    if (editing) {
-      const res = await actionUpdateCampaign(editing.id, form);
-      if (!res.ok) { setSaveError(res.error); return; }
-      setCampaigns((prev) => prev.map((c) => c.id === editing.id ? res.data : c));
-    } else {
-      const res = await actionCreateCampaign(form);
-      if (!res.ok) { setSaveError(res.error); return; }
-      setCampaigns((prev) => [res.data, ...prev]);
+
+    if (!editing && isSuperAdmin) {
+      const result = await actionCreateCampaignsBulk(enabledBulkForms.map(stripEnabled));
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      setCampaigns((rows) => [...result.data, ...rows]);
+      setShowForm(false);
+      return;
     }
-    cancel();
+
+    const result = editing
+      ? await actionUpdateCampaign(editing.id, form)
+      : await actionCreateCampaign(form);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
+    }
+    setCampaigns((rows) => editing
+      ? rows.map((row) => row.id === editing.id ? result.data : row)
+      : [result.data, ...rows]);
+    setShowForm(false);
+    setEditing(null);
   }
 
-  async function confirmDelete() {
-    if (!deleteId) return;
-    const res = await actionDeleteCampaign(deleteId);
-    if (res.ok) setCampaigns((prev) => prev.filter((c) => c.id !== deleteId));
-    setDeleteId(null);
+  async function remove(campaign: Campaign) {
+    const result = await actionDeleteCampaign(campaign.id);
+    if (result.ok) setCampaigns((rows) => rows.filter((row) => row.id !== campaign.id));
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Campaigns</h1>
-          <p className="text-sm text-slate-500">{campaigns.length} campaigns &middot; {campaigns.filter((c) => c.status === 'Active').length} active</p>
+          <p className="text-sm text-slate-500">Create one-region campaigns and assign accountable Project Managers</p>
         </div>
-        {can('campaigns', 'create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />New Campaign</Button>}
-        {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
+        {can('campaigns', 'create') && !showForm && (
+          <Button onClick={openAdd} className="gap-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700">
+            <Plus size={15} /> {isSuperAdmin ? 'Create Campaigns' : 'New Campaign'}
+          </Button>
+        )}
+        {showForm && (
+          <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-xl">
+            <X size={14} /> Cancel
+          </Button>
+        )}
       </div>
 
       {showForm && (
-        <InlineForm title={editing ? `Edit - ${editing.name}` : 'New Campaign'} onClose={cancel} onSave={save}
-          saveLabel={editing ? 'Update Campaign' : 'Create Campaign'} saveDisabled={!form.name}>
-          {saveError && <p className="text-xs text-red-600 mb-2">{saveError}</p>}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="col-span-2 md:col-span-2">
-              <Label className="text-xs mb-1 block">Campaign Name *</Label>
-              <Input value={form.name} onChange={(e) => setField('name', e.target.value)} className="rounded-xl" placeholder="e.g. Rural Cataract Outreach" />
+        <InlineForm
+          title={editing ? `Edit ${editing.name}` : isSuperAdmin ? 'Create Campaigns for 9 Regions' : 'Create Regional Campaign'}
+          onClose={() => setShowForm(false)}
+          onSave={save}
+          saveLabel={editing ? 'Update Campaign' : isSuperAdmin ? `Create ${enabledBulkForms.length} Campaigns` : 'Create Campaign'}
+          saveDisabled={editing || !isSuperAdmin
+            ? !form.name || !form.region || !form.operationDistrict || !form.projectManagerId || !form.startDate || !form.endDate
+            : bulkSaveDisabled}
+        >
+          {saveError && <p className="mb-2 text-xs text-red-600">{saveError}</p>}
+          {editing || !isSuperAdmin ? (
+            <SingleCampaignForm
+              form={form}
+              managers={managers}
+              set={set}
+              chooseRegion={chooseRegion}
+              chooseManager={chooseManager}
+            />
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-500">All regions are ready by default. Disable a region or change city, manager, dates, targets, and status before saving.</p>
+                <Button type="button" variant="outline" onClick={resetBulkDefaults} className="gap-2 rounded-xl">
+                  <RotateCcw size={14} /> Reset
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+                {bulkForms.map((campaign, index) => {
+                  const regionManagers = users.filter((u) => u.role === 'Project Manager' && u.assignedRegion === campaign.region);
+                  return (
+                    <div key={`${campaign.region}-${index}`} className={`rounded-xl border p-3 ${campaign.enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-70'}`}>
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{campaign.region}</p>
+                          <p className="text-xs text-slate-500">{campaign.operationDistrict}</p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={campaign.enabled}
+                            onChange={(event) => updateBulk(index, { enabled: event.target.checked })}
+                            className="h-4 w-4 rounded border-slate-300 text-teal-600"
+                          />
+                          Enabled
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <Label className="mb-1 block text-xs">Campaign Name *</Label>
+                          <Input value={campaign.name} onChange={(e) => updateBulk(index, { name: e.target.value })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">State / Region *</Label>
+                          <Select value={campaign.region} disabled={!campaign.enabled} onValueChange={(value) => { if (value) chooseBulkRegion(index, value); }}>
+                            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectContent>{REGIONAL_CAMPAIGN_AREAS.map((area) => <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">City / District *</Label>
+                          <Input value={campaign.operationDistrict} onChange={(e) => updateBulk(index, { operationDistrict: e.target.value })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">Project Manager *</Label>
+                          <Select value={campaign.projectManagerId} disabled={!campaign.enabled || regionManagers.length === 0} onValueChange={(value) => { if (value) chooseBulkManager(index, value); }}>
+                            <SelectTrigger className="rounded-xl"><SelectValue placeholder={regionManagers.length ? 'Select manager' : 'No PM'} /></SelectTrigger>
+                            <SelectContent>{regionManagers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">Status</Label>
+                          <Select value={campaign.status} disabled={!campaign.enabled} onValueChange={(value) => { if (value) updateBulk(index, { status: value as CampaignStatus }); }}>
+                            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectContent>{STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">Start Date *</Label>
+                          <Input type="date" value={campaign.startDate} onChange={(e) => updateBulk(index, { startDate: e.target.value })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">End Date *</Label>
+                          <Input type="date" value={campaign.endDate} onChange={(e) => updateBulk(index, { endDate: e.target.value })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">Surgery Target *</Label>
+                          <Input type="number" value={campaign.targetSurgeries} onChange={(e) => updateBulk(index, { targetSurgeries: Number(e.target.value) })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block text-xs">Budget</Label>
+                          <Input type="number" value={campaign.budget} onChange={(e) => updateBulk(index, { budget: Number(e.target.value) })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label className="mb-1 block text-xs">Donors</Label>
+                          <Input value={campaign.donors} onChange={(e) => updateBulk(index, { donors: e.target.value })} disabled={!campaign.enabled} className="rounded-xl" />
+                        </div>
+                      </div>
+                      {campaign.enabled && regionManagers.length === 0 && (
+                        <p className="mt-2 text-xs text-red-600">Add a Project Manager for {campaign.region} in Settings before creating this campaign.</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div><Label className="text-xs mb-1 block">Type</Label>
-              <Select value={form.type} onValueChange={(v) => setField('type', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{(['Cataract','School Eye Health','Diabetic Retinopathy','Glaucoma','General'] as CampaignType[]).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label className="text-xs mb-1 block">Status</Label>
-              <Select value={form.status} onValueChange={(v) => setField('status', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{(['Planned','Active','Completed','Suspended'] as CampaignStatus[]).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label className="text-xs mb-1 block">Start Date</Label><Input type="date" value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">End Date</Label><Input type="date" value={form.endDate} onChange={(e) => setField('endDate', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Budget ($)</Label><Input type="number" value={form.budget} onChange={(e) => setField('budget', +e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Donors</Label><Input value={form.donors} onChange={(e) => setField('donors', e.target.value)} className="rounded-xl" placeholder="WHO, Lions Club..." /></div>
-            <div><Label className="text-xs mb-1 block">Target Screenings</Label><Input type="number" value={form.targetScreenings} onChange={(e) => setField('targetScreenings', +e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Target Surgeries</Label><Input type="number" value={form.targetSurgeries} onChange={(e) => setField('targetSurgeries', +e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Target Follow-ups</Label><Input type="number" value={form.targetFollowUps} onChange={(e) => setField('targetFollowUps', +e.target.value)} className="rounded-xl" /></div>
-            <div className="col-span-2 md:col-span-4">
-              <Label className="text-xs mb-1 block">Description</Label>
-              <textarea value={form.description} onChange={(e) => setField('description', e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 resize-none h-16" />
-            </div>
-          </div>
+          )}
         </InlineForm>
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12 text-slate-400 text-sm">Loading campaigns...</div>
+        <div className="py-12 text-center text-sm text-slate-400">Loading campaigns...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {campaigns.map((c) => {
-            const cs  = screenings.filter((s) => s.campaignId === c.id).length;
-            const csg = surgeries.filter((s)  => s.campaignId === c.id).length;
-            const spct  = c.targetScreenings ? Math.min(100, Math.round((cs  / c.targetScreenings) * 100)) : 0;
-            const sgpct = c.targetSurgeries  ? Math.min(100, Math.round((csg / c.targetSurgeries)  * 100)) : 0;
-            return (
-              <Card key={c.id} className={`border-0 shadow-sm hover:shadow-md transition-shadow ${editing?.id === c.id ? 'ring-1 ring-teal-300' : ''}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-teal-100 flex items-center justify-center shrink-0"><Megaphone size={16} className="text-teal-600" /></div>
-                      <div><p className="font-semibold text-slate-800 text-sm leading-tight">{c.name}</p><p className="text-xs text-slate-400 mt-0.5">{c.type}</p></div>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${STATUS_COLORS[c.status]}`}>{c.status}</span>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {campaigns.map((campaign) => (
+            <Card key={campaign.id} className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-900">{campaign.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{campaign.type} | {campaign.status}</p>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3 pt-0">
-                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-500">
-                    <div className="flex items-center gap-1.5"><Calendar size={11} />{c.startDate} - {c.endDate}</div>
-                    <div className="flex items-center gap-1.5"><DollarSign size={11} />${c.budget.toLocaleString()}</div>
-                  </div>
-                  {c.donors && <p className="text-xs text-slate-400 truncate">Donors: {c.donors}</p>}
-                  <div className="space-y-1.5">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-slate-500 flex items-center gap-1"><Target size={10} />Screenings</span>
-                        <span className="font-medium">{cs}/{c.targetScreenings}</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-teal-500 rounded-full" style={{ width: `${spct}%` }} /></div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-slate-500 flex items-center gap-1"><Target size={10} />Surgeries</span>
-                        <span className="font-medium">{csg}/{c.targetSurgeries}</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${sgpct}%` }} /></div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-1 border-t border-slate-100">
-                    {can('campaigns','edit') && <Button size="sm" variant="outline" onClick={() => openEdit(c)} className="gap-1.5 rounded-lg text-xs flex-1"><Pencil size={11} />Edit</Button>}
-                    {can('campaigns','delete') && <Button size="sm" variant="outline" onClick={() => setDeleteId(c.id)} className="gap-1.5 rounded-lg text-xs text-red-500 hover:bg-red-50 border-red-100"><Trash2 size={11} /></Button>}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  <span className="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">{campaign.region}</span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="grid grid-cols-1 gap-2 text-slate-600">
+                  <span className="flex items-center gap-2"><MapPin size={14} /> {campaign.operationDistrict}</span>
+                  <span className="flex items-center gap-2"><Target size={14} /> {campaign.targetSurgeries.toLocaleString()} surgery target</span>
+                  <span className="flex items-center gap-2"><UserRound size={14} /> {campaign.projectManagerName}</span>
+                  <span className="flex items-center gap-2"><Calendar size={14} /> {campaign.startDate} to {campaign.endDate}</span>
+                </div>
+                <div className="flex gap-2 border-t border-slate-100 pt-3">
+                  {can('campaigns', 'edit') && <Button size="sm" variant="outline" onClick={() => openEdit(campaign)} className="flex-1 gap-1 rounded-lg"><Pencil size={12} />Edit</Button>}
+                  {can('campaigns', 'delete') && <Button size="sm" variant="outline" onClick={() => remove(campaign)} className="gap-1 rounded-lg text-red-600"><Trash2 size={12} /></Button>}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {campaigns.length === 0 && (
+            <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400 md:col-span-2 xl:col-span-3">
+              No campaigns found.
+            </div>
+          )}
         </div>
       )}
-
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader><AlertDialogTitle>Delete Campaign?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
+}
+
+function SingleCampaignForm({
+  form,
+  managers,
+  set,
+  chooseRegion,
+  chooseManager,
+}: {
+  form: CampaignForm;
+  managers: User[];
+  set: <K extends keyof CampaignForm>(key: K, value: CampaignForm[K]) => void;
+  chooseRegion: (region: string) => void;
+  chooseManager: (id: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+      <div className="md:col-span-2">
+        <Label className="mb-1 block text-xs">Campaign Name *</Label>
+        <Input value={form.name} onChange={(e) => set('name', e.target.value)} className="rounded-xl" />
+      </div>
+      <div>
+        <Label className="mb-1 block text-xs">Type</Label>
+        <Select value={form.type} onValueChange={(value) => { if (value) set('type', value as CampaignType); }}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>{TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="mb-1 block text-xs">Status</Label>
+        <Select value={form.status} onValueChange={(value) => { if (value) set('status', value as CampaignStatus); }}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>{STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="mb-1 block text-xs">State / Region *</Label>
+        <Select value={form.region} onValueChange={(value) => { if (value) chooseRegion(value); }}>
+          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+          <SelectContent>{REGIONAL_CAMPAIGN_AREAS.map((area) => <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="mb-1 block text-xs">Operation District / City *</Label>
+        <Input value={form.operationDistrict} onChange={(e) => set('operationDistrict', e.target.value)} className="rounded-xl" />
+      </div>
+      <div>
+        <Label className="mb-1 block text-xs">Target Surgeries *</Label>
+        <Input type="number" value={form.targetSurgeries} onChange={(e) => set('targetSurgeries', Number(e.target.value))} className="rounded-xl" />
+      </div>
+      <div>
+        <Label className="mb-1 block text-xs">Project Manager *</Label>
+        <Select value={form.projectManagerId} onValueChange={(value) => { if (value) chooseManager(value); }}>
+          <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select manager" /></SelectTrigger>
+          <SelectContent>
+            {managers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div><Label className="mb-1 block text-xs">Start Date *</Label><Input type="date" value={form.startDate} onChange={(e) => set('startDate', e.target.value)} className="rounded-xl" /></div>
+      <div><Label className="mb-1 block text-xs">End Date *</Label><Input type="date" value={form.endDate} onChange={(e) => set('endDate', e.target.value)} className="rounded-xl" /></div>
+      <div><Label className="mb-1 block text-xs">Target Screenings</Label><Input type="number" value={form.targetScreenings} onChange={(e) => set('targetScreenings', Number(e.target.value))} className="rounded-xl" /></div>
+      <div><Label className="mb-1 block text-xs">Target Follow-ups</Label><Input type="number" value={form.targetFollowUps} onChange={(e) => set('targetFollowUps', Number(e.target.value))} className="rounded-xl" /></div>
+      <div className="md:col-span-4">
+        <Label className="mb-1 block text-xs">Description</Label>
+        <textarea value={form.description} onChange={(e) => set('description', e.target.value)} className="h-16 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" />
+      </div>
+    </div>
+  );
+}
+
+function createBulkDefaults(): BulkCampaignForm[] {
+  const startDate = formatDate(new Date());
+  const endDate = formatDate(addDays(new Date(), 60));
+  return REGIONAL_CAMPAIGN_AREAS.map((area) => ({
+    enabled: true,
+    name: `${area.region} Cataract Surgery Campaign`,
+    type: 'Cataract',
+    status: 'Planned',
+    region: area.region,
+    operationDistrict: area.defaultDistrict,
+    projectManagerId: '',
+    projectManagerName: '',
+    startDate,
+    endDate,
+    budget: area.defaultSurgeryTarget * 35,
+    donors: '',
+    targetScreenings: area.defaultSurgeryTarget * 2,
+    targetSurgeries: area.defaultSurgeryTarget,
+    targetFollowUps: area.defaultSurgeryTarget,
+    locationIds: [],
+    description: '',
+  }));
+}
+
+function stripEnabled({ enabled, ...campaign }: BulkCampaignForm): CampaignForm {
+  void enabled;
+  return campaign;
+}
+
+function addDays(date: Date, days: number) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function formatDate(date: Date) {
+  return date.toISOString().split('T')[0];
 }

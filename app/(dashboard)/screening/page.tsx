@@ -1,221 +1,270 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { formatDateTime } from '@/lib/utils';
-import type { Screening, VAGrade, Campaign, Location, Patient } from '@/types';
-import { getAllScreenings, actionCreateScreening, actionUpdateScreening, actionDeleteScreening } from '@/app/actions/screenings';
+
+import { useEffect, useMemo, useState } from 'react';
+import type { Campaign, Patient, Screening, VAGrade } from '@/types';
+import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getAllScreenings } from '@/app/actions/screenings';
 import { getAllPatients } from '@/app/actions/patients';
 import { getAllCampaigns } from '@/app/actions/campaigns';
-import { getAllLocations } from '@/app/actions/locations';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InlineForm from '@/components/forms/InlineForm';
-import { Plus, Search, Pencil, Trash2, Eye, X, AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
+import { AlertTriangle, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
-const VA_GRADES: VAGrade[] = ['6/6','6/9','6/12','6/18','6/24','6/36','6/60','<6/60','CF','HM','PL','NPL'];
-const RECS = ['Discharge','Refer for Surgery','Further Investigation','Glasses','Follow-up'];
+const VA_GRADES: VAGrade[] = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'HM', 'PL', 'NPL'];
+const RECOMMENDATIONS: Screening['recommendation'][] = ['Discharge', 'Refer for Surgery', 'Further Investigation', 'Glasses', 'Follow-up'];
 
 const BLANK: Omit<Screening, 'id' | 'createdAt'> = {
-  patientId:'', patientName:'', campaignId:'', locationId:'',
-  screenedBy:'', screenedAt: new Date().toISOString().slice(0,16),
-  vaRightUnaided:'6/6', vaLeftUnaided:'6/6',
-  iopRight:undefined, iopLeft:undefined,
-  cataractSuspected:false, glaucomaSuspected:false, diabeticRetinopathy:false,
-  otherFindings:'', medicalHistory:'', currentMedications:'',
-  recommendation:'Discharge', notes:'',
+  patientId: '',
+  patientName: '',
+  campaignId: '',
+  locationId: '',
+  region: '',
+  operationDistrict: '',
+  screenedBy: '',
+  screenedById: '',
+  screenedByName: '',
+  screenedAt: new Date().toISOString().slice(0, 16),
+  vaRightUnaided: '6/6',
+  vaLeftUnaided: '6/6',
+  cataractSuspected: false,
+  glaucomaSuspected: false,
+  diabeticRetinopathy: false,
+  otherFindings: '',
+  medicalHistory: '',
+  currentMedications: '',
+  recommendation: 'Discharge',
+  notes: '',
 };
 
 export default function ScreeningPage() {
   const { can } = usePermissions();
   const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [patients, setPatients]     = useState<Patient[]>([]);
-  const [campaigns, setCampaigns]   = useState<Campaign[]>([]);
-  const [locations, setLocations]   = useState<Location[]>([]);
-  const [isLoading, setIsLoading]   = useState(true);
-  const [saveError, setSaveError]   = useState('');
-  const [search, setSearch]         = useState('');
-  const [showForm, setShowForm]     = useState(false);
-  const [editing, setEditing]       = useState<Screening | null>(null);
-  const [deleteId, setDeleteId]     = useState<string | null>(null);
-  const [form, setForm]             = useState<typeof BLANK>(BLANK);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [form, setForm] = useState(BLANK);
+  const [editing, setEditing] = useState<Screening | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [queueSearch, setQueueSearch] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getAllScreenings(), getAllPatients(), getAllCampaigns(), getAllLocations()])
-      .then(([s, p, c, l]) => { setScreenings(s); setPatients(p); setCampaigns(c); setLocations(l); setIsLoading(false); });
+    Promise.all([getAllScreenings(), getAllPatients(), getAllCampaigns()]).then(([screeningRows, patientRows, campaignRows]) => {
+      setScreenings(screeningRows);
+      setPatients(patientRows);
+      setCampaigns(campaignRows);
+      setIsLoading(false);
+    });
   }, []);
 
-  const filtered = screenings.filter((s) =>
-    s.patientName.toLowerCase().includes(search.toLowerCase()) ||
-    s.screenedBy.toLowerCase().includes(search.toLowerCase()),
-  );
+  const queuedPatients = useMemo(() => patients.filter((patient) => patient.screeningStatus === 'Awaiting Screening'), [patients]);
+  const filteredQueue = useMemo(() => {
+    const q = queueSearch.trim().toLowerCase();
+    if (!q) return queuedPatients;
+    return queuedPatients.filter((patient) =>
+      patient.patientCode.toLowerCase().includes(q) ||
+      patient.fullName.toLowerCase().includes(q) ||
+      patient.phone.includes(q) ||
+      patient.region.toLowerCase().includes(q),
+    );
+  }, [queuedPatients, queueSearch]);
+  const filteredScreenings = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    if (!q) return screenings;
+    return screenings.filter((screening) =>
+      screening.patientName.toLowerCase().includes(q) ||
+      screening.region.toLowerCase().includes(q) ||
+      screening.recommendation.toLowerCase().includes(q),
+    );
+  }, [historySearch, screenings]);
 
-  function openAdd() { setEditing(null); setForm(BLANK); setSaveError(''); setShowForm(true); }
-  function openEdit(s: Screening) { setEditing(s); const { id, createdAt, ...r } = s; setForm(r); setSaveError(''); setShowForm(true); }
-  function cancel() { setShowForm(false); setEditing(null); }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function set(k: keyof typeof BLANK, v: any) { if (v === null) return; setForm((f) => ({ ...f, [k]: v })); }
-  function handlePatient(pid: string | null) { if (!pid) return; const p = patients.find((x) => x.id === pid); set('patientId', pid); if (p) set('patientName', p.fullName); }
+  function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function choosePatient(patientId: string) {
+    const patient = patients.find((item) => item.id === patientId);
+    const campaign = campaigns.find((item) => item.id === patient?.campaignId);
+    setForm((current) => ({
+      ...current,
+      patientId,
+      patientName: patient?.fullName ?? '',
+      campaignId: patient?.campaignId ?? '',
+      region: patient?.region ?? campaign?.region ?? '',
+      operationDistrict: patient?.operationDistrict ?? campaign?.operationDistrict ?? '',
+    }));
+  }
+
+  function openAdd(patient?: Patient) {
+    setEditing(null);
+    setForm(BLANK);
+    setSaveError('');
+    setShowForm(true);
+    if (patient) choosePatient(patient.id);
+  }
+
+  function openEdit(screening: Screening) {
+    const editable = Object.fromEntries(
+      Object.entries(screening).filter(([key]) => key !== 'id' && key !== 'createdAt')
+    ) as typeof BLANK;
+    setEditing(screening);
+    setForm({ ...editable, screenedAt: editable.screenedAt.slice(0, 16) });
+    setSaveError('');
+    setShowForm(true);
+  }
 
   async function save() {
     setSaveError('');
-    if (editing) {
-      const res = await actionUpdateScreening(editing.id, form);
-      if (!res.ok) { setSaveError(res.error); return; }
-      setScreenings((prev) => prev.map((s) => s.id === editing.id ? res.data : s));
-    } else {
-      const res = await actionCreateScreening(form);
-      if (!res.ok) { setSaveError(res.error); return; }
-      setScreenings((prev) => [res.data, ...prev]);
+    const result = editing
+      ? await actionUpdateScreening(editing.id, form)
+      : await actionCreateScreening(form);
+    if (!result.ok) {
+      setSaveError(result.error);
+      return;
     }
-    cancel();
+    setScreenings((rows) => editing ? rows.map((row) => row.id === editing.id ? result.data : row) : [result.data, ...rows]);
+    setPatients((rows) => rows.map((patient) => patient.id === result.data.patientId ? { ...patient, screeningStatus: 'Screened' } : patient));
+    setShowForm(false);
+    setEditing(null);
+  }
+
+  async function remove(screening: Screening) {
+    const result = await actionDeleteScreening(screening.id);
+    if (result.ok) setScreenings((rows) => rows.filter((row) => row.id !== screening.id));
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Screening Records</h1>
-          <p className="text-sm text-slate-500">
-            {isLoading ? 'Loading...' : `${screenings.length} assessments · ${screenings.filter((s) => s.cataractSuspected).length} cataract suspected`}
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">Screening</h1>
+          <p className="text-sm text-slate-500">{queuedPatients.length} patients waiting for screening</p>
         </div>
-        {can('screening','create') && !showForm && <Button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white gap-2 rounded-xl"><Plus size={15} />New Screening</Button>}
-        {showForm && <Button variant="outline" onClick={cancel} className="gap-2 rounded-xl text-slate-600"><X size={14} />Cancel</Button>}
+        {can('screening', 'create') && !showForm && <Button onClick={() => openAdd()} className="gap-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700"><Plus size={15} />New Screening</Button>}
+        {showForm && <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
       </div>
 
       {showForm && (
-        <InlineForm title={editing ? `Edit Screening - ${editing.patientName}` : 'New Screening Record'}
-          onClose={cancel} onSave={save} saveLabel={editing ? 'Update' : 'Save Screening'}
-          saveDisabled={!form.patientId || !form.campaignId || !form.locationId}>
-          {saveError && <p className="text-xs text-red-600 mb-2">{saveError}</p>}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="col-span-2">
-              <Label className="text-xs mb-1 block">Patient *</Label>
-              <Select value={form.patientId} onValueChange={handlePatient}>
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Select patient">
-                    {form.patientId ? (patients.find((p) => p.id === form.patientId)?.fullName ?? null) : null}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>{patients.map((p) => <SelectItem key={p.id} value={p.id}>{p.fullName}</SelectItem>)}</SelectContent>
+        <InlineForm
+          title={editing ? `Edit ${editing.patientName}` : 'Complete Screening'}
+          onClose={() => setShowForm(false)}
+          onSave={save}
+          saveLabel={editing ? 'Update Screening' : 'Save Screening'}
+          saveDisabled={!form.patientId || !form.campaignId}
+        >
+          {saveError && <p className="mb-2 text-xs text-red-600">{saveError}</p>}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="md:col-span-2">
+              <Label className="mb-1 block text-xs">Patient *</Label>
+              <Select value={form.patientId} onValueChange={(value) => { if (value) choosePatient(value); }}>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select patient" /></SelectTrigger>
+                <SelectContent>
+                  {(editing ? patients : queuedPatients).map((patient) => <SelectItem key={patient.id} value={patient.id}>{patient.patientCode} | {patient.fullName} | {patient.region}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="text-xs mb-1 block">Campaign *</Label>
-              <Select value={form.campaignId} onValueChange={(v) => set('campaignId', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-              </Select>
+            <div><Label className="mb-1 block text-xs">Region</Label><Input value={form.region} disabled className="rounded-xl bg-slate-50" /></div>
+            <div><Label className="mb-1 block text-xs">Date & Time</Label><Input type="datetime-local" value={form.screenedAt} onChange={(e) => set('screenedAt', e.target.value)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">VA Right</Label><Select value={form.vaRightUnaided} onValueChange={(value) => { if (value) set('vaRightUnaided', value as VAGrade); }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{VA_GRADES.map((grade) => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="mb-1 block text-xs">VA Left</Label><Select value={form.vaLeftUnaided} onValueChange={(value) => { if (value) set('vaLeftUnaided', value as VAGrade); }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{VA_GRADES.map((grade) => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="mb-1 block text-xs">IOP Right</Label><Input type="number" value={form.iopRight ?? ''} onChange={(e) => set('iopRight', e.target.value ? Number(e.target.value) : undefined)} className="rounded-xl" /></div>
+            <div><Label className="mb-1 block text-xs">IOP Left</Label><Input type="number" value={form.iopLeft ?? ''} onChange={(e) => set('iopLeft', e.target.value ? Number(e.target.value) : undefined)} className="rounded-xl" /></div>
+            <div className="flex flex-wrap gap-4 text-sm md:col-span-4">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.cataractSuspected} onChange={(e) => set('cataractSuspected', e.target.checked)} className="accent-teal-600" /> Cataract suspected</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.glaucomaSuspected} onChange={(e) => set('glaucomaSuspected', e.target.checked)} className="accent-teal-600" /> Glaucoma suspected</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.diabeticRetinopathy} onChange={(e) => set('diabeticRetinopathy', e.target.checked)} className="accent-teal-600" /> Diabetic retinopathy</label>
             </div>
             <div>
-              <Label className="text-xs mb-1 block">Location *</Label>
-              <Select value={form.locationId} onValueChange={(v) => set('locationId', v)}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{locations.map((l) => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label className="text-xs mb-1 block">Screened By</Label><Input value={form.screenedBy} onChange={(e) => set('screenedBy', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Date &amp; Time</Label><Input type="datetime-local" value={form.screenedAt} onChange={(e) => set('screenedAt', e.target.value)} className="rounded-xl" /></div>
-            <div>
-              <Label className="text-xs mb-1 block">VA Right (Unaided)</Label>
-              <Select value={form.vaRightUnaided} onValueChange={(v) => set('vaRightUnaided', v as VAGrade)}>
+              <Label className="mb-1 block text-xs">Recommendation *</Label>
+              <Select value={form.recommendation} onValueChange={(value) => { if (value) set('recommendation', value as Screening['recommendation']); }}>
                 <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{VA_GRADES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+                <SelectContent>{RECOMMENDATIONS.map((rec) => <SelectItem key={rec} value={rec}>{rec}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="text-xs mb-1 block">VA Left (Unaided)</Label>
-              <Select value={form.vaLeftUnaided} onValueChange={(v) => set('vaLeftUnaided', v as VAGrade)}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{VA_GRADES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label className="text-xs mb-1 block">IOP Right (mmHg)</Label><Input type="number" value={form.iopRight ?? ''} onChange={(e) => set('iopRight', e.target.value ? +e.target.value : undefined)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">IOP Left (mmHg)</Label><Input type="number" value={form.iopLeft ?? ''} onChange={(e) => set('iopLeft', e.target.value ? +e.target.value : undefined)} className="rounded-xl" /></div>
-            <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4">
-              {[{k:'cataractSuspected',label:'Cataract Suspected'},{k:'glaucomaSuspected',label:'Glaucoma Suspected'},{k:'diabeticRetinopathy',label:'Diabetic Retinopathy'}].map(({k,label}) => (
-                <label key={k} className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input type="checkbox" checked={!!form[k as keyof typeof form]} onChange={(e) => set(k as keyof typeof BLANK, e.target.checked)} className="w-4 h-4 accent-teal-600 rounded" />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <div className="col-span-2"><Label className="text-xs mb-1 block">Other Findings</Label><Input value={form.otherFindings} onChange={(e) => set('otherFindings', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Medical History</Label><Input value={form.medicalHistory} onChange={(e) => set('medicalHistory', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="text-xs mb-1 block">Current Medications</Label><Input value={form.currentMedications} onChange={(e) => set('currentMedications', e.target.value)} className="rounded-xl" /></div>
-            <div>
-              <Label className="text-xs mb-1 block">Recommendation *</Label>
-              <Select value={form.recommendation} onValueChange={(v) => set('recommendation', v as Screening['recommendation'])}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{RECS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 md:col-span-3">
-              <Label className="text-xs mb-1 block">Notes</Label>
-              <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500 resize-none h-14" />
-            </div>
+            <div className="md:col-span-3"><Label className="mb-1 block text-xs">Other Findings</Label><Input value={form.otherFindings} onChange={(e) => set('otherFindings', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-2"><Label className="mb-1 block text-xs">Medical History</Label><Input value={form.medicalHistory} onChange={(e) => set('medicalHistory', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-2"><Label className="mb-1 block text-xs">Current Medications</Label><Input value={form.currentMedications} onChange={(e) => set('currentMedications', e.target.value)} className="rounded-xl" /></div>
+            <div className="md:col-span-4"><Label className="mb-1 block text-xs">Notes</Label><textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="h-16 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" /></div>
           </div>
         </InlineForm>
       )}
 
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Waiting Queue</p>
+              <p className="text-xs text-slate-500">{queuedPatients.length} patient{queuedPatients.length === 1 ? '' : 's'} awaiting screening</p>
+            </div>
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <Input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value)} placeholder="Search code, name, phone, region..." className="rounded-xl pl-9" />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50">
+                <tr>{['Code', 'Patient', 'Phone', 'Region', 'District', 'Registered By', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
+              </thead>
+              <tbody>
+                {filteredQueue.map((patient) => (
+                  <tr key={patient.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{patient.patientCode}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">{patient.fullName}</td>
+                    <td className="px-4 py-3 text-slate-600">{patient.phone}</td>
+                    <td className="px-4 py-3 text-slate-600">{patient.region}</td>
+                    <td className="px-4 py-3 text-slate-600">{patient.operationDistrict}</td>
+                    <td className="px-4 py-3 text-slate-600">{patient.registeredByName || '-'}</td>
+                    <td className="px-4 py-3 text-right">
+                      {can('screening', 'create') && <Button size="sm" onClick={() => openAdd(patient)} className="rounded-lg bg-teal-600 text-white hover:bg-teal-700">Screen</Button>}
+                    </td>
+                  </tr>
+                ))}
+                {!isLoading && filteredQueue.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-sm text-slate-400">No waiting patients found.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient or screener..." className="pl-9 rounded-xl border-slate-200" />
-        {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X size={13} /></button>}
+        <Input value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} placeholder="Search screening history..." className="rounded-xl pl-9" />
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12 text-slate-400 text-sm">Loading...</div>
-      ) : (
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100">
-                  <tr>{['Patient','VA R / L','Cataract','Glaucoma','DR','Recommendation','Screened By','Date',''].map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}</tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400 text-sm">No records found.</td></tr>}
-                  {filtered.map((s) => (
-                    <tr key={s.id} className={`border-b border-slate-50 hover:bg-slate-50/70 transition-colors ${editing?.id === s.id ? 'bg-teal-50/30' : ''}`}>
-                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{s.patientName}</td>
-                      <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{s.vaRightUnaided} / {s.vaLeftUnaided}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{s.cataractSuspected ? <span className="flex items-center gap-1 text-red-600 text-xs font-medium"><AlertTriangle size={11} />Yes</span> : <span className="text-slate-400 text-xs">No</span>}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{s.glaucomaSuspected ? <span className="text-orange-600 text-xs font-medium">Yes</span> : <span className="text-slate-400 text-xs">No</span>}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{s.diabeticRetinopathy ? <span className="text-purple-600 text-xs font-medium">Yes</span> : <span className="text-slate-400 text-xs">No</span>}</td>
-                      <td className="px-4 py-3 whitespace-nowrap"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.recommendation === 'Refer for Surgery' ? 'bg-red-100 text-red-700' : s.recommendation === 'Discharge' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{s.recommendation}</span></td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{s.screenedBy}</td>
-                      <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateTime(s.screenedAt)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex gap-1">
-                          {can('screening','edit') && <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600"><Pencil size={13} /></button>}
-                          {can('screening','delete') && <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader><AlertDialogTitle>Delete Screening?</AlertDialogTitle><AlertDialogDescription>This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={async () => { if (deleteId) { await actionDeleteScreening(deleteId); setScreenings((prev) => prev.filter((s) => s.id !== deleteId)); } setDeleteId(null); }} className="bg-red-600 hover:bg-red-700 rounded-xl">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Card className="overflow-hidden border-0 shadow-sm">
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50">
+                <tr>{['Patient', 'Region', 'VA R/L', 'Finding', 'Recommendation', 'Screened By', 'Date', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
+              </thead>
+              <tbody>
+                {isLoading && <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">Loading screenings...</td></tr>}
+                {!isLoading && filteredScreenings.map((screening) => (
+                  <tr key={screening.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-800">{screening.patientName}</td>
+                    <td className="px-4 py-3 text-slate-600">{screening.region}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{screening.vaRightUnaided} / {screening.vaLeftUnaided}</td>
+                    <td className="px-4 py-3">{screening.cataractSuspected ? <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600"><AlertTriangle size={12} />Cataract</span> : <span className="text-xs text-slate-400">No cataract</span>}</td>
+                    <td className="px-4 py-3"><span className="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">{screening.recommendation}</span></td>
+                    <td className="px-4 py-3 text-slate-600">{screening.screenedByName || screening.screenedBy}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{formatDateTime(screening.screenedAt)}</td>
+                    <td className="px-4 py-3"><div className="flex gap-1">{can('screening', 'edit') && <button onClick={() => openEdit(screening)} className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Pencil size={14} /></button>}{can('screening', 'delete') && <button onClick={() => remove(screening)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>}</div></td>
+                  </tr>
+                ))}
+                {!isLoading && filteredScreenings.length === 0 && <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">No screenings found.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

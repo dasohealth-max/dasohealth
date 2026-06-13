@@ -1,37 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EyeCare Pro
 
-## Getting Started
+Focused regional eye surgery campaign management for Somalia.
 
-First, run the development server:
+## Scope
+
+Active modules:
+
+- Dashboard
+- Campaigns
+- Patients
+- Screening
+- Surgeries
+- Follow-ups
+- Reports
+- Settings / Users
+
+Removed from the active app surface:
+
+- Referrals
+- Inventory
+- Transport
+- Outreach
+- Map-based location management
+
+## Workflow
+
+1. Super Administrator creates a Project Manager user and assigns one region.
+2. Super Administrator creates a campaign for one region, one operation district/city, a surgery target, and an assigned Project Manager.
+3. Project Manager creates Data Clerk and Screening Officer users for the same assigned region.
+4. Data Clerk registers patients into a campaign.
+5. Patients enter the screening queue automatically.
+6. Screening Officer records screening results.
+7. A screening recommendation of `Refer for Surgery` creates a scheduled surgery record.
+8. Screening Officer updates surgery status and records actual surgery completion date.
+9. Completed surgery creates Day 1 and Week 1 follow-up tasks.
+10. Follow-up records capture notes, outcome, and whether doctor review is needed.
+
+## Verification
+
+```bash
+npm run lint
+npm run build
+```
+
+## Local Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# dasohealth
+Open `http://localhost:3000`.

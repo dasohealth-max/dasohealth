@@ -2,53 +2,74 @@
 
 import { createServerClient } from '@/lib/supabase';
 import { prisma } from '@/lib/prisma';
-import { guard } from '@/lib/auth-server';
-import type { User } from '@/types';
+import { auditLog, requireActor, scopedRegionWhere } from '@/lib/auth-server';
+import { isCampaignRegion } from '@/lib/regions';
+import { manageableRolesFor } from '@/lib/permissions';
+import type { Role, User } from '@/types';
 
 type ActionResult<T = null> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-// ---------------------------------------------------------------------------
-// List all users from Supabase Auth (Super Admin only).
-// ---------------------------------------------------------------------------
+function toUser(u: {
+  id: string;
+  email?: string;
+  created_at: string;
+  banned_until?: string | null;
+  user_metadata?: Record<string, unknown>;
+}): User {
+  return {
+    id: u.id,
+    name: (u.user_metadata?.name as string) ?? u.email ?? 'Unknown',
+    email: u.email ?? '',
+    role: ((u.user_metadata?.role as string) || 'Screening Officer') as User['role'],
+    assignedRegion: (u.user_metadata?.assignedRegion as string) || undefined,
+    initials: (u.user_metadata?.initials as string) ?? '',
+    color: (u.user_metadata?.color as string) ?? '#0d9488',
+    active: !u.banned_until,
+    createdAt: u.created_at,
+  };
+}
+
 export async function actionGetAllUsers(): Promise<ActionResult<User[]>> {
-  const denied = await guard('settings', 'view');
-  if (denied) return denied;
+  const actor = await requireActor('settings', 'view');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   const db = createServerClient();
   const { data, error } = await db.auth.admin.listUsers({ perPage: 1000 });
   if (error) return { ok: false, error: error.message };
 
-  const users: User[] = data.users.map((u) => ({
-    id:        u.id,
-    name:      (u.user_metadata?.name as string) ?? u.email ?? 'Unknown',
-    email:     u.email ?? '',
-    role:      (u.user_metadata?.role as User['role']) ?? 'Screening Officer',
-    initials:  (u.user_metadata?.initials as string) ?? '',
-    color:     (u.user_metadata?.color as string) ?? '#0d9488',
-    active:    !u.banned_until,
-    createdAt: u.created_at,
-  }));
-
+  let users = data.users.map(toUser);
+  if (actor.role !== 'Super Administrator') {
+    users = users.filter((u) => u.assignedRegion === actor.assignedRegion);
+  }
   return { ok: true, data: users };
 }
 
-// ---------------------------------------------------------------------------
-// Create a new Supabase Auth user with role stored in user_metadata.
-// email_confirm: true skips the confirmation email (admin-created accounts).
-// ---------------------------------------------------------------------------
 export async function actionCreateUser(input: {
   email: string;
   password: string;
   name: string;
   role: string;
+  assignedRegion?: string;
   initials: string;
   color: string;
 }): Promise<ActionResult<{ id: string }>> {
-  const denied = await guard('settings', 'create');
-  if (denied) return denied;
+  const actor = await requireActor('settings', 'create');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
+  const allowedRoles = manageableRolesFor(actor.role);
+  if (!allowedRoles.includes(input.role as Role)) {
+    return { ok: false, error: 'You cannot create that role' };
+  }
+
+  const assignedRegion = actor.role === 'Project Manager'
+    ? actor.assignedRegion
+    : input.assignedRegion;
+
+  if (!assignedRegion || !isCampaignRegion(assignedRegion)) {
+    return { ok: false, error: 'Valid assigned region is required' };
+  }
   if (!input.email || !input.password || !input.name || !input.role) {
     return { ok: false, error: 'email, password, name and role are required' };
   }
@@ -58,80 +79,130 @@ export async function actionCreateUser(input: {
 
   const db = createServerClient();
   const { data, error } = await db.auth.admin.createUser({
-    email:         input.email,
-    password:      input.password,
+    email: input.email,
+    password: input.password,
     email_confirm: true,
     user_metadata: {
-      name:     input.name,
-      role:     input.role,
+      name: input.name,
+      role: input.role,
+      assignedRegion,
       initials: input.initials,
-      color:    input.color,
+      color: input.color,
     },
   });
 
   if (error) return { ok: false, error: error.message };
+  await auditLog({
+    actor,
+    action: 'create',
+    entity: 'User',
+    entityId: data.user.id,
+    region: assignedRegion,
+    details: `Created ${input.role} user ${input.name}`,
+    after: { id: data.user.id, email: input.email, role: input.role, assignedRegion },
+  });
   return { ok: true, data: { id: data.user.id } };
 }
 
-// ---------------------------------------------------------------------------
-// Update a Supabase Auth user's metadata (name, role, initials, color).
-// ---------------------------------------------------------------------------
 export async function actionUpdateUserMetadata(
   userId: string,
-  metadata: { name?: string; role?: string; initials?: string; color?: string }
+  metadata: { name?: string; role?: string; assignedRegion?: string; initials?: string; color?: string }
 ): Promise<ActionResult> {
-  const denied = await guard('settings', 'edit');
-  if (denied) return denied;
+  const actor = await requireActor('settings', 'edit');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   const db = createServerClient();
+  const current = await db.auth.admin.getUserById(userId);
+  if (current.error) return { ok: false, error: current.error.message };
+  const before = toUser(current.data.user);
+
+  if (actor.role === 'Project Manager') {
+    if (before.assignedRegion !== actor.assignedRegion) {
+      return { ok: false, error: 'Forbidden: region access denied' };
+    }
+    const nextRole = metadata.role ?? before.role;
+    if (!manageableRolesFor(actor.role).includes(nextRole as Role)) {
+      return { ok: false, error: 'You cannot assign that role' };
+    }
+    metadata.assignedRegion = actor.assignedRegion;
+  } else if (metadata.assignedRegion && !isCampaignRegion(metadata.assignedRegion)) {
+    return { ok: false, error: 'Valid assigned region is required' };
+  }
+
   const { error } = await db.auth.admin.updateUserById(userId, { user_metadata: metadata });
-
   if (error && !error.message.toLowerCase().includes('not found')) {
     return { ok: false, error: error.message };
   }
+
+  await auditLog({
+    actor,
+    action: 'update',
+    entity: 'User',
+    entityId: userId,
+    region: metadata.assignedRegion ?? before.assignedRegion,
+    details: `Updated user ${metadata.name ?? before.name}`,
+    before,
+    after: metadata,
+  });
   return { ok: true, data: null };
 }
 
-// ---------------------------------------------------------------------------
-// Delete a Supabase Auth user.
-// ---------------------------------------------------------------------------
 export async function actionDeleteUser(userId: string): Promise<ActionResult> {
-  const denied = await guard('settings', 'delete');
-  if (denied) return denied;
+  const actor = await requireActor('settings', 'delete');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   const db = createServerClient();
-  const { error } = await db.auth.admin.deleteUser(userId);
+  const current = await db.auth.admin.getUserById(userId);
+  const before = current.data?.user ? toUser(current.data.user) : null;
+  if (actor.role === 'Project Manager' && before?.assignedRegion !== actor.assignedRegion) {
+    return { ok: false, error: 'Forbidden: region access denied' };
+  }
 
+  const { error } = await db.auth.admin.deleteUser(userId);
   if (error && !error.message.toLowerCase().includes('not found')) {
     return { ok: false, error: error.message };
   }
+
+  await auditLog({
+    actor,
+    action: 'delete',
+    entity: 'User',
+    entityId: userId,
+    region: before?.assignedRegion,
+    details: before ? `Deleted user ${before.name}` : 'Deleted user',
+    before,
+  });
   return { ok: true, data: null };
 }
 
-// ---------------------------------------------------------------------------
-// Get recent audit logs from the database.
-// ---------------------------------------------------------------------------
 export async function actionGetAuditLogs(limit = 100): Promise<ActionResult<{
-  id: string; actor: string; action: string; entity: string;
-  entityId: string; details: string; createdAt: string;
+  id: string; actor: string; actorId: string; actorName: string; actorRole: string;
+  action: string; entity: string; entityId: string; region?: string; campaignId?: string;
+  details: string; createdAt: string;
 }[]>> {
-  const denied = await guard('settings', 'view');
-  if (denied) return denied;
+  const actor = await requireActor('settings', 'view');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   try {
     const logs = await prisma.auditLog.findMany({
+      where: scopedRegionWhere(actor),
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
     return {
       ok: true,
       data: logs.map((l) => ({
-        id:        l.id,
-        actor:     l.actor,
-        action:    l.action,
-        entity:    l.entity,
-        entityId:  l.entityId,
-        details:   l.details,
+        id: l.id,
+        actor: l.actor,
+        actorId: l.actorId,
+        actorName: l.actorName,
+        actorRole: l.actorRole,
+        action: l.action,
+        entity: l.entity,
+        entityId: l.entityId,
+        region: l.region ?? undefined,
+        campaignId: l.campaignId ?? undefined,
+        details: l.details,
         createdAt: (l.createdAt as Date).toISOString(),
       })),
     };

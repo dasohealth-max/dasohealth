@@ -3,27 +3,26 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetchPatientById } from '@/lib/api/patients';
-import { guard } from '@/lib/auth-server';
+import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import { nextPatientCode } from '@/lib/utils';
 import type { Patient } from '@/types';
 import type { Sex, DisabilityStatus } from '@/lib/generated/prisma/client';
 
-// ─── Protected read operations ────────────────────────────────────────────
 export async function getAllPatients(): Promise<Patient[]> {
-  const denied = await guard('patients', 'view');
-  if (denied) throw new Error(denied.error);
-  return fetchAllPatients();
+  const actor = await requireActor('patients', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+  return fetchAllPatients(scopedRegionWhere(actor));
 }
 
 export async function getPatientById(id: string): Promise<Patient | null> {
-  const denied = await guard('patients', 'view');
+  const actor = await requireActor('patients', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+  const patient = await fetchPatientById(id);
+  if (!patient) return null;
+  const denied = ensureRegionAccess(actor, patient.region);
   if (denied) throw new Error(denied.error);
-  return fetchPatientById(id);
+  return patient;
 }
-
-// ---------------------------------------------------------------------------
-// Validation schema
-// ---------------------------------------------------------------------------
 
 const PatientSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
@@ -31,8 +30,9 @@ const PatientSchema = z.object({
   sex: z.enum(['Male', 'Female', 'Other']),
   phone: z.string().min(1, 'Phone is required'),
   email: z.string().optional(),
-  district: z.string().min(1, 'District is required'),
-  region: z.string().min(1, 'Region is required'),
+  district: z.string().optional(),
+  region: z.string().optional(),
+  operationDistrict: z.string().optional(),
   occupation: z.string().optional(),
   education: z.string().optional(),
   disabilityStatus: z.enum(['None', 'Visual', 'Hearing', 'Mobility', 'Cognitive', 'Multiple']),
@@ -41,7 +41,7 @@ const PatientSchema = z.object({
   emergencyPhone: z.string(),
   consentGiven: z.boolean(),
   consentDate: z.string().optional(),
-  campaignId: z.string().optional(),
+  campaignId: z.string().min(1, 'Campaign is required'),
   locationId: z.string().optional(),
   referralSource: z.string(),
   notes: z.string().optional(),
@@ -53,26 +53,29 @@ type ActionResult<T = null> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-// ---------------------------------------------------------------------------
-// Actions
-// ---------------------------------------------------------------------------
+async function getCampaignScope(campaignId: string) {
+  return prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { region: true, operationDistrict: true },
+  });
+}
 
-export async function actionCreatePatient(
-  input: unknown
-): Promise<ActionResult<Patient>> {
-  const denied = await guard('patients', 'create');
-  if (denied) return denied;
+export async function actionCreatePatient(input: unknown): Promise<ActionResult<Patient>> {
+  const actor = await requireActor('patients', 'create');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   const parsed = PatientSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0].message };
-  }
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
 
   try {
+    const campaign = await getCampaignScope(d.campaignId);
+    if (!campaign) return { ok: false, error: 'Campaign not found' };
+    const denied = ensureRegionAccess(actor, campaign.region);
+    if (denied) return denied;
+
     const existing = await prisma.patient.findMany({ select: { patientCode: true } });
-    const codes = existing.map((r) => r.patientCode);
-    const patientCode = nextPatientCode(codes);
+    const patientCode = nextPatientCode(existing.map((r) => r.patientCode));
 
     const row = await prisma.patient.create({
       data: {
@@ -82,8 +85,9 @@ export async function actionCreatePatient(
         sex: d.sex as Sex,
         phone: d.phone,
         email: d.email || null,
-        district: d.district,
-        region: d.region,
+        district: d.district || campaign.operationDistrict,
+        region: campaign.region,
+        operationDistrict: campaign.operationDistrict,
         occupation: d.occupation || null,
         education: d.education || null,
         disabilityStatus: d.disabilityStatus as DisabilityStatus,
@@ -92,34 +96,53 @@ export async function actionCreatePatient(
         emergencyPhone: d.emergencyPhone,
         consentGiven: d.consentGiven,
         consentDate: d.consentDate ? new Date(d.consentDate) : null,
-        campaignId: d.campaignId || null,
+        campaignId: d.campaignId,
         locationId: d.locationId || null,
         referralSource: d.referralSource,
         notes: d.notes || null,
         lat: d.lat ?? null,
         lng: d.lng ?? null,
+        registeredById: actor.id,
+        registeredByName: actor.name,
+        screeningStatus: 'Awaiting Screening',
       },
     });
-    return { ok: true, data: fromPrisma(row) };
+    const patient = fromPrisma(row);
+    await auditLog({
+      actor,
+      action: 'create',
+      entity: 'Patient',
+      entityId: patient.id,
+      region: patient.region,
+      campaignId: patient.campaignId,
+      details: `Registered patient ${patient.fullName}`,
+      after: patient,
+    });
+    return { ok: true, data: patient };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
-export async function actionUpdatePatient(
-  id: string,
-  input: unknown
-): Promise<ActionResult<Patient>> {
-  const denied = await guard('patients', 'edit');
-  if (denied) return denied;
+export async function actionUpdatePatient(id: string, input: unknown): Promise<ActionResult<Patient>> {
+  const actor = await requireActor('patients', 'edit');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   const parsed = PatientSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0].message };
-  }
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
 
   try {
+    const before = await fetchPatientById(id);
+    if (!before) return { ok: false, error: 'Patient not found' };
+    const beforeDenied = ensureRegionAccess(actor, before.region);
+    if (beforeDenied) return beforeDenied;
+
+    const campaign = await getCampaignScope(d.campaignId);
+    if (!campaign) return { ok: false, error: 'Campaign not found' };
+    const denied = ensureRegionAccess(actor, campaign.region);
+    if (denied) return denied;
+
     const row = await prisma.patient.update({
       where: { id },
       data: {
@@ -128,8 +151,9 @@ export async function actionUpdatePatient(
         sex: d.sex as Sex,
         phone: d.phone,
         email: d.email || null,
-        district: d.district,
-        region: d.region,
+        district: d.district || campaign.operationDistrict,
+        region: campaign.region,
+        operationDistrict: campaign.operationDistrict,
         occupation: d.occupation || null,
         education: d.education || null,
         disabilityStatus: d.disabilityStatus as DisabilityStatus,
@@ -138,7 +162,7 @@ export async function actionUpdatePatient(
         emergencyPhone: d.emergencyPhone,
         consentGiven: d.consentGiven,
         consentDate: d.consentDate ? new Date(d.consentDate) : null,
-        campaignId: d.campaignId || null,
+        campaignId: d.campaignId,
         locationId: d.locationId || null,
         referralSource: d.referralSource,
         notes: d.notes || null,
@@ -146,20 +170,45 @@ export async function actionUpdatePatient(
         lng: d.lng ?? null,
       },
     });
-    return { ok: true, data: fromPrisma(row) };
+    const patient = fromPrisma(row);
+    await auditLog({
+      actor,
+      action: 'update',
+      entity: 'Patient',
+      entityId: patient.id,
+      region: patient.region,
+      campaignId: patient.campaignId,
+      details: `Updated patient ${patient.fullName}`,
+      before,
+      after: patient,
+    });
+    return { ok: true, data: patient };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
-export async function actionDeletePatient(
-  id: string
-): Promise<ActionResult<null>> {
-  const denied = await guard('patients', 'delete');
-  if (denied) return denied;
+export async function actionDeletePatient(id: string): Promise<ActionResult<null>> {
+  const actor = await requireActor('patients', 'delete');
+  if ('error' in actor) return { ok: false, error: actor.error };
 
   try {
+    const before = await fetchPatientById(id);
+    if (before) {
+      const denied = ensureRegionAccess(actor, before.region);
+      if (denied) return denied;
+    }
     await prisma.patient.delete({ where: { id } });
+    await auditLog({
+      actor,
+      action: 'delete',
+      entity: 'Patient',
+      entityId: id,
+      region: before?.region,
+      campaignId: before?.campaignId,
+      details: before ? `Deleted patient ${before.fullName}` : 'Deleted patient',
+      before,
+    });
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

@@ -3,9 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 // All route segments that live inside app/(dashboard)/
 const PROTECTED = [
-  '/dashboard', '/patients', '/campaigns', '/followups', '/inventory',
-  '/locations', '/outreach', '/referrals', '/reports', '/screening',
-  '/settings', '/surgeries', '/transport',
+  '/dashboard', '/patients', '/campaigns', '/followups', '/reports',
+  '/screening', '/settings', '/surgeries',
 ];
 
 export async function middleware(request: NextRequest) {

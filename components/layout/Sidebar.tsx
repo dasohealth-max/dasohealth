@@ -5,24 +5,19 @@ import { cn } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import type { AppModule } from '@/lib/permissions';
 import {
-  LayoutDashboard, Megaphone, MapPin, Users, Microscope,
-  Scissors, ArrowRightLeft, CalendarCheck, Package,
-  Bus, FileBarChart, Settings, Eye, ChevronLeft, ChevronRight,
-  HeartPulse, X,
+  LayoutDashboard, Megaphone, Users, Microscope,
+  Scissors, CalendarCheck,
+  FileBarChart, Settings, Eye, ChevronLeft, ChevronRight,
+  X,
 } from 'lucide-react';
 
 const NAV: { label: string; href: string; icon: React.ElementType; module: AppModule }[] = [
   { label: 'Dashboard',  href: '/dashboard',  icon: LayoutDashboard, module: 'dashboard'  },
   { label: 'Campaigns',  href: '/campaigns',  icon: Megaphone,       module: 'campaigns'  },
-  { label: 'Locations',  href: '/locations',  icon: MapPin,          module: 'locations'  },
   { label: 'Patients',   href: '/patients',   icon: Users,           module: 'patients'   },
   { label: 'Screening',  href: '/screening',  icon: Microscope,      module: 'screening'  },
   { label: 'Surgery',    href: '/surgeries',  icon: Scissors,        module: 'surgeries'  },
-  { label: 'Referrals',  href: '/referrals',  icon: ArrowRightLeft,  module: 'referrals'  },
   { label: 'Follow-ups', href: '/followups',  icon: CalendarCheck,   module: 'followups'  },
-  { label: 'Outreach',   href: '/outreach',   icon: HeartPulse,      module: 'outreach'   },
-  { label: 'Inventory',  href: '/inventory',  icon: Package,         module: 'inventory'  },
-  { label: 'Transport',  href: '/transport',  icon: Bus,             module: 'transport'  },
   { label: 'Reports',    href: '/reports',    icon: FileBarChart,    module: 'reports'    },
   { label: 'Settings',   href: '/settings',   icon: Settings,        module: 'settings'   },
 ];
