@@ -1,271 +1,68 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Campaign, FollowUp, Patient, Screening, Surgery, SurgeryStatus } from '@/types';
+import type { Campaign, FollowUp, Patient, Screening, Surgery } from '@/types';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllPatients } from '@/app/actions/patients';
 import { getAllScreenings } from '@/app/actions/screenings';
 import { getAllSurgeries } from '@/app/actions/surgeries';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { usePermissions } from '@/lib/auth';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import {
   AlertTriangle,
-  Activity,
+  ArrowLeft,
+  Calendar,
+  CalendarCheck,
   CheckCircle,
-  ClipboardList,
+  ChevronRight,
   Eye,
-  Stethoscope,
-  Target,
-  TrendingUp,
+  MapPin,
+  Microscope,
+  Users,
 } from 'lucide-react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Funnel,
-  FunnelChart,
-  LabelList,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type RegionStatus = 'No Campaign' | 'No Activity' | 'Behind' | 'Active' | 'Strong';
 
-const SURGERY_STATUSES: SurgeryStatus[] = ['Scheduled', 'In-Theatre', 'Completed', 'Postponed', 'Cancelled'];
-const STATUS_COLORS = ['#0f766e', '#2563eb', '#16a34a', '#f59e0b', '#dc2626'];
-const FUNNEL_COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#16a34a', '#f59e0b'];
+type RegionStats = {
+  region: string;
+  district: string;
+  manager: string;
+  campaignName: string;
+  campaignStatus: string | null;
+  campaignStart: string;
+  campaignEnd: string;
+  target: number;
+  patients: number;
+  screened: number;
+  scheduled: number;
+  completed: number;
+  followUpsDone: number;
+  overdue: number;
+  doctorReview: number;
+  pct: number;
+  status: RegionStatus;
+};
 
-export default function DashboardPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [surgeries, setSurgeries] = useState<Surgery[]>([]);
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+// ─── Status config ────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    Promise.all([getAllCampaigns(), getAllPatients(), getAllScreenings(), getAllSurgeries(), getAllFollowUps()])
-      .then(([campaignRows, patientRows, screeningRows, surgeryRows, followUpRows]) => {
-        setCampaigns(campaignRows);
-        setPatients(patientRows);
-        setScreenings(screeningRows);
-        setSurgeries(surgeryRows);
-        setFollowUps(followUpRows);
-      });
-  }, []);
+const STATUS_PRIORITY: Record<RegionStatus, number> = {
+  Behind: 0, 'No Activity': 1, Active: 2, Strong: 3, 'No Campaign': 4,
+};
 
-  const completed = surgeries.filter((item) => item.status === 'Completed').length;
-  const scheduled = surgeries.filter((item) => item.status === 'Scheduled').length;
-  const overdue = followUps.filter((item) => item.status === 'Overdue').length;
-  const doctorReview = followUps.filter((item) => item.needsDoctorReview).length;
-  const target = campaigns.reduce((sum, campaign) => sum + campaign.targetSurgeries, 0);
-  const completionRate = target ? Math.round((completed / target) * 100) : 0;
+const STATUS_STYLES: Record<RegionStatus, { border: string; badge: string; bar: string }> = {
+  'No Campaign': { border: 'border-l-slate-300',  badge: 'bg-slate-100 text-slate-600',  bar: 'bg-slate-300'  },
+  'No Activity': { border: 'border-l-orange-400', badge: 'bg-orange-50 text-orange-700', bar: 'bg-orange-400' },
+  Behind:        { border: 'border-l-red-500',    badge: 'bg-red-50 text-red-700',       bar: 'bg-red-500'    },
+  Active:        { border: 'border-l-blue-500',   badge: 'bg-blue-50 text-blue-700',     bar: 'bg-blue-500'   },
+  Strong:        { border: 'border-l-teal-500',   badge: 'bg-teal-50 text-teal-700',     bar: 'bg-teal-500'   },
+};
 
-  const regionRows = useMemo(() => REGIONAL_CAMPAIGN_AREAS.map((area) => {
-    const regionCampaigns = campaigns.filter((campaign) => campaign.region === area.region);
-    const primaryCampaign = regionCampaigns[0];
-    const campaignIds = new Set(regionCampaigns.map((campaign) => campaign.id));
-    const regionPatients = patients.filter((patient) => patient.region === area.region || (patient.campaignId && campaignIds.has(patient.campaignId)));
-    const regionScreenings = screenings.filter((screening) => screening.region === area.region || campaignIds.has(screening.campaignId));
-    const regionSurgeries = surgeries.filter((surgery) => surgery.region === area.region || campaignIds.has(surgery.campaignId));
-    const regionFollowUps = followUps.filter((followUp) => followUp.region === area.region || campaignIds.has(followUp.campaignId));
-    const regionCompleted = regionSurgeries.filter((surgery) => surgery.status === 'Completed').length;
-    const regionTarget = regionCampaigns.reduce((sum, campaign) => sum + campaign.targetSurgeries, 0) || area.defaultSurgeryTarget;
-    const pct = regionTarget ? Math.round((regionCompleted / regionTarget) * 100) : 0;
-    const riskFollowUps = regionFollowUps.filter((followUp) => followUp.status === 'Overdue').length;
-    const reviewCount = regionFollowUps.filter((followUp) => followUp.needsDoctorReview).length;
-    const status = getRegionStatus(regionCampaigns.length, regionPatients.length, pct);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-    return {
-      region: area.region,
-      district: primaryCampaign?.operationDistrict ?? area.defaultDistrict,
-      manager: primaryCampaign?.projectManagerName ?? 'Unassigned',
-      target: regionTarget,
-      patients: regionPatients.length,
-      screenings: regionScreenings.length,
-      completed: regionCompleted,
-      pct,
-      overdue: riskFollowUps,
-      doctorReview: reviewCount,
-      status,
-    };
-  }), [campaigns, followUps, patients, screenings, surgeries]);
-
-  const funnelData = [
-    { name: 'Registered', value: patients.length },
-    { name: 'Screened', value: screenings.length },
-    { name: 'Scheduled', value: scheduled },
-    { name: 'Completed Surgery', value: completed },
-    { name: 'Follow-up Done', value: followUps.filter((item) => item.status === 'Completed').length },
-  ];
-
-  const surgeryStatusData = SURGERY_STATUSES.map((status) => ({
-    name: status,
-    value: surgeries.filter((surgery) => surgery.status === status).length,
-  })).filter((item) => item.value > 0);
-
-  const riskData = regionRows
-    .map((row) => ({ region: shortRegion(row.region), overdue: row.overdue, review: row.doctorReview }))
-    .filter((row) => row.overdue || row.review);
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500">Regional performance, workflow volume, and follow-up risk</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-        <Metric title="Campaigns" value={campaigns.length} icon={Target} />
-        <Metric title="Patients" value={patients.length} icon={ClipboardList} />
-        <Metric title="Screened" value={screenings.length} icon={Eye} />
-        <Metric title="Scheduled" value={scheduled} icon={Stethoscope} />
-        <Metric title="Completed" value={completed} icon={CheckCircle} />
-        <Metric title="Target Done" value={`${completionRate}%`} icon={TrendingUp} />
-      </div>
-
-      {(overdue > 0 || doctorReview > 0) && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          <AlertTriangle size={16} />
-          <span>{overdue} overdue follow-up{overdue === 1 ? '' : 's'}</span>
-          <span className="text-amber-400">|</span>
-          <span>{doctorReview} need doctor review</span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Card className="border-0 shadow-sm xl:col-span-3">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">Region Surgery Performance</CardTitle>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={regionRows} margin={{ left: 0, right: 8, top: 8, bottom: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="region" tickFormatter={shortRegion} tick={{ fontSize: 11 }} angle={-20} textAnchor="end" height={56} interval={0} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(value, name) => [formatChartValue(value), name === 'completed' ? 'Completed' : 'Target']} labelFormatter={(value) => String(value)} />
-                <Bar dataKey="target" fill="#d1d5db" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="completed" fill="#0f766e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm xl:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">Patient Workflow Funnel</CardTitle>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <FunnelChart>
-                <Tooltip formatter={(value) => formatChartValue(value)} />
-                <Funnel dataKey="value" data={funnelData} isAnimationActive={false}>
-                  <LabelList position="right" fill="#334155" stroke="none" dataKey="name" fontSize={12} />
-                  {funnelData.map((entry, index) => <Cell key={entry.name} fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} />)}
-                </Funnel>
-              </FunnelChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm xl:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">Surgery Status</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            {surgeryStatusData.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={surgeryStatusData} dataKey="value" nameKey="name" outerRadius={82} label>
-                    {surgeryStatusData.map((entry, index) => <Cell key={entry.name} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(value) => formatChartValue(value)} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyChart>No surgeries yet</EmptyChart>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm xl:col-span-3">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">Follow-up Risk by Region</CardTitle>
-          </CardHeader>
-          <CardContent className="h-64">
-            {riskData.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={riskData} margin={{ left: 0, right: 8, top: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="region" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip formatter={(value, name) => [formatChartValue(value), name === 'overdue' ? 'Overdue' : 'Doctor review']} />
-                  <Bar dataKey="overdue" stackId="risk" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="review" stackId="risk" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyChart>No follow-up risk</EmptyChart>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border-0 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm text-slate-700">Region Accountability</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b border-slate-100 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-2 pr-3">Region</th>
-                <th className="py-2 pr-3">District</th>
-                <th className="py-2 pr-3">Project Manager</th>
-                <th className="py-2 pr-3">Patients</th>
-                <th className="py-2 pr-3">Screened</th>
-                <th className="py-2 pr-3">Completed</th>
-                <th className="py-2 pr-3">Progress</th>
-                <th className="py-2 pr-3">Risk</th>
-                <th className="py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {regionRows.map((row) => (
-                <tr key={row.region} className="text-slate-700">
-                  <td className="py-3 pr-3 font-medium text-slate-900">{row.region}</td>
-                  <td className="py-3 pr-3">{row.district}</td>
-                  <td className="py-3 pr-3">{row.manager}</td>
-                  <td className="py-3 pr-3">{row.patients.toLocaleString()}</td>
-                  <td className="py-3 pr-3">{row.screenings.toLocaleString()}</td>
-                  <td className="py-3 pr-3">{row.completed.toLocaleString()} / {row.target.toLocaleString()}</td>
-                  <td className="py-3 pr-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full bg-teal-600" style={{ width: `${Math.min(row.pct, 100)}%` }} />
-                      </div>
-                      <span className="w-10 text-xs text-slate-500">{row.pct}%</span>
-                    </div>
-                  </td>
-                  <td className="py-3 pr-3 text-xs text-slate-500">{row.overdue} overdue, {row.doctorReview} review</td>
-                  <td className="py-3"><StatusBadge status={row.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function getRegionStatus(campaignCount: number, patientCount: number, pct: number): RegionStatus {
+function computeStatus(campaignCount: number, patientCount: number, pct: number): RegionStatus {
   if (!campaignCount) return 'No Campaign';
   if (!patientCount) return 'No Activity';
   if (pct >= 75) return 'Strong';
@@ -273,42 +70,449 @@ function getRegionStatus(campaignCount: number, patientCount: number, pct: numbe
   return 'Behind';
 }
 
-function shortRegion(region: string) {
-  return region
-    .replace(' / Mogadishu', '')
-    .replace(' Somalia', '')
-    .replace(' State', '');
+function shortName(region: string) {
+  return region.replace(' / Mogadishu', '').replace(' Somalia', '').replace(' State', '');
 }
 
-function formatChartValue(value: unknown) {
-  return Number(value ?? 0).toLocaleString();
+function computeRegionStats(
+  campaigns: Campaign[],
+  patients: Patient[],
+  screenings: Screening[],
+  surgeries: Surgery[],
+  followUps: FollowUp[],
+): RegionStats[] {
+  return REGIONAL_CAMPAIGN_AREAS.map((area) => {
+    const regionCampaigns = campaigns.filter((c) => c.region === area.region);
+    const primary = regionCampaigns.find((c) => c.status === 'Active') ?? regionCampaigns[0] ?? null;
+
+    const rSurgeries = surgeries.filter((s) => s.region === area.region);
+    const rFollowUps = followUps.filter((f) => f.region === area.region);
+
+    const completed = rSurgeries.filter((s) => s.status === 'Completed').length;
+    const scheduled = rSurgeries.filter((s) => s.status === 'Scheduled').length;
+    const target    = primary?.targetSurgeries ?? area.defaultSurgeryTarget;
+    const pct       = target ? Math.round((completed / target) * 100) : 0;
+
+    return {
+      region:         area.region,
+      district:       primary?.operationDistrict ?? area.defaultDistrict,
+      manager:        primary?.projectManagerName ?? '',
+      campaignName:   primary?.name ?? '',
+      campaignStatus: primary?.status ?? null,
+      campaignStart:  primary?.startDate ?? '',
+      campaignEnd:    primary?.endDate ?? '',
+      target,
+      patients:       patients.filter((p) => p.region === area.region).length,
+      screened:       screenings.filter((s) => s.region === area.region).length,
+      scheduled,
+      completed,
+      followUpsDone:  rFollowUps.filter((f) => f.status === 'Completed').length,
+      overdue:        rFollowUps.filter((f) => f.status === 'Overdue').length,
+      doctorReview:   rFollowUps.filter((f) => f.needsDoctorReview).length,
+      pct,
+      status: computeStatus(regionCampaigns.length, patients.filter((p) => p.region === area.region).length, pct),
+    };
+  });
 }
 
-function Metric({ title, value, icon: Icon }: { title: string; value: number | string; icon: typeof Activity }) {
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const { role, user } = usePermissions();
+  const isSuperAdmin = role === 'Super Administrator';
+
+  const [selectedRegion, setSelectedRegion] = useState<string>('all');
+  const [campaigns,  setCampaigns]  = useState<Campaign[]>([]);
+  const [patients,   setPatients]   = useState<Patient[]>([]);
+  const [screenings, setScreenings] = useState<Screening[]>([]);
+  const [surgeries,  setSurgeries]  = useState<Surgery[]>([]);
+  const [followUps,  setFollowUps]  = useState<FollowUp[]>([]);
+  const [loading,    setLoading]    = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      getAllCampaigns(),
+      getAllPatients(),
+      getAllScreenings(),
+      getAllSurgeries(),
+      getAllFollowUps(),
+    ]).then(([c, p, s, sur, f]) => {
+      setCampaigns(c); setPatients(p); setScreenings(s); setSurgeries(sur); setFollowUps(f);
+      setLoading(false);
+    });
+  }, []);
+
+  // Non-super-admin: lock to their assigned region
+  useEffect(() => {
+    if (role && role !== 'Super Administrator') {
+      setSelectedRegion(user?.assignedRegion ?? 'all');
+    }
+  }, [role, user?.assignedRegion]);
+
+  const allStats = useMemo(
+    () => computeRegionStats(campaigns, patients, screenings, surgeries, followUps),
+    [campaigns, followUps, patients, screenings, surgeries],
+  );
+
+  const currentStats = selectedRegion === 'all'
+    ? null
+    : (allStats.find((r) => r.region === selectedRegion) ?? null);
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+        Loading dashboard...
+      </div>
+    );
+  }
+
   return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="rounded-xl bg-teal-50 p-2 text-teal-700"><Icon size={18} /></div>
-        <div>
-          <p className="text-xs font-medium text-slate-500">{title}</p>
-          <p className="text-lg font-bold text-slate-900">{value}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
+        <p className="text-sm text-slate-500">
+          {isSuperAdmin
+            ? 'National overview across all 9 regions — select a region to drill down'
+            : `${currentStats?.region ?? 'Regional'} performance`}
+        </p>
+      </div>
+
+      {isSuperAdmin && (
+        <RegionTabBar selected={selectedRegion} onChange={setSelectedRegion} stats={allStats} />
+      )}
+
+      {selectedRegion === 'all' ? (
+        <AllRegionsView stats={allStats} onDrillDown={setSelectedRegion} />
+      ) : (
+        <SingleRegionView
+          stats={currentStats}
+          showBack={isSuperAdmin}
+          onBack={() => setSelectedRegion('all')}
+        />
+      )}
+    </div>
   );
 }
 
-function EmptyChart({ children }: { children: string }) {
-  return <div className="flex h-full items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">{children}</div>;
+// ─── Region Tab Bar ───────────────────────────────────────────────────────────
+
+function RegionTabBar({
+  selected,
+  onChange,
+  stats,
+}: {
+  selected: string;
+  onChange: (region: string) => void;
+  stats: RegionStats[];
+}) {
+  const tabs = [
+    { key: 'all', label: 'All Regions', alerts: 0 },
+    ...REGIONAL_CAMPAIGN_AREAS.map((area) => {
+      const s = stats.find((r) => r.region === area.region);
+      return { key: area.region, label: shortName(area.region), alerts: (s?.overdue ?? 0) + (s?.doctorReview ?? 0) };
+    }),
+  ];
+
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-white p-1 shadow-sm">
+      {tabs.map((tab) => {
+        const active = selected === tab.key;
+        return (
+          <button
+            key={tab.key}
+            onClick={() => onChange(tab.key)}
+            className={`relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+              active ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+            }`}
+          >
+            {tab.label}
+            {tab.alerts > 0 && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>
+                {tab.alerts}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
-function StatusBadge({ status }: { status: RegionStatus }) {
-  const classes: Record<RegionStatus, string> = {
-    'No Campaign': 'bg-slate-100 text-slate-600',
-    'No Activity': 'bg-red-50 text-red-700',
-    Behind: 'bg-amber-50 text-amber-700',
-    Active: 'bg-blue-50 text-blue-700',
-    Strong: 'bg-emerald-50 text-emerald-700',
-  };
-  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes[status]}`}>{status}</span>;
+// ─── All Regions View ─────────────────────────────────────────────────────────
+
+function AllRegionsView({ stats, onDrillDown }: { stats: RegionStats[]; onDrillDown: (r: string) => void }) {
+  const totalCompleted  = stats.reduce((s, r) => s + r.completed, 0);
+  const totalTarget     = stats.reduce((s, r) => s + r.target, 0);
+  const totalPct        = totalTarget ? Math.round((totalCompleted / totalTarget) * 100) : 0;
+  const behindCount     = stats.filter((r) => r.status === 'Behind' || r.status === 'No Activity').length;
+  const alertCount      = stats.reduce((s, r) => s + r.overdue + r.doctorReview, 0);
+
+  const sorted = [...stats].sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status]);
+
+  return (
+    <div className="space-y-4">
+      {/* 3 national KPIs */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <KPICard
+          label="National Surgery Progress"
+          value={`${totalCompleted.toLocaleString()} / ${totalTarget.toLocaleString()}`}
+          sub={`${totalPct}% of national target reached`}
+          accent="teal"
+        />
+        <KPICard
+          label="Regions Needing Attention"
+          value={behindCount}
+          sub={`${9 - behindCount} of 9 regions on track`}
+          accent={behindCount >= 4 ? 'red' : behindCount > 1 ? 'amber' : 'teal'}
+        />
+        <KPICard
+          label="Active Alerts"
+          value={alertCount}
+          sub="Overdue follow-ups + pending doctor reviews"
+          accent={alertCount > 0 ? 'red' : 'teal'}
+        />
+      </div>
+
+      {/* 9 region cards sorted by urgency */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {sorted.map((r) => (
+          <RegionCard key={r.region} stats={r} onDrillDown={onDrillDown} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Region Card ──────────────────────────────────────────────────────────────
+
+function RegionCard({ stats: r, onDrillDown }: { stats: RegionStats; onDrillDown: (region: string) => void }) {
+  const style     = STATUS_STYLES[r.status];
+  const hasAlerts = r.overdue > 0 || r.doctorReview > 0;
+
+  return (
+    <button
+      onClick={() => onDrillDown(r.region)}
+      className={`group w-full rounded-xl border border-slate-100 border-l-4 ${style.border} bg-white p-4 text-left shadow-sm transition-all hover:shadow-md`}
+    >
+      {/* Header row */}
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-slate-900">{shortName(r.region)}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{r.district}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {hasAlerts && (
+            <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+              <AlertTriangle size={9} />
+              {r.overdue + r.doctorReview}
+            </span>
+          )}
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${style.badge}`}>
+            {r.status}
+          </span>
+        </div>
+      </div>
+
+      {/* PM */}
+      <p className="mb-3 text-xs text-slate-500">
+        PM: <span className="font-medium text-slate-700">{r.manager || 'Unassigned'}</span>
+      </p>
+
+      {/* Progress bar */}
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="text-slate-500">{r.completed.toLocaleString()} / {r.target.toLocaleString()} surgeries</span>
+        <span className="font-bold text-slate-700">{r.pct}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(r.pct, 100)}%` }} />
+      </div>
+
+      {/* Footer */}
+      <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+        <span>{r.patients.toLocaleString()} patients · {r.screened.toLocaleString()} screened</span>
+        <ChevronRight size={14} className="transition-colors group-hover:text-slate-600" />
+      </div>
+    </button>
+  );
+}
+
+// ─── Single Region View ───────────────────────────────────────────────────────
+
+function SingleRegionView({
+  stats,
+  showBack,
+  onBack,
+}: {
+  stats: RegionStats | null;
+  showBack: boolean;
+  onBack: () => void;
+}) {
+  if (!stats) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 py-20 text-center text-sm text-slate-400">
+        No data available for this region yet.
+      </div>
+    );
+  }
+
+  const style     = STATUS_STYLES[stats.status];
+  const hasAlerts = stats.overdue > 0 || stats.doctorReview > 0;
+  const remaining = Math.max(0, stats.target - stats.completed);
+
+  const pipeline = [
+    { label: 'Registered',  value: stats.patients,      Icon: Users        },
+    { label: 'Screened',    value: stats.screened,      Icon: Microscope   },
+    { label: 'Scheduled',   value: stats.scheduled,     Icon: Calendar     },
+    { label: 'Completed',   value: stats.completed,     Icon: CheckCircle  },
+    { label: 'Follow-ups',  value: stats.followUpsDone, Icon: CalendarCheck },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Back */}
+      {showBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-teal-600"
+        >
+          <ArrowLeft size={15} /> All Regions
+        </button>
+      )}
+
+      {/* Region header */}
+      <div className={`rounded-xl border border-slate-100 border-l-4 ${style.border} bg-white p-5 shadow-sm`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900">{stats.region}</h2>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${style.badge}`}>{stats.status}</span>
+            </div>
+            <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
+              <MapPin size={12} />{stats.district}
+            </p>
+          </div>
+          {stats.manager && (
+            <div className="text-sm">
+              <p className="text-xs text-slate-400">Project Manager</p>
+              <p className="font-semibold text-slate-800">{stats.manager}</p>
+            </div>
+          )}
+        </div>
+
+        {stats.campaignName && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-xs">
+            <span className="font-medium text-slate-700">{stats.campaignName}</span>
+            {stats.campaignStatus && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{stats.campaignStatus}</span>
+            )}
+            {stats.campaignStart && stats.campaignEnd && (
+              <span className="text-slate-400">{stats.campaignStart} → {stats.campaignEnd}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pipeline */}
+      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+        <p className="mb-5 text-xs font-semibold uppercase tracking-wider text-slate-400">Patient Pipeline</p>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+          {pipeline.map(({ label, value, Icon }) => (
+            <div key={label} className="text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
+                <Icon size={17} className="text-teal-700" />
+              </div>
+              <p className="text-2xl font-bold text-slate-900">{value.toLocaleString()}</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Surgery target */}
+      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Surgery Target</p>
+          <span className={`text-3xl font-bold ${stats.pct >= 75 ? 'text-teal-600' : stats.pct >= 25 ? 'text-blue-600' : 'text-red-600'}`}>
+            {stats.pct}%
+          </span>
+        </div>
+        <div className="mb-3 h-5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div
+            className={`h-full rounded-full transition-all ${style.bar}`}
+            style={{ width: `${Math.min(stats.pct, 100)}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-600">
+            <strong>{stats.completed.toLocaleString()}</strong> surgeries completed
+          </span>
+          <span className="text-slate-500">Target: <strong>{stats.target.toLocaleString()}</strong></span>
+        </div>
+        {remaining > 0 && (
+          <p className="mt-2 text-xs text-slate-400">{remaining.toLocaleString()} more needed to reach target</p>
+        )}
+      </div>
+
+      {/* Alerts */}
+      {hasAlerts ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-500">Risk Alerts</p>
+          <div className="flex flex-wrap gap-6">
+            {stats.overdue > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100">
+                  <AlertTriangle size={16} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-red-700">{stats.overdue}</p>
+                  <p className="text-xs text-red-500">overdue follow-up{stats.overdue !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+            )}
+            {stats.doctorReview > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100">
+                  <Eye size={16} className="text-red-600" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-red-700">{stats.doctorReview}</p>
+                  <p className="text-xs text-red-500">need{stats.doctorReview === 1 ? 's' : ''} doctor review</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2.5 rounded-xl border border-teal-100 bg-teal-50 px-5 py-3.5 text-sm text-teal-700">
+          <CheckCircle size={16} />
+          No active alerts for this region
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KPICard({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  sub: string;
+  accent: 'teal' | 'red' | 'amber';
+}) {
+  const accentClass = { teal: 'text-teal-600', red: 'text-red-600', amber: 'text-amber-600' }[accent];
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className={`mt-1 text-2xl font-bold ${accentClass}`}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </p>
+      <p className="mt-0.5 text-xs text-slate-400">{sub}</p>
+    </div>
+  );
 }
