@@ -31,7 +31,7 @@ const PERMISSIONS: Record<Role, Matrix> = {
   },
   'Project Manager': {
     dashboard: VIEW_ONLY,
-    campaigns: ['view', 'edit', 'export'],
+    campaigns: ['view', 'export'],
     patients: ['view', 'create', 'edit', 'export'],
     screening: ['view', 'create', 'edit', 'export'],
     surgeries: ['view', 'create', 'edit', 'export'],
@@ -40,18 +40,14 @@ const PERMISSIONS: Record<Role, Matrix> = {
     settings: ['view', 'create', 'edit'],
   },
   'Data Clerk': {
-    dashboard: VIEW_ONLY,
     patients: CRE,
     screening: VIEW_ONLY,
-    reports: VIEW_ONLY,
   },
   'Screening Officer': {
-    dashboard: VIEW_ONLY,
     patients: VIEW_ONLY,
     screening: CRE,
     surgeries: ['view', 'edit'],
     followups: CRE,
-    reports: VIEW_ONLY,
   },
 };
 
@@ -71,6 +67,12 @@ export function mustMaskPatient(): boolean {
 
 export function canAccessSettings(role: string): boolean {
   return can(role, 'settings', 'view');
+}
+
+export function defaultPathForRole(role: string): string {
+  if (role === 'Data Clerk') return '/patients';
+  if (role === 'Screening Officer') return '/screening';
+  return '/dashboard';
 }
 
 export function manageableRolesFor(role: string): Role[] {

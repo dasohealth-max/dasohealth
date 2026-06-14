@@ -1,16 +1,17 @@
 'use client';
+
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSession } from '@/lib/auth';
-import { Eye } from 'lucide-react';
+import { getUser } from '@/lib/auth';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    getSession().then((session) => {
-      if (!session) {
+    getUser().then((user) => {
+      if (!user) {
         router.replace('/login');
       } else {
         setAuthReady(true);
@@ -18,17 +19,16 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     });
   }, [router]);
 
-  // While checking auth or before mount, show branded loading screen
   if (!authReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-[#FAFAF8]">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-teal-500/30 animate-pulse">
-            <Eye className="w-7 h-7 text-white" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#D0E8DA] bg-white shadow-lg shadow-[#1C2B22]/10">
+            <Image src="/brand/02_daso-health-icon-dark.svg" alt="DASO Health" width={34} height={34} className="h-8 w-8" priority />
           </div>
           <div className="text-center">
-            <p className="text-sm font-semibold text-slate-700">EyeCare Pro</p>
-            <p className="text-xs text-slate-400 mt-0.5">Loading your workspace…</p>
+            <p className="text-sm font-semibold text-[#1C2B22]">DASO Health</p>
+            <p className="mt-0.5 text-xs text-[#7A9A87]">Loading your workspace...</p>
           </div>
         </div>
       </div>

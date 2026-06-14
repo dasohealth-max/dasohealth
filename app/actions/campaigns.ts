@@ -1,6 +1,8 @@
 'use server';
 
 import { z } from 'zod';
+import { updateTag } from 'next/cache';
+import { after } from 'next/server';
 import { getAllCampaigns as fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, getCampaignById } from '@/lib/api/campaigns';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
@@ -61,7 +63,8 @@ export async function actionCreateCampaign(input: unknown): Promise<ActionResult
       if (conflict) return { ok: false, error: `${parsed.data.region} already has an active campaign: ${conflict.name}` };
     }
     const campaign = await createCampaign(parsed.data);
-    await auditLog({
+    updateTag('campaigns');
+    after(() => auditLog({
       actor,
       action: 'create',
       entity: 'Campaign',
@@ -70,7 +73,7 @@ export async function actionCreateCampaign(input: unknown): Promise<ActionResult
       campaignId: campaign.id,
       details: `Created campaign ${campaign.name} for ${campaign.region}`,
       after: campaign,
-    });
+    }));
     return { ok: true, data: campaign };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -105,17 +108,18 @@ export async function actionCreateCampaignsBulk(input: unknown): Promise<ActionR
     for (const campaignInput of parsed.data) {
       const campaign = await createCampaign(campaignInput);
       created.push(campaign);
-      await auditLog({
-        actor,
-        action: 'create',
-        entity: 'Campaign',
-        entityId: campaign.id,
-        region: campaign.region,
-        campaignId: campaign.id,
-        details: `Created campaign ${campaign.name} for ${campaign.region}`,
-        after: campaign,
-      });
     }
+    updateTag('campaigns');
+    after(() => Promise.all(created.map(c => auditLog({
+      actor,
+      action: 'create',
+      entity: 'Campaign',
+      entityId: c.id,
+      region: c.region,
+      campaignId: c.id,
+      details: `Created campaign ${c.name} for ${c.region}`,
+      after: c,
+    }))));
     return { ok: true, data: created };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -142,7 +146,8 @@ export async function actionUpdateCampaign(id: string, input: unknown): Promise<
       if (conflict) return { ok: false, error: `${parsed.data.region} already has an active campaign: ${conflict.name}` };
     }
     const campaign = await updateCampaign(id, parsed.data);
-    await auditLog({
+    updateTag('campaigns');
+    after(() => auditLog({
       actor,
       action: 'update',
       entity: 'Campaign',
@@ -154,7 +159,7 @@ export async function actionUpdateCampaign(id: string, input: unknown): Promise<
         : `Updated campaign ${campaign.name}`,
       before,
       after: campaign,
-    });
+    }));
     return { ok: true, data: campaign };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -172,7 +177,8 @@ export async function actionDeleteCampaign(id: string): Promise<ActionResult> {
       if (denied) return denied;
     }
     await deleteCampaign(id);
-    await auditLog({
+    updateTag('campaigns');
+    after(() => auditLog({
       actor,
       action: 'delete',
       entity: 'Campaign',
@@ -181,7 +187,7 @@ export async function actionDeleteCampaign(id: string): Promise<ActionResult> {
       campaignId: id,
       details: before ? `Deleted campaign ${before.name}` : 'Deleted campaign',
       before,
-    });
+    }));
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

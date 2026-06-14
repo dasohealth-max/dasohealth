@@ -1,4 +1,5 @@
 import 'server-only';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { surgeryStatusToApp, surgeryStatusFromApp, lensTypeToApp, lensTypeFromApp } from '@/lib/prisma-enums';
 import type { Surgery } from '@/types';
@@ -30,10 +31,15 @@ export function fromPrisma(row: Row): Surgery {
   };
 }
 
-export async function getAllSurgeries(where: { region?: string } = {}): Promise<Surgery[]> {
-  const rows = await prisma.surgery.findMany({ where, orderBy: { scheduledAt: 'desc' } });
-  return rows.map(fromPrisma);
-}
+// Cached for 30 s; invalidated immediately by revalidateTag('surgeries') after any mutation.
+export const getAllSurgeries = unstable_cache(
+  async (where: { region?: string } = {}): Promise<Surgery[]> => {
+    const rows = await prisma.surgery.findMany({ where, orderBy: { scheduledAt: 'desc' } });
+    return rows.map(fromPrisma);
+  },
+  ['surgeries-list'],
+  { revalidate: 30, tags: ['surgeries'] },
+);
 
 export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Promise<Surgery> {
   const row = await prisma.surgery.create({

@@ -48,17 +48,24 @@ function toSessionUser(user: {
   id: string;
   email?: string;
   user_metadata: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
 }): SessionUser {
   const m = user.user_metadata;
+  const a = user.app_metadata ?? {};
   return {
     id:       user.id,
     email:    user.email ?? '',
     name:     String(m.name     ?? ''),
-    role:     String(m.role     ?? ''),
-    assignedRegion: m.assignedRegion ? String(m.assignedRegion) : undefined,
+    role:     String(a.role     ?? ''),
+    assignedRegion: a.assignedRegion ? String(a.assignedRegion) : undefined,
     initials: String(m.initials ?? ''),
     color:    String(m.color    ?? '#0d9488'),
   };
+}
+
+export async function getUser() {
+  const { data: { user } } = await getClient().auth.getUser();
+  return user;
 }
 
 // ---------------------------------------------------------------------------

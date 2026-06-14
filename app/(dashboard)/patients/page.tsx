@@ -1,244 +1,539 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Campaign, DisabilityStatus, Patient, Sex } from '@/types';
-import { actionCreatePatient, actionDeletePatient, actionUpdatePatient, getAllPatients } from '@/app/actions/patients';
+import { getPatientsPaginated, actionCreatePatient, actionDeletePatient, actionUpdatePatient } from '@/app/actions/patients';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import InlineForm from '@/components/forms/InlineForm';
+import ModalForm from '@/components/forms/ModalForm';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import DateOfBirthPicker from '@/components/forms/DateOfBirthPicker';
+import Pagination from '@/components/ui/Pagination';
+import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 50;
 const SEXES: Sex[] = ['Female', 'Male', 'Other'];
 const DISABILITIES: DisabilityStatus[] = ['None', 'Visual', 'Hearing', 'Mobility', 'Cognitive', 'Multiple'];
+const REFERRAL_SOURCES = ['Campaign walk-in', 'Community health worker', 'Self-referral', 'Doctor referral', 'NGO partner', 'Radio / TV campaign', 'Mosque / community leader'];
+const SCREENING_STATUSES = ['Awaiting Screening', 'Screened'] as const;
 
-const BLANK: Omit<Patient, 'id' | 'patientCode' | 'createdAt'> = {
-  fullName: '',
-  dateOfBirth: '',
-  sex: 'Female',
-  phone: '',
-  email: '',
-  district: '',
-  region: '',
-  operationDistrict: '',
-  occupation: '',
-  education: '',
-  disabilityStatus: 'None',
-  insuranceStatus: 'None',
-  emergencyContact: '',
-  emergencyPhone: '',
-  consentGiven: true,
-  consentDate: new Date().toISOString().split('T')[0],
-  campaignId: '',
-  referralSource: 'Campaign walk-in',
-  notes: '',
-  registeredById: '',
-  registeredByName: '',
-  screeningStatus: 'Awaiting Screening',
+const F = {
+  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
+  input: 'w-full rounded-md border border-[#E2DDD5] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  sel:   'rounded-md',
 };
+
+const STATUS_STYLE: Record<string, string> = {
+  'Awaiting Screening': 'bg-[#FEF3DC] text-[#C47D11]',
+  'Screened':           'bg-[#E8F5EE] text-[#1A7A46]',
+};
+
+// ─── Form shape ───────────────────────────────────────────────────────────────
+
+const BLANK = {
+  fullName:         '',
+  dateOfBirth:      '',
+  sex:              'Female' as Sex,
+  phone:            '',
+  district:         '',
+  region:           '',
+  operationDistrict:'',
+  occupation:       '',
+  education:        '',
+  disabilityStatus: 'None' as DisabilityStatus,
+  insuranceStatus:  'None',
+  emergencyContact: '',
+  emergencyPhone:   '',
+  consentGiven:     true,
+  consentDate:      new Date().toISOString().split('T')[0],
+  campaignId:       '',
+  referralSource:   'Campaign walk-in',
+  notes:            '',
+  registeredById:   '',
+  registeredByName: '',
+  screeningStatus:  'Awaiting Screening' as 'Awaiting Screening' | 'Screened',
+};
+
+type PatientForm = typeof BLANK;
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PatientsPage() {
   const { can, role } = usePermissions();
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [form, setForm] = useState(BLANK);
-  const [editing, setEditing] = useState<Patient | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [search, setSearch] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const isSuperAdmin   = role === 'Super Administrator';
 
+  const [patients,     setPatients]     = useState<Patient[]>([]);
+  const [total,        setTotal]        = useState(0);
+  const [page,         setPage]         = useState(1);
+  const [campaigns,    setCampaigns]    = useState<Campaign[]>([]);
+  const [form,         setForm]         = useState<PatientForm>(BLANK);
+  const [editing,      setEditing]      = useState<Patient | null>(null);
+  const [showForm,     setShowForm]     = useState(false);
+  const [saveError,    setSaveError]    = useState('');
+  const [isLoading,    setIsLoading]    = useState(true);
+  const [search,       setSearch]       = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [regionFilter, setRegionFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null);
+
+  // Debounce search → reset to page 1 when it fires
   useEffect(() => {
-    Promise.all([getAllPatients(), getAllCampaigns()]).then(([patientRows, campaignRows]) => {
-      setPatients(patientRows);
-      setCampaigns(campaignRows);
-      const defaultCampaign = campaignRows.find((campaign) => campaign.status === 'Active') ?? campaignRows[0];
-      if (defaultCampaign) {
-        setForm((current) => applyCampaignContext(current, defaultCampaign));
-      }
-      setIsLoading(false);
-    });
-  }, []);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return patients;
-    return patients.filter((patient) =>
-      patient.fullName.toLowerCase().includes(q) ||
-      patient.patientCode.toLowerCase().includes(q) ||
-      patient.phone.includes(q) ||
-      patient.region.toLowerCase().includes(q),
-    );
-  }, [patients, search]);
+  // Fetch page from server
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    getPatientsPaginated({ search: debouncedSearch, region: regionFilter, status: statusFilter, page, pageSize: PAGE_SIZE })
+      .then(({ data, total: t }) => {
+        if (!cancelled) { setPatients(data); setTotal(t); setIsLoading(false); }
+      })
+      .catch(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
+  }, [debouncedSearch, regionFilter, statusFilter, page]);
 
-  function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+  // Load campaigns once for the form dropdown
+  useEffect(() => { getAllCampaigns().then(setCampaigns); }, []);
+
+  // ── Form helpers ───────────────────────────────────────────────────────────
+
+  function set<K extends keyof PatientForm>(key: K, value: PatientForm[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function chooseCampaign(campaignId: string) {
-    const campaign = campaigns.find((item) => item.id === campaignId);
-    if (!campaign) return;
-    setForm((current) => applyCampaignContext(current, campaign));
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (campaign) setForm((prev) => applyCampaignContext(prev, campaign));
   }
+
+  const selectedCampaign = campaigns.find((c) => c.id === form.campaignId);
+  const campaignLocked   = !isSuperAdmin && !!selectedCampaign;
 
   function openAdd() {
     setEditing(null);
-    const defaultCampaign = campaigns.find((campaign) => campaign.status === 'Active') ?? campaigns[0];
-    setForm(defaultCampaign ? applyCampaignContext(BLANK, defaultCampaign) : BLANK);
+    let base = BLANK;
+    if (!isSuperAdmin) {
+      const active = campaigns.find((c) => c.status === 'Active') ?? campaigns[0];
+      if (active) base = applyCampaignContext(BLANK, active);
+    }
+    setForm(base);
     setSaveError('');
     setShowForm(true);
   }
 
   function openEdit(patient: Patient) {
-    const editable = Object.fromEntries(
-      Object.entries(patient).filter(([key]) => key !== 'id' && key !== 'patientCode' && key !== 'createdAt')
-    ) as typeof BLANK;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _id, patientCode: _code, createdAt: _ca, email: _email, ...editable } = patient as Patient & { email?: string };
     setEditing(patient);
-    setForm(editable);
+    setForm({ ...BLANK, ...editable });
     setSaveError('');
     setShowForm(true);
   }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
 
   async function save() {
     setSaveError('');
     const result = editing
       ? await actionUpdatePatient(editing.id, form)
       : await actionCreatePatient(form);
-    if (!result.ok) {
-      setSaveError(result.error);
-      return;
+    if (!result.ok) { setSaveError(result.error); return; }
+    if (editing) {
+      setPatients((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
+    } else {
+      setPage(1);
     }
-    setPatients((rows) => editing
-      ? rows.map((row) => row.id === editing.id ? result.data : row)
-      : [result.data, ...rows]);
     setShowForm(false);
     setEditing(null);
   }
 
-  async function remove(patient: Patient) {
-    if (!confirm(`Delete patient "${patient.fullName}" (${patient.patientCode})? This will also delete their screenings, surgeries, and follow-ups. This cannot be undone.`)) return;
-    const result = await actionDeletePatient(patient.id);
-    if (result.ok) setPatients((rows) => rows.filter((row) => row.id !== patient.id));
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const result = await actionDeletePatient(deleteTarget.id);
+    if (result.ok) {
+      const remaining = patients.filter((r) => r.id !== deleteTarget.id);
+      setTotal((t) => t - 1);
+      if (remaining.length === 0 && page > 1) {
+        setPage((p) => p - 1);
+      } else {
+        setPatients(remaining);
+      }
+    }
+    setDeleteTarget(null);
   }
 
-  const selectedCampaign = campaigns.find((campaign) => campaign.id === form.campaignId);
-  const clerkCampaignLocked = role === 'Data Clerk' && !!selectedCampaign;
+  const hasFilters = !!search || !!regionFilter || !!statusFilter;
+  const formInvalid = !form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Patient Record"
+        description={deleteTarget
+          ? `This will permanently delete ${deleteTarget.fullName} (${deleteTarget.patientCode}) along with all their screenings, surgeries, and follow-ups. This cannot be undone.`
+          : ''}
+        confirmLabel="Delete Patient"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Patients</h1>
-          <p className="text-sm text-slate-500">Register patients into a regional campaign and screening queue</p>
+          <h1 className="text-xl font-bold text-[#1C2B22]">Patients</h1>
+          <p className="text-sm text-[#4A6455]">Register and manage patients in regional screening campaigns</p>
         </div>
-        {can('patients', 'create') && !showForm && <Button onClick={openAdd} className="gap-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700"><Plus size={15} />Register Patient</Button>}
-        {showForm && <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
+        {can('patients', 'create') && !showForm && (
+          <Button onClick={openAdd} className="gap-2 rounded-md bg-[#1A7A46] text-white hover:bg-[#0F4D2A]">
+            <Plus size={15} /> Register Patient
+          </Button>
+        )}
+        {showForm && (
+          <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-md">
+            <X size={14} /> Cancel
+          </Button>
+        )}
       </div>
 
+      {/* Registration form */}
       {showForm && (
-        <InlineForm
-          title={editing ? `Edit ${editing.fullName}` : 'Register Patient'}
+        <ModalForm
+          title={editing ? `Edit — ${editing.fullName}` : 'Register New Patient'}
+          subtitle={editing ? undefined : 'Fill in patient details — campaign and location are auto-filled from your assigned region'}
           onClose={() => setShowForm(false)}
           onSave={save}
-          saveLabel={editing ? 'Update Patient' : 'Register Patient'}
-          saveDisabled={!form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId}
+          saveLabel={editing ? 'Save Changes' : 'Register Patient'}
+          saveDisabled={formInvalid}
         >
-          {saveError && <p className="mb-2 text-xs text-red-600">{saveError}</p>}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <div className="md:col-span-2"><Label className="mb-1 block text-xs">Full Name *</Label><Input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="mb-1 block text-xs">Date of Birth *</Label><Input type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} className="rounded-xl" /></div>
-            <div>
-              <Label className="mb-1 block text-xs">Sex</Label>
-              <Select value={form.sex} onValueChange={(value) => { if (value) set('sex', value as Sex); }}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{SEXES.map((sex) => <SelectItem key={sex} value={sex}>{sex}</SelectItem>)}</SelectContent>
-              </Select>
+          {saveError && (
+            <div className="mb-4 rounded-md border border-[#F0C0C0] bg-[#FCE8E8] px-3 py-2 text-sm text-[#B52A2A]">
+              {saveError}
             </div>
-            <div><Label className="mb-1 block text-xs">Phone *</Label><Input value={form.phone} onChange={(e) => set('phone', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="mb-1 block text-xs">Email</Label><Input type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} className="rounded-xl" /></div>
-            <div className="md:col-span-2">
-              <Label className="mb-1 block text-xs">Campaign *</Label>
-              {clerkCampaignLocked ? (
-                <Input value={`${selectedCampaign.name} | ${selectedCampaign.region}`} disabled className="rounded-xl bg-slate-50" />
-              ) : (
-                <Select value={form.campaignId ?? ''} onValueChange={(value) => { if (value) chooseCampaign(value); }}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select campaign" /></SelectTrigger>
-                  <SelectContent>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} | {campaign.region}</SelectItem>)}</SelectContent>
-                </Select>
-              )}
-              <p className="mt-1 text-xs text-slate-400">Region and operation district are locked from the selected campaign.</p>
-            </div>
-            <div><Label className="mb-1 block text-xs">Region</Label><Input value={form.region} disabled className="rounded-xl bg-slate-50" /></div>
-            <div><Label className="mb-1 block text-xs">Operation District</Label><Input value={form.operationDistrict} disabled className="rounded-xl bg-slate-50" /></div>
-            <div><Label className="mb-1 block text-xs">Occupation</Label><Input value={form.occupation ?? ''} onChange={(e) => set('occupation', e.target.value)} className="rounded-xl" /></div>
-            <div>
-              <Label className="mb-1 block text-xs">Disability Status</Label>
-              <Select value={form.disabilityStatus} onValueChange={(value) => { if (value) set('disabilityStatus', value as DisabilityStatus); }}>
-                <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{DISABILITIES.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><Label className="mb-1 block text-xs">Emergency Contact</Label><Input value={form.emergencyContact} onChange={(e) => set('emergencyContact', e.target.value)} className="rounded-xl" /></div>
-            <div><Label className="mb-1 block text-xs">Emergency Phone</Label><Input value={form.emergencyPhone} onChange={(e) => set('emergencyPhone', e.target.value)} className="rounded-xl" /></div>
-            <div className="md:col-span-4"><Label className="mb-1 block text-xs">Notes</Label><textarea value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} className="h-16 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-500" /></div>
-          </div>
-        </InlineForm>
+          )}
+          <PatientRegistrationForm
+            form={form}
+            campaigns={campaigns}
+            selectedCampaign={selectedCampaign}
+            campaignLocked={campaignLocked}
+            set={set}
+            chooseCampaign={chooseCampaign}
+          />
+        </ModalForm>
       )}
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patients..." className="rounded-xl pl-9" />
+      {/* Filters bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-56 flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9A87]" size={14} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, code, or phone..."
+            className={`${F.input} pl-9`}
+          />
+        </div>
+
+        {isSuperAdmin && (
+          <Select value={regionFilter} onValueChange={(v) => { setRegionFilter(v ?? ''); setPage(1); }}>
+            <SelectTrigger className="w-56 rounded-md">
+              <SelectValue placeholder="All Regions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Regions</SelectItem>
+              {REGIONAL_CAMPAIGN_AREAS.map((a) => (
+                <SelectItem key={a.region} value={a.region}>{a.region}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? ''); setPage(1); }}>
+          <SelectTrigger className="w-48 rounded-md">
+            <SelectValue placeholder="All Statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">All Statuses</SelectItem>
+            {SCREENING_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {hasFilters && (
+          <button
+            onClick={() => { setSearch(''); setRegionFilter(''); setStatusFilter(''); setPage(1); }}
+            className="flex items-center gap-1.5 rounded-md border border-[#E2DDD5] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+          >
+            <X size={12} /> Clear
+          </button>
+        )}
+
+        <span className="ml-auto text-sm text-[#7A9A87]">
+          {total} {total === 1 ? 'patient' : 'patients'}
+        </span>
       </div>
 
+      {/* Patients table */}
       <Card className="overflow-hidden border-0 shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50">
-                <tr>{['Code', 'Patient', 'Phone', 'Region', 'Campaign', 'Screening', 'Registered By', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
+              <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+                <tr>
+                  {['Code', 'Patient', 'Phone', 'Region / City', 'Status', 'Registered By', ''].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87]">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
-                {isLoading && <tr><td colSpan={8} className="py-10 text-center text-sm text-slate-400">Loading patients...</td></tr>}
-                {!isLoading && filtered.map((patient) => {
-                  const campaign = campaigns.find((item) => item.id === patient.campaignId);
-                  return (
-                    <tr key={patient.id} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{patient.patientCode}</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">{patient.fullName}<span className="ml-2 text-xs text-slate-400">{formatDate(patient.dateOfBirth)}</span></td>
-                      <td className="px-4 py-3 text-slate-600">{patient.phone}</td>
-                      <td className="px-4 py-3 text-slate-600">{patient.region}</td>
-                      <td className="px-4 py-3 text-slate-600">{campaign?.name ?? '-'}</td>
-                      <td className="px-4 py-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">{patient.screeningStatus}</span></td>
-                      <td className="px-4 py-3 text-slate-600">{patient.registeredByName || '-'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          {can('patients', 'edit') && <button onClick={() => openEdit(patient)} className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Pencil size={14} /></button>}
-                          {can('patients', 'delete') && <button onClick={() => remove(patient)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {isLoading && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-sm text-[#7A9A87]">Loading patients...</td>
+                  </tr>
+                )}
+                {!isLoading && patients.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-sm text-[#7A9A87]">
+                      {hasFilters ? 'No patients match the current filters.' : 'No patients registered yet.'}
+                    </td>
+                  </tr>
+                )}
+                {!isLoading && patients.map((patient) => (
+                  <tr key={patient.id} className="border-b border-[#F0EDE6] transition-colors hover:bg-[#FAFAF8]">
+                    <td className="px-4 py-3.5 font-mono text-xs text-[#4A6455]">{patient.patientCode}</td>
+                    <td className="px-4 py-3.5">
+                      <p className="font-medium text-[#1C2B22]">{patient.fullName}</p>
+                      <p className="text-xs text-[#7A9A87]">{formatDate(patient.dateOfBirth)} · {patient.sex}</p>
+                    </td>
+                    <td className="px-4 py-3.5 text-[#4A6455]">{patient.phone}</td>
+                    <td className="px-4 py-3.5">
+                      <p className="text-[#1C2B22]">{patient.region}</p>
+                      <p className="text-xs text-[#7A9A87]">{patient.operationDistrict}</p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[patient.screeningStatus] ?? 'bg-[#FAFAF8] text-[#4A6455]'}`}>
+                        {patient.screeningStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-[#4A6455]">{patient.registeredByName || '—'}</td>
+                    <td className="px-4 py-3.5">
+                      <div className="flex gap-1">
+                        {can('patients', 'edit') && (
+                          <button
+                            onClick={() => openEdit(patient)}
+                            className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#E8F5EE] hover:text-[#1A7A46]"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        )}
+                        {can('patients', 'delete') && (
+                          <button
+                            onClick={() => setDeleteTarget(patient)}
+                            className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#FCE8E8] hover:text-[#B52A2A]"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function applyCampaignContext(form: typeof BLANK, campaign: Campaign): typeof BLANK {
+// ─── Patient registration form ────────────────────────────────────────────────
+
+function PatientRegistrationForm({
+  form, campaigns, selectedCampaign, campaignLocked, set, chooseCampaign,
+}: {
+  form: PatientForm;
+  campaigns: Campaign[];
+  selectedCampaign: Campaign | undefined;
+  campaignLocked: boolean;
+  set: <K extends keyof PatientForm>(key: K, value: PatientForm[K]) => void;
+  chooseCampaign: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <section>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Campaign & Location</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="sm:col-span-3">
+            <label className={F.label}>Campaign *</label>
+            {campaignLocked && selectedCampaign ? (
+              <div className="rounded-md border border-[#E2DDD5] bg-[#FAFAF8] px-3 py-2 text-sm text-[#4A6455]">
+                {selectedCampaign.name}
+                <span className="ml-2 text-[#7A9A87]">— {selectedCampaign.region}</span>
+              </div>
+            ) : (
+              <Select value={form.campaignId} onValueChange={(v) => { if (v) chooseCampaign(v); }}>
+                <SelectTrigger className={F.sel}>
+                  <SelectValue placeholder="Select campaign" />
+                </SelectTrigger>
+                <SelectContent>
+                  {campaigns.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name} — {c.region}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <div>
+            <label className={F.label}>State / Region</label>
+            <input value={form.region} disabled className={F.input} placeholder="Auto-filled from campaign" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={F.label}>Operation City / District</label>
+            <input value={form.operationDistrict} disabled className={F.input} placeholder="Auto-filled from campaign" />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Patient Identity</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <div className="sm:col-span-2">
+            <label className={F.label}>Full Name *</label>
+            <input
+              value={form.fullName}
+              onChange={(e) => set('fullName', e.target.value)}
+              placeholder="e.g. Ahmed Hassan Mohamed"
+              className={F.input}
+            />
+          </div>
+          <div>
+            <label className={F.label}>Sex *</label>
+            <Select value={form.sex} onValueChange={(v) => { if (v) set('sex', v as Sex); }}>
+              <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
+              <SelectContent>{SEXES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className={F.label}>Disability Status</label>
+            <Select value={form.disabilityStatus} onValueChange={(v) => { if (v) set('disabilityStatus', v as DisabilityStatus); }}>
+              <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
+              <SelectContent>{DISABILITIES.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="sm:col-span-4">
+            <label className={F.label}>Date of Birth * — Day / Month / Year</label>
+            <DateOfBirthPicker value={form.dateOfBirth} onChange={(v) => set('dateOfBirth', v)} />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Contact Details</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label className={F.label}>Phone Number *</label>
+            <input
+              value={form.phone}
+              onChange={(e) => set('phone', e.target.value)}
+              placeholder="e.g. +252 61 234 5678"
+              className={F.input}
+            />
+          </div>
+          <div>
+            <label className={F.label}>Emergency Contact Name</label>
+            <input
+              value={form.emergencyContact}
+              onChange={(e) => set('emergencyContact', e.target.value)}
+              placeholder="e.g. Mohamed Ali (Father)"
+              className={F.input}
+            />
+          </div>
+          <div>
+            <label className={F.label}>Emergency Phone</label>
+            <input
+              value={form.emergencyPhone}
+              onChange={(e) => set('emergencyPhone', e.target.value)}
+              placeholder="e.g. +252 61 234 5678"
+              className={F.input}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Background</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label className={F.label}>Occupation</label>
+            <input
+              value={form.occupation ?? ''}
+              onChange={(e) => set('occupation', e.target.value)}
+              placeholder="e.g. Farmer, Teacher"
+              className={F.input}
+            />
+          </div>
+          <div>
+            <label className={F.label}>Referral Source</label>
+            <Select value={form.referralSource} onValueChange={(v) => { if (v) set('referralSource', v); }}>
+              <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
+              <SelectContent>{REFERRAL_SOURCES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className={F.label}>Consent Given</label>
+            <div className="flex h-9.5 items-center gap-3 rounded-md border border-[#E2DDD5] bg-white px-3">
+              <input
+                type="checkbox"
+                checked={form.consentGiven}
+                onChange={(e) => set('consentGiven', e.target.checked)}
+                className="h-4 w-4 rounded border-[#D0E8DA] accent-[#1A7A46]"
+              />
+              <span className="text-sm text-[#4A6455]">Patient has consented to treatment</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Notes</p>
+        <textarea
+          value={form.notes ?? ''}
+          onChange={(e) => set('notes', e.target.value)}
+          rows={2}
+          placeholder="Any additional clinical notes or observations about this patient..."
+          className={`${F.input} resize-none`}
+        />
+      </section>
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function applyCampaignContext(form: PatientForm, campaign: Campaign): PatientForm {
   return {
     ...form,
-    campaignId: campaign.id,
-    region: campaign.region,
+    campaignId:        campaign.id,
+    region:            campaign.region,
     operationDistrict: campaign.operationDistrict,
-    district: campaign.operationDistrict,
+    district:          campaign.operationDistrict,
   };
 }

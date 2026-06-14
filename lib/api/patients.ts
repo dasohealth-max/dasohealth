@@ -1,4 +1,5 @@
 import 'server-only';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import type { Patient as PrismaPatient } from '@/lib/generated/prisma/client';
 import type { Patient } from '@/types';
@@ -35,13 +36,18 @@ export function fromPrisma(row: PrismaPatient): Patient {
   };
 }
 
-export async function getAllPatients(where: { region?: string } = {}): Promise<Patient[]> {
-  const rows = await prisma.patient.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-  });
-  return rows.map(fromPrisma);
-}
+// Cached for 30 s; invalidated immediately by revalidateTag('patients') after any mutation.
+export const getAllPatients = unstable_cache(
+  async (where: { region?: string } = {}): Promise<Patient[]> => {
+    const rows = await prisma.patient.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(fromPrisma);
+  },
+  ['patients-list'],
+  { revalidate: 30, tags: ['patients'] },
+);
 
 export async function getPatientById(id: string): Promise<Patient | null> {
   const row = await prisma.patient.findUnique({ where: { id } });

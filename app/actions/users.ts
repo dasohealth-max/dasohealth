@@ -17,13 +17,14 @@ function toUser(u: {
   created_at: string;
   banned_until?: string | null;
   user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
 }): User {
   return {
     id: u.id,
     name: (u.user_metadata?.name as string) ?? u.email ?? 'Unknown',
     email: u.email ?? '',
-    role: ((u.user_metadata?.role as string) || 'Screening Officer') as User['role'],
-    assignedRegion: (u.user_metadata?.assignedRegion as string) || undefined,
+    role: ((u.app_metadata?.role as string) || 'Screening Officer') as User['role'],
+    assignedRegion: (u.app_metadata?.assignedRegion as string) || undefined,
     initials: (u.user_metadata?.initials as string) ?? '',
     color: (u.user_metadata?.color as string) ?? '#0d9488',
     active: !u.banned_until,
@@ -73,8 +74,8 @@ export async function actionCreateUser(input: {
   if (!input.email || !input.password || !input.name || !input.role) {
     return { ok: false, error: 'email, password, name and role are required' };
   }
-  if (input.password.length < 6) {
-    return { ok: false, error: 'Password must be at least 6 characters' };
+  if (input.password.length < 10) {
+    return { ok: false, error: 'Password must be at least 10 characters' };
   }
 
   const db = createServerClient();
@@ -82,13 +83,8 @@ export async function actionCreateUser(input: {
     email: input.email,
     password: input.password,
     email_confirm: true,
-    user_metadata: {
-      name: input.name,
-      role: input.role,
-      assignedRegion,
-      initials: input.initials,
-      color: input.color,
-    },
+    app_metadata: { role: input.role, assignedRegion },
+    user_metadata: { name: input.name, initials: input.initials, color: input.color },
   });
 
   if (error) return { ok: false, error: error.message };
@@ -129,7 +125,17 @@ export async function actionUpdateUserMetadata(
     return { ok: false, error: 'Valid assigned region is required' };
   }
 
-  const { error } = await db.auth.admin.updateUserById(userId, { user_metadata: metadata });
+  const { error } = await db.auth.admin.updateUserById(userId, {
+    app_metadata: {
+      role: metadata.role ?? before.role,
+      assignedRegion: metadata.assignedRegion ?? before.assignedRegion,
+    },
+    user_metadata: {
+      name: metadata.name ?? before.name,
+      initials: metadata.initials ?? before.initials,
+      color: metadata.color ?? before.color,
+    },
+  });
   if (error && !error.message.toLowerCase().includes('not found')) {
     return { ok: false, error: error.message };
   }
@@ -143,6 +149,47 @@ export async function actionUpdateUserMetadata(
     details: `Updated user ${metadata.name ?? before.name}`,
     before,
     after: metadata,
+  });
+  return { ok: true, data: null };
+}
+
+export async function actionResetUserPassword(
+  userId: string,
+  password: string,
+): Promise<ActionResult> {
+  const actor = await requireActor('settings', 'edit');
+  if ('error' in actor) return { ok: false, error: actor.error };
+
+  if (password.length < 10) {
+    return { ok: false, error: 'Password must be at least 10 characters' };
+  }
+
+  const db = createServerClient();
+  const current = await db.auth.admin.getUserById(userId);
+  if (current.error) return { ok: false, error: current.error.message };
+  const target = toUser(current.data.user);
+
+  if (actor.role === 'Project Manager') {
+    if (target.assignedRegion !== actor.assignedRegion) {
+      return { ok: false, error: 'Forbidden: region access denied' };
+    }
+    if (!manageableRolesFor(actor.role).includes(target.role)) {
+      return { ok: false, error: 'You cannot reset that user password' };
+    }
+  }
+
+  const { error } = await db.auth.admin.updateUserById(userId, { password });
+  if (error) return { ok: false, error: error.message };
+
+  await auditLog({
+    actor,
+    action: 'reset_password',
+    entity: 'User',
+    entityId: userId,
+    region: target.assignedRegion,
+    details: `Reset password for ${target.name}`,
+    before: { id: target.id, email: target.email, role: target.role, assignedRegion: target.assignedRegion },
+    after: { passwordReset: true },
   });
   return { ok: true, data: null };
 }
@@ -184,10 +231,11 @@ export async function actionGetAuditLogs(limit = 100): Promise<ActionResult<{
   if ('error' in actor) return { ok: false, error: actor.error };
 
   try {
+    const safeLimit = Math.min(Math.max(1, limit), 500);
     const logs = await prisma.auditLog.findMany({
       where: scopedRegionWhere(actor),
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take: safeLimit,
     });
     return {
       ok: true,

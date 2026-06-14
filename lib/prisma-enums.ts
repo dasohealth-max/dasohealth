@@ -21,8 +21,14 @@ export const vaGradeFromApp = (v: string) => VA_FROM_APP[v] ?? v;
 
 // ─── ScreeningRecommendation ──────────────────────────────────────────────────
 const SR_TO_APP: Record<string, string> = {
-  Discharge: 'Discharge', ReferForSurgery: 'Refer for Surgery',
-  FurtherInvestigation: 'Further Investigation', Glasses: 'Glasses', FollowUp: 'Follow-up',
+  // Active values shown in UI
+  Discharge:            'No Surgery - Release',   // rebranded display name
+  ReferForSurgery:      'Refer for Surgery',
+  Positive:             'Positive',
+  // Legacy values — keep for existing records display
+  FurtherInvestigation: 'Further Investigation',
+  Glasses:              'Glasses',
+  FollowUp:             'Follow-up',
 };
 const SR_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(SR_TO_APP).map(([k, v]) => [v, k]));
 export const screeningRecToApp = (k: string) => SR_TO_APP[k] ?? k;
@@ -48,8 +54,24 @@ export const lensTypeFromApp = (v: string) => LT_FROM_APP[v] ?? v;
 
 // ─── FollowUpMilestone ────────────────────────────────────────────────────────
 const FM_TO_APP: Record<string, string> = {
-  Day1: 'Day 1', Week1: 'Week 1',
+  Day1: 'Day 1', Week1: 'Week 1', Month1: 'Month 1', Month3: 'Month 3',
 };
 const FM_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(FM_TO_APP).map(([k, v]) => [v, k]));
 export const followUpMilestoneToApp = (k: string) => FM_TO_APP[k] ?? k;
 export const followUpMilestoneFromApp = (v: string) => FM_FROM_APP[v] ?? v;
+
+// ─── DoctorReviewStatus ───────────────────────────────────────────────────────
+const DRS_TO_APP: Record<string, string> = {
+  NotNeeded: 'Not Needed', Pending: 'Pending', Completed: 'Completed',
+};
+const DRS_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(DRS_TO_APP).map(([k, v]) => [v, k]));
+export const doctorReviewStatusToApp = (k: string) => DRS_TO_APP[k] ?? k;
+export const doctorReviewStatusFromApp = (v: string) => DRS_FROM_APP[v] ?? v;
+
+// ─── MedicationStatus ─────────────────────────────────────────────────────────
+const MS_TO_APP: Record<string, string> = {
+  Prescribed: 'Prescribed', Taking: 'Taking', Completed: 'Completed', Stopped: 'Stopped',
+};
+const MS_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(MS_TO_APP).map(([k, v]) => [v, k]));
+export const medicationStatusToApp = (k: string) => MS_TO_APP[k] ?? k;
+export const medicationStatusFromApp = (v: string) => MS_FROM_APP[v] ?? v;

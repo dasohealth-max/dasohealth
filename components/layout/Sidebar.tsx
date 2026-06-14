@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -7,19 +8,19 @@ import type { AppModule } from '@/lib/permissions';
 import {
   LayoutDashboard, Megaphone, Users, Microscope,
   Scissors, CalendarCheck,
-  FileBarChart, Settings, Eye, ChevronLeft, ChevronRight,
+  FileBarChart, Settings, ChevronLeft, ChevronRight,
   X,
 } from 'lucide-react';
 
 const NAV: { label: string; href: string; icon: React.ElementType; module: AppModule }[] = [
-  { label: 'Dashboard',  href: '/dashboard',  icon: LayoutDashboard, module: 'dashboard'  },
-  { label: 'Campaigns',  href: '/campaigns',  icon: Megaphone,       module: 'campaigns'  },
-  { label: 'Patients',   href: '/patients',   icon: Users,           module: 'patients'   },
-  { label: 'Screening',  href: '/screening',  icon: Microscope,      module: 'screening'  },
-  { label: 'Surgery',    href: '/surgeries',  icon: Scissors,        module: 'surgeries'  },
-  { label: 'Follow-ups', href: '/followups',  icon: CalendarCheck,   module: 'followups'  },
-  { label: 'Reports',    href: '/reports',    icon: FileBarChart,    module: 'reports'    },
-  { label: 'Settings',   href: '/settings',   icon: Settings,        module: 'settings'   },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, module: 'dashboard' },
+  { label: 'Campaigns', href: '/campaigns', icon: Megaphone, module: 'campaigns' },
+  { label: 'Patients', href: '/patients', icon: Users, module: 'patients' },
+  { label: 'Screening', href: '/screening', icon: Microscope, module: 'screening' },
+  { label: 'Surgery', href: '/surgeries', icon: Scissors, module: 'surgeries' },
+  { label: 'Follow-ups', href: '/followups', icon: CalendarCheck, module: 'followups' },
+  { label: 'Reports', href: '/reports', icon: FileBarChart, module: 'reports' },
+  { label: 'Settings', href: '/settings', icon: Settings, module: 'settings' },
 ];
 
 interface SidebarProps {
@@ -45,8 +46,8 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
             className={cn(
               'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group',
               active
-                ? 'bg-teal-600/90 text-white shadow-sm'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+                ? 'bg-[#1A7A46] text-white shadow-sm'
+                : 'text-[#8FBFA4] hover:bg-[#0F4D2A] hover:text-white',
               collapsed && 'justify-center px-0',
             )}
             title={collapsed ? label : undefined}
@@ -55,7 +56,7 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
               size={18}
               className={cn(
                 'shrink-0',
-                active ? 'text-white' : 'text-slate-400 group-hover:text-white',
+                active ? 'text-white' : 'text-[#8FBFA4] group-hover:text-white',
               )}
             />
             {!collapsed && <span className="truncate">{label}</span>}
@@ -69,18 +70,17 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
 function Logo({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={cn(
-      'flex items-center gap-3 px-4 py-5 border-b border-slate-700/60 shrink-0',
+      'flex items-center px-4 py-5 border-b border-white/10 shrink-0',
       collapsed && 'justify-center px-0',
     )}>
-      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400 to-indigo-500 flex items-center justify-center shrink-0">
-        <Eye className="w-4 h-4 text-white" />
-      </div>
-      {!collapsed && (
-        <div className="overflow-hidden">
-          <p className="text-sm font-bold leading-tight text-white">EyeCare Pro</p>
-          <p className="text-[10px] text-slate-400 leading-tight">Health Platform</p>
-        </div>
-      )}
+      <Image
+        src={collapsed ? '/brand/08_daso-health-mark-transparent.svg' : '/brand/07_daso-health-reversed-transparent.svg'}
+        alt="DASO Health"
+        width={collapsed ? 36 : 216}
+        height={collapsed ? 36 : 66}
+        className={collapsed ? 'h-9 w-9 shrink-0' : 'h-auto w-full max-w-[216px] shrink-0'}
+        priority
+      />
     </div>
   );
 }
@@ -98,22 +98,16 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
 
       {/* ── Mobile drawer ── */}
       <aside className={cn(
-        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-slate-900 text-white transition-transform duration-300 lg:hidden',
+        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-[#1C2B22] text-white transition-transform duration-300 lg:hidden',
         mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
       )}>
-        <div className="flex items-center justify-between px-4 py-5 border-b border-slate-700/60">
+        <div className="flex items-center justify-between gap-3 px-4 py-5 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400 to-indigo-500 flex items-center justify-center shrink-0">
-              <Eye className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white">EyeCare Pro</p>
-              <p className="text-[10px] text-slate-400">Health Platform</p>
-            </div>
+            <Image src="/brand/07_daso-health-reversed-transparent.svg" alt="DASO Health" width={216} height={66} className="h-auto w-52 max-w-full" priority />
           </div>
           <button
             onClick={onMobileClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg text-[#8FBFA4] transition-colors hover:bg-[#0F4D2A] hover:text-white"
           >
             <X size={18} />
           </button>
@@ -123,14 +117,14 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
 
       {/* ── Desktop sidebar (always visible, collapsible) ── */}
       <aside className={cn(
-        'hidden lg:relative lg:flex lg:flex-col bg-slate-900 text-white transition-all duration-300 shrink-0',
+        'hidden lg:relative lg:flex lg:flex-col bg-[#1C2B22] text-white transition-all duration-300 shrink-0',
         collapsed ? 'w-16' : 'w-60',
       )}>
         <Logo collapsed={collapsed} />
         <NavLinks collapsed={collapsed} />
         <button
           onClick={onToggleCollapse}
-          className="flex items-center justify-center h-10 border-t border-slate-700/60 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
+          className="flex items-center justify-center h-10 border-t border-white/10 text-[#8FBFA4] transition-colors hover:bg-[#0F4D2A] hover:text-white shrink-0"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}

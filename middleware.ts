@@ -1,15 +1,30 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { canAccess, defaultPathForRole, type AppModule } from '@/lib/permissions';
 
-// All route segments that live inside app/(dashboard)/
 const PROTECTED = [
-  '/dashboard', '/patients', '/campaigns', '/followups', '/reports',
-  '/screening', '/settings', '/surgeries',
+  '/dashboard',
+  '/patients',
+  '/campaigns',
+  '/followups',
+  '/reports',
+  '/screening',
+  '/settings',
+  '/surgeries',
+];
+
+const ROUTE_MODULES: { path: string; module: AppModule }[] = [
+  { path: '/dashboard', module: 'dashboard' },
+  { path: '/campaigns', module: 'campaigns' },
+  { path: '/patients', module: 'patients' },
+  { path: '/screening', module: 'screening' },
+  { path: '/surgeries', module: 'surgeries' },
+  { path: '/followups', module: 'followups' },
+  { path: '/reports', module: 'reports' },
+  { path: '/settings', module: 'settings' },
 ];
 
 export async function middleware(request: NextRequest) {
-  // Start with a plain pass-through response; setAll will replace it if
-  // any session cookies need to be updated (token refresh).
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -21,9 +36,6 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Write the new cookie values into the outgoing request so that
-          // subsequent server code sees them, then rebuild the response so
-          // the browser receives the updated Set-Cookie headers.
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
@@ -36,13 +48,11 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // getUser() validates the JWT server-side on every request (more secure than getSession()).
   const { data: { user } } = await supabase.auth.getUser();
-
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED.some(
-    (p) => pathname === p || pathname.startsWith(p + '/')
+    (path) => pathname === path || pathname.startsWith(path + '/')
   );
 
   if (isProtected && !user) {
@@ -51,16 +61,25 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Authenticated users skip /login — but can still view the landing page (/)
+  if (isProtected && user) {
+    const role = String(user.user_metadata.role ?? '');
+    const current = ROUTE_MODULES.find(
+      (route) => pathname === route.path || pathname.startsWith(route.path + '/')
+    );
+
+    if (current && !canAccess(role, current.module)) {
+      return NextResponse.redirect(new URL(defaultPathForRole(role), request.url));
+    }
+  }
+
   if (pathname === '/login' && user) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL(defaultPathForRole(String(user.user_metadata.role ?? '')), request.url));
   }
 
   return response;
 }
 
 export const config = {
-  // Run on every route except Next.js internals and static files.
   matcher: [
     '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],

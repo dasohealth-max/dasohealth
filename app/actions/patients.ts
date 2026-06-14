@@ -1,16 +1,52 @@
 'use server';
 
 import { z } from 'zod';
+import { updateTag } from 'next/cache';
+import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetchPatientById } from '@/lib/api/patients';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Patient } from '@/types';
-import type { Sex, DisabilityStatus } from '@/lib/generated/prisma/client';
+import type { Sex, DisabilityStatus, Prisma } from '@/lib/generated/prisma/client';
 
 export async function getAllPatients(): Promise<Patient[]> {
   const actor = await requireActor('patients', 'view');
   if ('error' in actor) throw new Error(actor.error);
   return fetchAllPatients(scopedRegionWhere(actor));
+}
+
+export async function getPatientsPaginated(params: {
+  search?: string;
+  region?: string;
+  status?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ data: Patient[]; total: number }> {
+  const actor = await requireActor('patients', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const where: Prisma.PatientWhereInput = {
+    ...scopedRegionWhere(actor),
+    ...(params.region && { region: params.region }),
+    ...(params.status && { screeningStatus: params.status }),
+    ...(params.search && {
+      OR: [
+        { fullName: { contains: params.search, mode: 'insensitive' } },
+        { patientCode: { contains: params.search, mode: 'insensitive' } },
+        { phone: { contains: params.search } },
+      ],
+    }),
+  };
+
+  const pageSize = Math.min(Math.max(1, params.pageSize), 200);
+  const page = Math.max(1, params.page);
+  const skip = (page - 1) * pageSize;
+  const [rows, total] = await Promise.all([
+    prisma.patient.findMany({ where, skip, take: pageSize, orderBy: { createdAt: 'desc' } }),
+    prisma.patient.count({ where }),
+  ]);
+
+  return { data: rows.map(fromPrisma), total };
 }
 
 export async function getPatientById(id: string): Promise<Patient | null> {
@@ -49,6 +85,19 @@ type ActionResult<T = null> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
+function normalizePhone(value: string): string {
+  return value.trim().replace(/[^\d+]/g, '');
+}
+
+function isValidPhone(value: string): boolean {
+  const normalized = normalizePhone(value);
+  return /^\+?\d{7,15}$/.test(normalized);
+}
+
+function normalizeName(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
 async function getCampaignScope(campaignId: string) {
   return prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -85,6 +134,9 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
   const parsed = PatientSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
+  const fullName = normalizeName(d.fullName);
+  const phone = normalizePhone(d.phone);
+  if (!isValidPhone(phone)) return { ok: false, error: 'Phone must be 7-15 digits and may start with +' };
 
   try {
     const campaign = await getCampaignScope(d.campaignId);
@@ -92,11 +144,23 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
+    const duplicate = await prisma.patient.findFirst({
+      where: {
+        campaignId: d.campaignId,
+        phone,
+        fullName: { equals: fullName, mode: 'insensitive' },
+      },
+      select: { patientCode: true, fullName: true },
+    });
+    if (duplicate) {
+      return { ok: false, error: `Possible duplicate patient: ${duplicate.fullName} (${duplicate.patientCode}) is already registered in this campaign` };
+    }
+
     const patient = await createPatientWithCode({
-      fullName: d.fullName,
+      fullName,
       dateOfBirth: new Date(d.dateOfBirth),
       sex: d.sex as Sex,
-      phone: d.phone,
+      phone,
       email: d.email || null,
       district: d.district || campaign.operationDistrict,
       region: campaign.region,
@@ -116,7 +180,8 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
       registeredByName: actor.name,
       screeningStatus: 'Awaiting Screening',
     });
-    await auditLog({
+    updateTag('patients');
+    after(() => auditLog({
       actor,
       action: 'create',
       entity: 'Patient',
@@ -125,7 +190,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
       campaignId: patient.campaignId,
       details: `Registered patient ${patient.fullName}`,
       after: patient,
-    });
+    }));
     return { ok: true, data: patient };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -139,6 +204,9 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
   const parsed = PatientSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
+  const fullName = normalizeName(d.fullName);
+  const phone = normalizePhone(d.phone);
+  if (!isValidPhone(phone)) return { ok: false, error: 'Phone must be 7-15 digits and may start with +' };
 
   try {
     const before = await fetchPatientById(id);
@@ -151,13 +219,26 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
+    const duplicate = await prisma.patient.findFirst({
+      where: {
+        id: { not: id },
+        campaignId: d.campaignId,
+        phone,
+        fullName: { equals: fullName, mode: 'insensitive' },
+      },
+      select: { patientCode: true, fullName: true },
+    });
+    if (duplicate) {
+      return { ok: false, error: `Possible duplicate patient: ${duplicate.fullName} (${duplicate.patientCode}) is already registered in this campaign` };
+    }
+
     const row = await prisma.patient.update({
       where: { id },
       data: {
-        fullName: d.fullName,
+        fullName,
         dateOfBirth: new Date(d.dateOfBirth),
         sex: d.sex as Sex,
-        phone: d.phone,
+        phone,
         email: d.email || null,
         district: d.district || campaign.operationDistrict,
         region: campaign.region,
@@ -176,7 +257,8 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
       },
     });
     const patient = fromPrisma(row);
-    await auditLog({
+    updateTag('patients');
+    after(() => auditLog({
       actor,
       action: 'update',
       entity: 'Patient',
@@ -186,7 +268,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
       details: `Updated patient ${patient.fullName}`,
       before,
       after: patient,
-    });
+    }));
     return { ok: true, data: patient };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -204,7 +286,8 @@ export async function actionDeletePatient(id: string): Promise<ActionResult<null
       if (denied) return denied;
     }
     await prisma.patient.delete({ where: { id } });
-    await auditLog({
+    updateTag('patients');
+    after(() => auditLog({
       actor,
       action: 'delete',
       entity: 'Patient',
@@ -213,7 +296,7 @@ export async function actionDeletePatient(id: string): Promise<ActionResult<null
       campaignId: before?.campaignId,
       details: before ? `Deleted patient ${before.fullName}` : 'Deleted patient',
       before,
-    });
+    }));
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

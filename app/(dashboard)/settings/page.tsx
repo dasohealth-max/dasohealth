@@ -9,11 +9,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InlineForm from '@/components/forms/InlineForm';
-import { actionCreateUser, actionDeleteUser, actionGetAllUsers, actionGetAuditLogs, actionUpdateUserMetadata } from '@/app/actions/users';
+import { actionCreateUser, actionDeleteUser, actionGetAllUsers, actionGetAuditLogs, actionResetUserPassword, actionUpdateUserMetadata } from '@/app/actions/users';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
 import { formatDateTime } from '@/lib/utils';
-import { AlertTriangle, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, KeyRound, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 
 interface UserFormData extends Omit<User, 'id' | 'createdAt'> {
   password: string;
@@ -47,6 +47,13 @@ export default function SettingsPage() {
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const [form, setForm] = useState<UserFormData>(BLANK);
   const [editing, setEditing] = useState<User | null>(null);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('all');
+  const [auditRegion, setAuditRegion] = useState('all');
+  const [auditAction, setAuditAction] = useState('all');
+  const [auditDate, setAuditDate] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +64,25 @@ export default function SettingsPage() {
     if (role === 'Project Manager') return ['Data Clerk', 'Screening Officer'];
     return [];
   }, [role]);
+
+  const visibleUsers = useMemo(() => {
+    if (role !== 'Super Administrator' || selectedRegion === 'all') return users;
+    return users.filter((item) => item.assignedRegion === selectedRegion);
+  }, [role, selectedRegion, users]);
+
+  const visibleAuditRows = useMemo(() => {
+    return auditRows.filter((row) => {
+      const matchesRegion = auditRegion === 'all' || row.region === auditRegion;
+      const matchesAction = auditAction === 'all' || row.action === auditAction;
+      const matchesDate = !auditDate || row.createdAt.startsWith(auditDate);
+      return matchesRegion && matchesAction && matchesDate;
+    });
+  }, [auditAction, auditDate, auditRegion, auditRows]);
+
+  const auditActions = useMemo(
+    () => Array.from(new Set(auditRows.map((row) => row.action))).sort(),
+    [auditRows],
+  );
 
   async function loadUsers(showLoading = true) {
     if (showLoading) setIsLoading(true);
@@ -98,9 +124,28 @@ export default function SettingsPage() {
 
   function openEdit(user: User) {
     setEditing(user);
+    setResetTarget(null);
     setSaveError('');
     setForm({ ...user, password: '' });
     setShowForm(true);
+  }
+
+  function openResetPassword(user: User) {
+    setResetTarget(user);
+    setResetPassword('');
+    setResetError('');
+    setShowForm(false);
+    setEditing(null);
+  }
+
+  function canResetPassword(target: User) {
+    if (!can('settings', 'edit')) return false;
+    if (role === 'Super Administrator') return true;
+    if (role === 'Project Manager') {
+      return target.assignedRegion === sessionUser?.assignedRegion
+        && (target.role === 'Data Clerk' || target.role === 'Screening Officer');
+    }
+    return false;
   }
 
   async function save() {
@@ -140,33 +185,72 @@ export default function SettingsPage() {
     if (result.ok) setUsers((rows) => rows.filter((row) => row.id !== user.id));
   }
 
+  async function resetUserPassword() {
+    if (!resetTarget) return;
+    setResetError('');
+    startTransition(async () => {
+      const result = await actionResetUserPassword(resetTarget.id, resetPassword);
+      if (!result.ok) {
+        setResetError(result.error);
+        return;
+      }
+      setResetTarget(null);
+      setResetPassword('');
+      await loadAudit();
+    });
+  }
+
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Settings</h1>
-        <p className="text-sm text-slate-500">Manage regional users and review accountability logs</p>
+        <h1 className="text-xl font-bold text-[#1C2B22]">Settings</h1>
+        <p className="text-sm text-[#4A6455]">Manage regional users and review accountability logs</p>
       </div>
 
       <Tabs defaultValue="users">
-        <TabsList className="rounded-xl bg-slate-100 p-1">
+        <TabsList className="rounded-xl bg-[#F0EDE6] p-1">
           <TabsTrigger value="users" className="rounded-lg">Users</TabsTrigger>
           <TabsTrigger value="audit" className="rounded-lg" onClick={loadAudit}>Audit Log</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4 space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-slate-500">{users.length} users available</p>
+            <p className="text-sm text-[#4A6455]">
+              {visibleUsers.length} of {users.length} users shown
+            </p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { void loadUsers(); }} className="h-9 rounded-xl px-3">
                 <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
               </Button>
-              {can('settings', 'create') && !showForm && <Button onClick={openAdd} className="gap-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700"><Plus size={15} />Add User</Button>}
-              {showForm && <Button variant="outline" onClick={() => setShowForm(false)} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
+              {can('settings', 'create') && !showForm && <Button onClick={openAdd} className="gap-2 rounded-xl bg-[#1A7A46] text-white hover:bg-[#0F4D2A]"><Plus size={15} />Add User</Button>}
+              {(showForm || resetTarget) && <Button variant="outline" onClick={() => { setShowForm(false); setResetTarget(null); }} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
             </div>
           </div>
 
+          {role === 'Super Administrator' && (
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#E2DDD5] bg-white px-4 py-3 shadow-sm">
+              <div className="min-w-72">
+                <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Filter by State</Label>
+                <Select value={selectedRegion} onValueChange={(value) => { if (value) setSelectedRegion(value); }}>
+                  <SelectTrigger className="rounded-xl border-[#E2DDD5]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All states</SelectItem>
+                    {REGIONAL_CAMPAIGN_AREAS.map((area) => (
+                      <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="pb-2 text-xs text-[#7A9A87]">
+                Showing users by assigned state/region.
+              </p>
+            </div>
+          )}
+
           {saveError && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700">
+            <div className="flex items-start gap-2 rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-2.5 text-sm font-medium text-[#B52A2A]">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {saveError}
             </div>
           )}
@@ -202,29 +286,72 @@ export default function SettingsPage() {
             </InlineForm>
           )}
 
+          {resetTarget && (
+            <InlineForm
+              title={`Reset Password - ${resetTarget.name}`}
+              onClose={() => setResetTarget(null)}
+              onSave={resetUserPassword}
+              saveLabel="Reset Password"
+              saveDisabled={resetPassword.length < 6 || isPending}
+            >
+              {resetError && (
+                <div className="mb-4 rounded-md border border-[#F0C0C0] bg-[#FCE8E8] px-3 py-2 text-sm text-[#B52A2A]">
+                  {resetError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <Label className="mb-1 block text-xs">User</Label>
+                  <Input value={`${resetTarget.name} (${resetTarget.email})`} disabled className="rounded-xl bg-[#F0EDE6]" />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">New Password *</Label>
+                  <Input
+                    type="password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    className="rounded-xl"
+                    placeholder="Minimum 6 characters"
+                  />
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-[#7A9A87]">
+                The password is updated immediately. Share it with the user through your approved secure channel.
+              </p>
+            </InlineForm>
+          )}
+
           <Card className="overflow-hidden border-0 shadow-sm">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50">
-                    <tr>{['User', 'Email', 'Role', 'Region', 'Status', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
+                  <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+                    <tr>{['User', 'Email', 'Role', 'Region', 'Status', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">{heading}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-b border-slate-50 hover:bg-slate-50">
-                        <td className="px-4 py-3 font-medium text-slate-800">{user.name}</td>
-                        <td className="px-4 py-3 text-slate-500">{user.email}</td>
-                        <td className="px-4 py-3"><span className="rounded-full bg-teal-50 px-2 py-1 text-xs font-medium text-teal-700">{user.role}</span></td>
-                        <td className="px-4 py-3 text-slate-600">{user.assignedRegion ?? 'All regions'}</td>
+                    {visibleUsers.map((user) => (
+                      <tr key={user.id} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
+                        <td className="px-4 py-3 font-medium text-[#1C2B22]">{user.name}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{user.email}</td>
+                        <td className="px-4 py-3"><span className="rounded-full bg-[#E8F5EE] px-2 py-1 text-xs font-medium text-[#1A7A46]">{user.role}</span></td>
+                        <td className="px-4 py-3 text-[#4A6455]">{user.assignedRegion ?? 'All regions'}</td>
                         <td className="px-4 py-3"><span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">{user.active ? 'Active' : 'Inactive'}</span></td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            {can('settings', 'edit') && <button onClick={() => openEdit(user)} className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Pencil size={14} /></button>}
-                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => remove(user)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>}
+                            {can('settings', 'edit') && <button onClick={() => openEdit(user)} className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#E8F5EE] hover:text-[#1A7A46]"><Pencil size={14} /></button>}
+                            {canResetPassword(user) && <button onClick={() => openResetPassword(user)} title="Reset password" className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#FEF3DC] hover:text-[#C47D11]"><KeyRound size={14} /></button>}
+                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => remove(user)} className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#FCE8E8] hover:text-[#B52A2A]"><Trash2 size={14} /></button>}
                           </div>
                         </td>
                       </tr>
                     ))}
+                    {visibleUsers.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-10 text-center text-sm text-[#7A9A87]">
+                          No users found for this state.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -233,26 +360,56 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="audit" className="mt-4">
+          <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#E2DDD5] bg-white p-4 shadow-sm md:grid-cols-3">
+            <div>
+              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Region</Label>
+              <Select value={auditRegion} onValueChange={(value) => { if (value) setAuditRegion(value); }}>
+                <SelectTrigger className="rounded-xl border-[#E2DDD5]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All regions</SelectItem>
+                  {REGIONAL_CAMPAIGN_AREAS.map((area) => (
+                    <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Action</Label>
+              <Select value={auditAction} onValueChange={(value) => { if (value) setAuditAction(value); }}>
+                <SelectTrigger className="rounded-xl border-[#E2DDD5]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All actions</SelectItem>
+                  {auditActions.map((action) => (
+                    <SelectItem key={action} value={action}>{action}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Date</Label>
+              <Input type="date" value={auditDate} onChange={(event) => setAuditDate(event.target.value)} className="rounded-xl border-[#E2DDD5]" />
+            </div>
+          </div>
           <Card className="overflow-hidden border-0 shadow-sm">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50">
-                    <tr>{['When', 'Actor', 'Role', 'Action', 'Entity', 'Region', 'Details'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
+                  <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+                    <tr>{['When', 'Actor', 'Role', 'Action', 'Entity', 'Region', 'Details'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">{heading}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {auditRows.map((row) => (
-                      <tr key={row.id} className="border-b border-slate-50">
-                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">{formatDateTime(row.createdAt)}</td>
-                        <td className="px-4 py-3 font-medium text-slate-800">{row.actorName}</td>
-                        <td className="px-4 py-3 text-slate-500">{row.actorRole}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.action}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.entity}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.region ?? '-'}</td>
-                        <td className="px-4 py-3 text-slate-600">{row.details}</td>
+                    {visibleAuditRows.map((row) => (
+                      <tr key={row.id} className="border-b border-[#F0EDE6]">
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-[#4A6455]">{formatDateTime(row.createdAt)}</td>
+                        <td className="px-4 py-3 font-medium text-[#1C2B22]">{row.actorName}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{row.actorRole}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{row.action}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{row.entity}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{row.region ?? '-'}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{row.details}</td>
                       </tr>
                     ))}
-                    {auditRows.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-sm text-slate-400">No audit logs loaded.</td></tr>}
+                    {visibleAuditRows.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-sm text-[#7A9A87]">No audit logs match the current filters.</td></tr>}
                   </tbody>
                 </table>
               </div>

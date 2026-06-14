@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img">
+  <title>DASO Health — Icon Mark Light</title>
+  <desc>DASO Health standalone icon light variant: eye with leaf pupil on mint background</desc>
+
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="100" fill="#E8F5EE"/>
+
+  <!-- Eye outer tint area -->
+  <path d="M100,64 C122,64 158,88 165,100 C158,112 122,136 100,136 C78,136 42,112 35,100 C42,88 78,64 100,64 Z"
+        fill="#1A7A46" opacity="0.1"/>
+  <!-- Eye outline -->
+  <path d="M100,64 C122,64 158,88 165,100 C158,112 122,136 100,136 C78,136 42,112 35,100 C42,88 78,64 100,64 Z"
+        fill="none" stroke="#1A7A46" stroke-width="2.2"/>
+  <!-- Iris -->
+  <circle cx="100" cy="100" r="21" fill="#1A7A46"/>
+  <!-- Leaf pupil -->
+  <path d="M100,88 C107,88 112,94 112,100 C112,106 107,112 100,112 C93,112 88,106 88,100 C88,94 93,88 100,88 Z"
+        fill="#E8F5EE"/>
+  <!-- Leaf midrib -->
+  <line x1="100" y1="90" x2="100" y2="110" stroke="#1A7A46" stroke-width="1.2" opacity="0.5"/>
+  <!-- Lashes top -->
+  <line x1="75" y1="70" x2="78" y2="78" stroke="#1A7A46" stroke-width="2" stroke-linecap="round"/>
+  <line x1="100" y1="66" x2="100" y2="74" stroke="#1A7A46" stroke-width="2" stroke-linecap="round"/>
+  <line x1="125" y1="70" x2="122" y2="78" stroke="#1A7A46" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Medical cross pill — bottom right -->
+  <rect x="131" y="113" width="22" height="22" rx="4" fill="#1A7A46" opacity="0.9"/>
+  <rect x="135" y="109" width="14" height="30" rx="2.5" fill="#E8F5EE"/>
+  <rect x="128" y="116" width="30" height="14" rx="2.5" fill="#E8F5EE"/>
+
+  <!-- DASO text at bottom -->
+  <text x="100" y="168" text-anchor="middle"
+        font-family="'Arial','Helvetica',sans-serif"
+        font-size="16" font-weight="700" letter-spacing="5" fill="#1A7A46" opacity="0.9">DASO</text>
+</svg>

@@ -1,9 +1,23 @@
 import 'server-only';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { campaignTypeToApp, campaignTypeFromApp } from '@/lib/prisma-enums';
 import type { Campaign } from '@/types';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.campaign.findFirst>>>;
+
+function parseDateOnly(value: string, field: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`${field} must be a valid date`);
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${field} must be a valid date`);
+  }
+
+  return date;
+}
 
 export function fromPrisma(row: Row): Campaign {
   return {
@@ -27,13 +41,18 @@ export function fromPrisma(row: Row): Campaign {
   };
 }
 
-export async function getAllCampaigns(where: { region?: string } = {}): Promise<Campaign[]> {
-  const rows = await prisma.campaign.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-  });
-  return rows.map(fromPrisma);
-}
+// Cached for 60 s; invalidated immediately by revalidateTag('campaigns') after any mutation.
+export const getAllCampaigns = unstable_cache(
+  async (where: { region?: string } = {}): Promise<Campaign[]> => {
+    const rows = await prisma.campaign.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(fromPrisma);
+  },
+  ['campaigns-list'],
+  { revalidate: 60, tags: ['campaigns'] },
+);
 
 export async function getCampaignById(id: string): Promise<Campaign | null> {
   const row = await prisma.campaign.findUnique({ where: { id } });
@@ -43,10 +62,12 @@ export async function getCampaignById(id: string): Promise<Campaign | null> {
 export async function createCampaign(
   data: Omit<Campaign, 'id' | 'createdAt'>
 ): Promise<Campaign> {
-  const { type, budget, ...rest } = data;
+  const { type, budget, startDate, endDate, ...rest } = data;
   const row = await prisma.campaign.create({
     data: {
       ...rest,
+      startDate: parseDateOnly(startDate, 'Start date'),
+      endDate: parseDateOnly(endDate, 'End date'),
       type: campaignTypeFromApp(type) as never,
       budget,
     },
@@ -58,11 +79,13 @@ export async function updateCampaign(
   id: string,
   data: Omit<Campaign, 'id' | 'createdAt'>
 ): Promise<Campaign> {
-  const { type, budget, ...rest } = data;
+  const { type, budget, startDate, endDate, ...rest } = data;
   const row = await prisma.campaign.update({
     where: { id },
     data: {
       ...rest,
+      startDate: parseDateOnly(startDate, 'Start date'),
+      endDate: parseDateOnly(endDate, 'End date'),
       type: campaignTypeFromApp(type) as never,
       budget,
     },

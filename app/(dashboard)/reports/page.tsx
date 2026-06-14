@@ -1,331 +1,789 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
-import type { Campaign, FollowUp, Patient, Screening, Surgery } from '@/types';
-import { getAllCampaigns } from '@/app/actions/campaigns';
-import { getAllFollowUps } from '@/app/actions/follow_ups';
-import { getAllPatients } from '@/app/actions/patients';
-import { getAllScreenings } from '@/app/actions/screenings';
-import { getAllSurgeries } from '@/app/actions/surgeries';
+import { useEffect, useState } from 'react';
+import { actionAuditReportExport, getReportAggregation, getReportRawData, type ReportAggregation } from '@/app/actions/reports';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
-import { Download } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { completionRate, type RegionStatus } from '@/lib/reporting';
+import { CalendarDays, Download, MapPin, UserCheck } from 'lucide-react';
+import {
+  Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
 
-type RegionPerformance = {
-  region: string;
-  campaigns: number;
-  targetSurgeries: number;
-  patients: number;
-  screenings: number;
-  scheduled: number;
-  completed: number;
-  postponed: number;
-  cancelled: number;
-  followUps: number;
-  overdueFollowUps: number;
-  doctorReviews: number;
-  completionRate: number;
-  status: 'No campaign' | 'No activity' | 'Behind' | 'Active' | 'Strong';
-};
+const MILESTONES = ['Day 1', 'Week 1', 'Month 1', 'Month 3'] as const;
 
 export default function ReportsPage() {
   const { user, role } = usePermissions();
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [surgeries, setSurgeries] = useState<Surgery[]>([]);
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [agg, setAgg] = useState<ReportAggregation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [campaignId, setCampaignId] = useState('all');
   const [region, setRegion] = useState('all');
+
   const assignedRegion = user?.assignedRegion;
   const regionLocked = role !== 'Super Administrator' && !!assignedRegion;
-  const effectiveRegion = regionLocked ? assignedRegion ?? 'all' : region;
+  const effectiveRegion = regionLocked ? (assignedRegion ?? 'all') : region;
 
   useEffect(() => {
-    Promise.all([getAllCampaigns(), getAllPatients(), getAllScreenings(), getAllSurgeries(), getAllFollowUps()])
-      .then(([campaignRows, patientRows, screeningRows, surgeryRows, followUpRows]) => {
-        setCampaigns(campaignRows);
-        setPatients(patientRows);
-        setScreenings(screeningRows);
-        setSurgeries(surgeryRows);
-        setFollowUps(followUpRows);
+    let cancelled = false;
+    setLoading(true);
+    getReportAggregation({ filterRegion: effectiveRegion, filterCampaignId: campaignId })
+      .then((data) => { if (!cancelled) { setAgg(data); setLoading(false); } })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [effectiveRegion, campaignId]);
+
+  const availableRegions = agg?.availableRegions ?? [];
+  const availableCampaigns = (agg?.allCampaigns ?? []).filter(
+    (c) => effectiveRegion === 'all' || c.region === effectiveRegion,
+  );
+  const scoped = agg?.scoped;
+  const regionPerformance = agg?.regionPerformance ?? [];
+
+  const selectedCampaignName =
+    campaignId === 'all'
+      ? 'All campaigns'
+      : ((agg?.allCampaigns ?? []).find((c) => c.id === campaignId)?.name ?? 'All campaigns');
+
+  const today = new Date().toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+
+  // ── Excel export ──────────────────────────────────────────────────────────
+  async function exportWorkbook() {
+    setExporting(true);
+    setExportError('');
+    try {
+      const auditResult = await actionAuditReportExport({
+        region: effectiveRegion,
+        campaign: selectedCampaignName,
+        format: 'xlsx',
       });
-  }, []);
+      if (!auditResult.ok) throw new Error(auditResult.error);
 
-  const availableRegions = useMemo(() => {
-    const fromData = new Set(campaigns.map((campaign) => campaign.region));
-    const regions = REGIONAL_CAMPAIGN_AREAS
-      .map((area) => area.region)
-      .filter((item) => fromData.has(item) || campaigns.length !== 0);
-    return regionLocked && assignedRegion ? regions.filter((item) => item === assignedRegion) : regions;
-  }, [assignedRegion, campaigns, regionLocked]);
+      const rawData = await getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId });
+      const { campaigns, patients, screenings, surgeries, followUps, medications, regionPerformance: rp } = rawData;
 
-  const scoped = useMemo(() => {
-    const matchesCampaign = <T extends { campaignId?: string }>(row: T) => campaignId === 'all' || row.campaignId === campaignId;
-    const matchesRegion = <T extends { region?: string }>(row: T) => effectiveRegion === 'all' || row.region === effectiveRegion;
-    const filter = <T extends { campaignId?: string; region?: string }>(rows: T[]) =>
-      rows.filter((row) => matchesCampaign(row) && matchesRegion(row));
-    const selectedCampaigns = campaigns.filter((campaign) =>
-      (campaignId === 'all' || campaign.id === campaignId) &&
-      (effectiveRegion === 'all' || campaign.region === effectiveRegion)
+      const surgeryTarget = campaigns.reduce((sum, c) => sum + c.targetSurgeries, 0);
+      const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
+      const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
+      const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
+      const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
+      const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
+      const surgeryCompletionRate = completionRate(surgeriesCompleted, surgeryTarget);
+      const completedFollowUps = followUps.filter((fu) => fu.status === 'Completed').length;
+      const overdueFollowUps = followUps.filter((fu) => fu.status === 'Overdue').length;
+      const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
+      const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
+      const hasMedications = medications.length > 0;
+      const registered = patients.length;
+      const totalSurgeries = surgeries.length;
+
+      const funnelExport = [
+        { step: 'Registered', count: registered },
+        { step: 'Screened', count: screenings.length },
+        { step: 'Surgery Booked', count: surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted },
+        { step: 'Surg. Completed', count: surgeriesCompleted },
+        { step: 'Follow-up Done', count: completedFollowUps },
+      ];
+
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+
+      // 1. Executive Summary
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+        { Metric: 'Report Date', Value: today },
+        { Metric: 'Region', Value: effectiveRegion === 'all' ? 'All regions' : effectiveRegion },
+        { Metric: 'Campaign', Value: selectedCampaignName },
+        { Metric: 'Prepared By', Value: user?.name ?? '' },
+        { Metric: 'Role', Value: role ?? '' },
+        { Metric: '', Value: '' },
+        { Metric: 'Campaigns', Value: campaigns.length },
+        { Metric: 'Patients Registered', Value: registered },
+        { Metric: 'Screenings Completed', Value: screenings.length },
+        { Metric: 'Surgery Target', Value: surgeryTarget },
+        { Metric: 'Surgeries Scheduled', Value: surgeriesScheduled },
+        { Metric: 'Surgeries In-Theatre', Value: surgeriesInTheatre },
+        { Metric: 'Surgeries Completed', Value: surgeriesCompleted },
+        { Metric: 'Surgeries Postponed', Value: surgeriesPostponed },
+        { Metric: 'Surgeries Cancelled', Value: surgeriesCancelled },
+        { Metric: 'Surgery Completion Rate', Value: `${surgeryCompletionRate}%` },
+        { Metric: 'Follow-ups Total', Value: followUps.length },
+        { Metric: 'Follow-ups Completed', Value: completedFollowUps },
+        { Metric: 'Follow-ups Overdue', Value: overdueFollowUps },
+        { Metric: 'Doctor Review Pending', Value: doctorReviewPending },
+        { Metric: 'Doctor Review Completed', Value: doctorReviewCompleted },
+        ...(hasMedications ? [{ Metric: 'Medications Prescribed', Value: medications.length }] : []),
+      ]), 'Executive Summary');
+
+      // 2. Region Performance
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rp.map((r) => ({
+        Region: r.region,
+        Status: r.status,
+        Campaigns: r.campaigns,
+        'Surgery Target': r.targetSurgeries,
+        'Patients Registered': r.patients,
+        Screenings: r.screenings,
+        'Surgeries Scheduled': r.scheduled,
+        'In-Theatre': r.inTheatre,
+        Completed: r.completed,
+        Postponed: r.postponed,
+        Cancelled: r.cancelled,
+        'Completion Rate %': r.completionRate,
+        'Follow-ups': r.followUps,
+        'Follow-ups Completed': r.completedFollowUps,
+        'Follow-ups Overdue': r.overdueFollowUps,
+        'Dr. Review Pending': r.doctorReviewPending,
+        'Dr. Review Completed': r.doctorReviewCompleted,
+      }))), 'Region Performance');
+
+      // 3. Campaign Performance
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(campaigns.map((c) => {
+        const cSurgeries = surgeries.filter((s) => s.campaignId === c.id);
+        const cFollowUps = followUps.filter((fu) => fu.campaignId === c.id);
+        const cDone = cSurgeries.filter((s) => s.status === 'Completed').length;
+        return {
+          Campaign: c.name,
+          Type: c.type,
+          Status: c.status,
+          Region: c.region,
+          District: c.operationDistrict,
+          Manager: c.projectManagerName,
+          'Start Date': c.startDate,
+          'End Date': c.endDate,
+          'Target Screenings': c.targetScreenings,
+          'Target Surgeries': c.targetSurgeries,
+          'Target Follow-ups': c.targetFollowUps,
+          'Patients Registered': patients.filter((p) => p.campaignId === c.id).length,
+          Screenings: screenings.filter((s) => s.campaignId === c.id).length,
+          'Surgeries Scheduled': cSurgeries.filter((s) => s.status === 'Scheduled').length,
+          'Surgeries Completed': cDone,
+          'Surgeries Postponed': cSurgeries.filter((s) => s.status === 'Postponed').length,
+          'Surgeries Cancelled': cSurgeries.filter((s) => s.status === 'Cancelled').length,
+          'Completion Rate %': completionRate(cDone, c.targetSurgeries),
+          'Follow-ups': cFollowUps.length,
+          'Follow-ups Completed': cFollowUps.filter((fu) => fu.status === 'Completed').length,
+          'Follow-ups Overdue': cFollowUps.filter((fu) => fu.status === 'Overdue').length,
+        };
+      })), 'Campaign Performance');
+
+      // 4. Workflow Funnel
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(funnelExport.map((f) => ({
+        Step: f.step,
+        Count: f.count,
+        '% of Registered': registered ? `${Math.round((f.count / registered) * 100)}%` : '0%',
+      }))), 'Workflow Funnel');
+
+      // 5. Surgery Status
+      const surgeryStatusExport = [
+        { name: 'Scheduled', value: surgeriesScheduled },
+        { name: 'In-Theatre', value: surgeriesInTheatre },
+        { name: 'Completed', value: surgeriesCompleted },
+        { name: 'Postponed', value: surgeriesPostponed },
+        { name: 'Cancelled', value: surgeriesCancelled },
+      ].filter((s) => s.value > 0);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+        ...surgeryStatusExport.map((s) => ({
+          Status: s.name,
+          Count: s.value,
+          '% of Total': totalSurgeries ? `${Math.round((s.value / totalSurgeries) * 100)}%` : '0%',
+        })),
+        { Status: 'Total', Count: totalSurgeries, '% of Total': '100%' },
+      ]), 'Surgery Status');
+
+      // 6. Follow-up Review
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+        ...MILESTONES.map((m) => {
+          const mFu = followUps.filter((fu) => fu.milestone === m);
+          return {
+            Milestone: m,
+            Total: mFu.length,
+            Completed: mFu.filter((fu) => fu.status === 'Completed').length,
+            Overdue: mFu.filter((fu) => fu.status === 'Overdue').length,
+            'Dr. Review Pending': mFu.filter((fu) => fu.doctorReviewStatus === 'Pending').length,
+            'Dr. Review Completed': mFu.filter((fu) => fu.doctorReviewStatus === 'Completed').length,
+          };
+        }),
+        {
+          Milestone: 'Total',
+          Total: followUps.length,
+          Completed: completedFollowUps,
+          Overdue: overdueFollowUps,
+          'Dr. Review Pending': doctorReviewPending,
+          'Dr. Review Completed': doctorReviewCompleted,
+        },
+      ]), 'Follow-up Review');
+
+      // 7. Medications
+      if (hasMedications) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(medications.map((m) => {
+          const fu = followUps.find((f) => f.id === m.followUpId);
+          return {
+            Patient: fu?.patientName ?? '',
+            Region: fu?.region ?? '',
+            'Follow-up Milestone': fu?.milestone ?? '',
+            Drug: m.drugName,
+            Dosage: m.dosage,
+            Frequency: m.frequency,
+            Duration: m.duration,
+            Instructions: m.instructions,
+            Status: m.status,
+            Notes: m.notes,
+            'Prescribed At': m.createdAt.split('T')[0],
+          };
+        })), 'Medications');
+      }
+
+      // 8. Patients
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(patients.map((p) => ({
+        'Patient Code': p.patientCode,
+        'Full Name': p.fullName,
+        'Date of Birth': p.dateOfBirth,
+        Sex: p.sex,
+        District: p.district,
+        Region: p.region,
+        Phone: p.phone,
+        'Disability Status': p.disabilityStatus,
+        'Insurance Status': p.insuranceStatus,
+        'Screening Status': p.screeningStatus,
+        'Referral Source': p.referralSource,
+        'Consent Given': p.consentGiven ? 'Yes' : 'No',
+        'Registered By': p.registeredByName,
+        'Registered At': p.createdAt.split('T')[0],
+      }))), 'Patients');
+
+      // 9. Screenings
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(screenings.map((s) => ({
+        Patient: s.patientName,
+        Region: s.region,
+        'Screened At': s.screenedAt.split('T')[0],
+        'Screened By': s.screenedByName,
+        'VA Right Unaided': s.vaRightUnaided,
+        'VA Left Unaided': s.vaLeftUnaided,
+        'VA Right Corrected': s.vaRightCorrected ?? '',
+        'VA Left Corrected': s.vaLeftCorrected ?? '',
+        'IOP Right': s.iopRight ?? '',
+        'IOP Left': s.iopLeft ?? '',
+        'Cataract Suspected': s.cataractSuspected ? 'Yes' : 'No',
+        'Glaucoma Suspected': s.glaucomaSuspected ? 'Yes' : 'No',
+        'Diabetic Retinopathy': s.diabeticRetinopathy ? 'Yes' : 'No',
+        Recommendation: s.recommendation,
+        'Other Findings': s.otherFindings,
+        Notes: s.notes,
+      }))), 'Screenings');
+
+      // 10. Surgeries
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(surgeries.map((s) => ({
+        Patient: s.patientName,
+        Region: s.region,
+        Status: s.status,
+        Eye: s.eye,
+        'Lens Type': s.lensType,
+        Surgeon: s.surgeonName,
+        'Scheduled At': s.scheduledAt.split('T')[0],
+        'Performed At': s.performedAt ? s.performedAt.split('T')[0] : '',
+        'Pre-Op VA': s.preOpVA,
+        'Post-Op VA': s.postOpVA ?? '',
+        Complications: s.complications,
+        Notes: s.intraopNotes,
+        'Completed By': s.completedByName,
+      }))), 'Surgeries');
+
+      // 11. Follow-ups
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(followUps.map((fu) => ({
+        Patient: fu.patientName,
+        Region: fu.region,
+        Milestone: fu.milestone,
+        Status: fu.status,
+        'Due Date': fu.dueDate,
+        'Completed At': fu.completedAt ? fu.completedAt.split('T')[0] : '',
+        'VA Right Post': fu.vaRightPost ?? '',
+        'VA Left Post': fu.vaLeftPost ?? '',
+        Complications: fu.complications,
+        'Needs Dr. Review': fu.needsDoctorReview ? 'Yes' : 'No',
+        'Dr. Review Status': fu.doctorReviewStatus,
+        'Doctor Name': fu.doctorName,
+        'Doctor Diagnosis': fu.doctorDiagnosis,
+        'Treatment Plan': fu.doctorTreatmentPlan,
+        'Next Appointment': fu.nextAppointmentDate ?? '',
+        Notes: fu.notes,
+      }))), 'Follow-ups');
+
+      const slug = effectiveRegion === 'all' ? 'all-regions' : effectiveRegion.toLowerCase().replace(/\s+/g, '-');
+      XLSX.writeFile(wb, `eyecare-report-${slug}-${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Could not export report');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <p className="text-sm text-[#7A9A87]">Loading report data...</p>
+      </div>
     );
-
-    return {
-      campaigns: selectedCampaigns,
-      patients: filter(patients),
-      screenings: filter(screenings),
-      surgeries: filter(surgeries),
-      followUps: filter(followUps),
-    };
-  }, [campaignId, effectiveRegion, campaigns, patients, screenings, surgeries, followUps]);
-
-  const regionPerformance = useMemo<RegionPerformance[]>(() => {
-    const regions = effectiveRegion === 'all'
-      ? availableRegions
-      : [effectiveRegion];
-
-    return regions.map((regionName) => {
-      const regionCampaigns = campaigns.filter((campaign) => campaign.region === regionName);
-      const regionPatients = patients.filter((patient) => patient.region === regionName);
-      const regionScreenings = screenings.filter((screening) => screening.region === regionName);
-      const regionSurgeries = surgeries.filter((surgery) => surgery.region === regionName);
-      const regionFollowUps = followUps.filter((followUp) => followUp.region === regionName);
-      const targetSurgeries = regionCampaigns.reduce((sum, campaign) => sum + campaign.targetSurgeries, 0);
-      const completed = regionSurgeries.filter((surgery) => surgery.status === 'Completed').length;
-      const completionRate = targetSurgeries ? Math.round((completed / targetSurgeries) * 100) : 0;
-      const activity = regionPatients.length + regionScreenings.length + regionSurgeries.length;
-      const status: RegionPerformance['status'] =
-        regionCampaigns.length === 0 ? 'No campaign' :
-        activity === 0 ? 'No activity' :
-        completionRate >= 75 ? 'Strong' :
-        completionRate >= 25 || regionScreenings.length > 0 ? 'Active' :
-        'Behind';
-
-      return {
-        region: regionName,
-        campaigns: regionCampaigns.length,
-        targetSurgeries,
-        patients: regionPatients.length,
-        screenings: regionScreenings.length,
-        scheduled: regionSurgeries.filter((surgery) => surgery.status === 'Scheduled').length,
-        completed,
-        postponed: regionSurgeries.filter((surgery) => surgery.status === 'Postponed').length,
-        cancelled: regionSurgeries.filter((surgery) => surgery.status === 'Cancelled').length,
-        followUps: regionFollowUps.length,
-        overdueFollowUps: regionFollowUps.filter((followUp) => followUp.status === 'Overdue').length,
-        doctorReviews: regionFollowUps.filter((followUp) => followUp.needsDoctorReview).length,
-        completionRate,
-        status,
-      };
-    }).sort((a, b) => {
-      const statusWeight = { 'No activity': 0, Behind: 1, Active: 2, Strong: 3, 'No campaign': -1 };
-      return statusWeight[a.status] - statusWeight[b.status] || a.completionRate - b.completionRate;
-    });
-  }, [availableRegions, effectiveRegion, campaigns, patients, screenings, surgeries, followUps]);
-
-  const completed = scoped.surgeries.filter((item) => item.status === 'Completed').length;
-  const target = scoped.campaigns.reduce((sum, campaign) => sum + campaign.targetSurgeries, 0);
-  const doctorReviews = scoped.followUps.filter((item) => item.needsDoctorReview).length;
-  const inactiveRegions = regionPerformance.filter((item) => item.status === 'No activity' || item.status === 'Behind').length;
-  const surgeryStatusData = ['Scheduled', 'In-Theatre', 'Completed', 'Postponed', 'Cancelled'].map((status) => ({
-    name: status,
-    value: scoped.surgeries.filter((surgery) => surgery.status === status).length,
-  })).filter((item) => item.value > 0);
-
-  function exportWorkbook() {
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(regionPerformance), 'Region Performance');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(scoped.campaigns), 'Campaigns');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(scoped.patients), 'Patients');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(scoped.screenings), 'Screenings');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(scoped.surgeries), 'Surgeries');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(scoped.followUps), 'Follow-ups');
-    XLSX.writeFile(workbook, 'eyecare-regional-report.xlsx');
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-6">
+      {/* Report header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Reports</h1>
-          <p className="text-sm text-slate-500">Compare regions, find inactive areas, and filter by state or campaign</p>
+          <h1 className="text-xl font-bold text-[#1C2B22]">Reports</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#4A6455]">
+            <span className="flex items-center gap-1">
+              <MapPin size={11} />
+              {effectiveRegion === 'all' ? 'All regions' : effectiveRegion}
+            </span>
+            <span>·</span>
+            <span>{selectedCampaignName}</span>
+            <span>·</span>
+            <span className="flex items-center gap-1">
+              <CalendarDays size={11} />
+              {today}
+            </span>
+            <span>·</span>
+            <span className="flex items-center gap-1">
+              <UserCheck size={11} />
+              {role}
+            </span>
+          </div>
         </div>
-        <Button onClick={exportWorkbook} className="gap-2 rounded-xl bg-teal-600 text-white hover:bg-teal-700"><Download size={15} />Export Workbook</Button>
+        <Button
+          onClick={exportWorkbook}
+          disabled={exporting}
+          className="gap-2 rounded-xl bg-[#1A7A46] text-white hover:bg-[#0F4D2A]"
+        >
+          <Download size={15} />
+          {exporting ? 'Preparing...' : 'Export Workbook'}
+        </Button>
       </div>
 
+      {exportError && (
+        <div className="rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-2.5 text-sm text-[#B52A2A]">
+          {exportError}
+        </div>
+      )}
+
+      {/* Filters */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {regionLocked ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <p className="text-xs font-medium text-slate-500">Assigned region</p>
-            <p className="font-semibold">{assignedRegion}</p>
+          <div className="rounded-xl border border-[#E2DDD5] bg-[#FAFAF8] px-3 py-2.5">
+            <p className="text-xs font-medium text-[#7A9A87]">Assigned region (locked)</p>
+            <p className="text-sm font-semibold text-[#1C2B22]">{assignedRegion}</p>
           </div>
         ) : (
-          <Select value={region} onValueChange={(value) => { if (value) { setRegion(value); setCampaignId('all'); } }}>
-            <SelectTrigger className="rounded-xl"><SelectValue placeholder="Region" /></SelectTrigger>
+          <Select
+            value={region}
+            onValueChange={(v) => {
+              if (v) { setRegion(v); setCampaignId('all'); }
+            }}
+          >
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="All regions" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All regions</SelectItem>
-              {availableRegions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+              {availableRegions.map((r) => (
+                <SelectItem key={r} value={r}>{r}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         )}
 
-        <Select value={campaignId} onValueChange={(value) => { if (value) setCampaignId(value); }}>
-          <SelectTrigger className="rounded-xl"><SelectValue placeholder="Campaign" /></SelectTrigger>
+        <Select
+          value={campaignId}
+          onValueChange={(v) => { if (v) setCampaignId(v); }}
+        >
+          <SelectTrigger className="rounded-xl">
+            <SelectValue placeholder="All campaigns" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All campaigns</SelectItem>
-            {campaigns
-              .filter((campaign) => effectiveRegion === 'all' || campaign.region === effectiveRegion)
-              .map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} | {campaign.region}</SelectItem>)}
+            {availableCampaigns.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name} · {c.region}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-        <Metric title="Campaigns" value={scoped.campaigns.length} />
-        <Metric title="Patients" value={scoped.patients.length} />
-        <Metric title="Screened" value={scoped.screenings.length} />
-        <Metric title="Completed Surgeries" value={`${completed}/${target || 0}`} />
-        <Metric title="Doctor Reviews" value={doctorReviews} />
-        <Metric title="Behind / No Activity" value={inactiveRegions} />
-      </div>
+      {/* ── Section: Executive Summary ─────────────────────────────────── */}
+      <Section title="Executive Summary">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <KPI title="Campaigns" value={scoped?.campaignCount ?? 0} />
+          <KPI title="Patients Registered" value={scoped?.patientCount ?? 0} />
+          <KPI title="Screenings" value={scoped?.screeningCount ?? 0} />
+          <KPI title="Surgery Target" value={scoped?.surgeryTarget ?? 0} />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <KPI title="Surg. Scheduled" value={scoped?.surgeriesScheduled ?? 0} color="sage" />
+          <KPI title="Surg. Completed" value={scoped?.surgeriesCompleted ?? 0} color="green" />
+          <KPI
+            title="Completion Rate"
+            value={`${scoped?.surgeryCompletionRate ?? 0}%`}
+            color={(scoped?.surgeryCompletionRate ?? 0) >= 75 ? 'green' : (scoped?.surgeryCompletionRate ?? 0) >= 25 ? 'amber' : 'red'}
+          />
+          <KPI
+            title="Inactive Regions"
+            value={agg?.inactiveRegions ?? 0}
+            color={(agg?.inactiveRegions ?? 0) > 0 ? 'red' : 'green'}
+          />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <KPI title="Follow-ups Completed" value={scoped?.completedFollowUps ?? 0} color="green" />
+          <KPI
+            title="Follow-ups Overdue"
+            value={scoped?.overdueFollowUps ?? 0}
+            color={(scoped?.overdueFollowUps ?? 0) > 0 ? 'amber' : 'green'}
+          />
+          <KPI
+            title="Dr. Review Pending"
+            value={scoped?.doctorReviewPending ?? 0}
+            color={(scoped?.doctorReviewPending ?? 0) > 0 ? 'amber' : 'green'}
+          />
+          <KPI title="Dr. Review Completed" value={scoped?.doctorReviewCompleted ?? 0} />
+        </div>
+        {scoped?.hasMedications && (
+          <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <KPI title="Medications Prescribed" value={scoped.medications} />
+          </div>
+        )}
+      </Section>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <Card className="border-0 shadow-sm xl:col-span-3">
+      {/* ── Section: Campaign Performance + Surgery Status ────────────── */}
+      <Section title="Campaign Performance">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+          <Card className="border-0 shadow-sm xl:col-span-3">
+            <CardHeader>
+              <CardTitle className="text-sm text-[#1C2B22]">
+                Target vs Completed Surgeries by Region
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-72">
+              {regionPerformance.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={regionPerformance}
+                    margin={{ left: 0, right: 8, top: 8, bottom: 40 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis
+                      dataKey="region"
+                      tickFormatter={shortRegion}
+                      tick={{ fontSize: 10 }}
+                      angle={-20}
+                      textAnchor="end"
+                      height={60}
+                      interval={0}
+                    />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(v, name) => [
+                        Number(v).toLocaleString(),
+                        name === 'targetSurgeries' ? 'Target' : 'Completed',
+                      ]}
+                    />
+                    <Legend
+                      formatter={(v) => (v === 'targetSurgeries' ? 'Target' : 'Completed')}
+                      iconType="square"
+                    />
+                    <Bar dataKey="targetSurgeries" fill="#D0E8DA" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="completed" fill="#1A7A46" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyChart message="No campaign data" />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm xl:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-sm text-[#1C2B22]">Surgery Status</CardTitle>
+            </CardHeader>
+            <CardContent className="h-72">
+              {(agg?.surgeryStatusData ?? []).length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={agg?.surgeryStatusData}
+                      dataKey="value"
+                      nameKey="name"
+                      outerRadius={80}
+                      innerRadius={36}
+                      paddingAngle={2}
+                    >
+                      {(agg?.surgeryStatusData ?? []).map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => [Number(v).toLocaleString(), 'Count']} />
+                    <Legend iconType="circle" />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyChart message="No surgery data" />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </Section>
+
+      {/* ── Section: Patient Workflow Funnel ──────────────────────────── */}
+      <Section title="Patient Workflow Funnel">
+        <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm text-slate-700">Campaign Performance</CardTitle>
+            <CardTitle className="text-sm text-[#1C2B22]">
+              Registered → Screened → Surgery → Follow-up
+            </CardTitle>
           </CardHeader>
-          <CardContent className="h-72">
+          <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={regionPerformance} margin={{ left: 0, right: 8, top: 8, bottom: 28 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="region" tickFormatter={shortRegion} tick={{ fontSize: 11 }} angle={-18} textAnchor="end" height={54} interval={0} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(value, name) => [formatChartValue(value), name === 'completed' ? 'Completed' : 'Target']} />
-                <Bar dataKey="targetSurgeries" fill="#d1d5db" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="completed" fill="#0f766e" radius={[4, 4, 0, 0]} />
+              <BarChart
+                data={agg?.funnelData ?? []}
+                layout="vertical"
+                margin={{ left: 8, right: 32, top: 4, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="step" tick={{ fontSize: 11 }} width={116} />
+                <Tooltip formatter={(v) => [Number(v).toLocaleString(), 'Patients']} />
+                <Bar dataKey="count" fill="#1A7A46" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </Section>
 
-        <Card className="border-0 shadow-sm xl:col-span-2">
+      {/* ── Section: Follow-up & Doctor Review ───────────────────────── */}
+      <Section title="Follow-up and Doctor Review">
+        <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm text-slate-700">Surgery Status</CardTitle>
+            <CardTitle className="text-sm text-[#1C2B22]">Outcomes by Milestone</CardTitle>
           </CardHeader>
-          <CardContent className="h-72">
-            {surgeryStatusData.length ? (
+          <CardContent className="h-64">
+            {(scoped?.followUpCount ?? 0) > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={surgeryStatusData} dataKey="value" nameKey="name" outerRadius={86} label>
-                    {surgeryStatusData.map((entry, index) => <Cell key={entry.name} fill={['#2563eb', '#7c3aed', '#16a34a', '#f59e0b', '#dc2626'][index % 5]} />)}
-                  </Pie>
-                  <Tooltip formatter={(value) => formatChartValue(value)} />
-                </PieChart>
+                <BarChart
+                  data={agg?.followUpByMilestone ?? []}
+                  margin={{ left: 0, right: 8, top: 8, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="milestone" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend iconType="square" />
+                  <Bar dataKey="Completed" fill="#1A7A46" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Overdue" fill="#B52A2A" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Dr. Pending" fill="#C47D11" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Dr. Completed" fill="#2B9E5C" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-400">No surgery data</div>
+              <EmptyChart message="No follow-up data" />
             )}
           </CardContent>
         </Card>
-      </div>
+      </Section>
 
-      <Card className="border-0 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm text-slate-700">Region Performance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50">
-                <tr>{['Region', 'Status', 'Campaigns', 'Target', 'Patients', 'Screened', 'Scheduled', 'Completed', 'Rate', 'Overdue FU', 'Doctor Review'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
-              </thead>
-              <tbody>
-                {regionPerformance.map((row) => (
-                  <tr key={row.region} className="border-b border-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800">{row.region}</td>
-                    <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
-                    <td className="px-4 py-3">{row.campaigns}</td>
-                    <td className="px-4 py-3">{row.targetSurgeries}</td>
-                    <td className="px-4 py-3">{row.patients}</td>
-                    <td className="px-4 py-3">{row.screenings}</td>
-                    <td className="px-4 py-3">{row.scheduled}</td>
-                    <td className="px-4 py-3">{row.completed}</td>
-                    <td className="px-4 py-3">{row.completionRate}%</td>
-                    <td className="px-4 py-3">{row.overdueFollowUps}</td>
-                    <td className="px-4 py-3">{row.doctorReviews}</td>
+      {/* ── Section: Region Comparison ────────────────────────────────── */}
+      <Section title="Region Comparison">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-[#E2DDD5] bg-[#FAFAF8]">
+                  <tr>
+                    {[
+                      'Region', 'Status', 'Campaigns', 'Target', 'Patients', 'Screened',
+                      'Scheduled', 'In-Theatre', 'Completed', 'Rate',
+                      'FU Done', 'FU Overdue', 'Dr. Pending', 'Dr. Done',
+                    ].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody>
+                  {regionPerformance.map((row) => (
+                    <tr key={row.region} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
+                      <td className="px-4 py-3 font-medium text-[#1C2B22]">{row.region}</td>
+                      <td className="px-4 py-3"><StatusBadge status={row.status as RegionStatus} /></td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.campaigns}</td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.targetSurgeries}</td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.patients}</td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.screenings}</td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.scheduled}</td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.inTheatre}</td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.completed}</td>
+                      <td className="px-4 py-3">
+                        <span className={`font-semibold ${
+                          row.completionRate >= 75 ? 'text-[#1A7A46]' :
+                          row.completionRate >= 25 ? 'text-[#C47D11]' : 'text-[#B52A2A]'
+                        }`}>{row.completionRate}%</span>
+                      </td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.completedFollowUps}</td>
+                      <td className="px-4 py-3">
+                        <span className={row.overdueFollowUps > 0 ? 'font-semibold text-[#B52A2A]' : 'text-[#4A6455]'}>
+                          {row.overdueFollowUps}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={row.doctorReviewPending > 0 ? 'font-semibold text-[#C47D11]' : 'text-[#4A6455]'}>
+                          {row.doctorReviewPending}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[#4A6455]">{row.doctorReviewCompleted}</td>
+                    </tr>
+                  ))}
+                  {regionPerformance.length === 0 && (
+                    <tr>
+                      <td colSpan={14} className="px-4 py-8 text-center text-sm text-[#7A9A87]">No region data</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </Section>
 
-      <Card className="border-0 shadow-sm">
-        <CardHeader><CardTitle className="text-sm text-slate-700">Campaign Breakdown</CardTitle></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50">
-                <tr>{['Campaign', 'Region', 'District', 'Manager', 'Patients', 'Screenings', 'Scheduled', 'Completed', 'Target'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{heading}</th>)}</tr>
-              </thead>
-              <tbody>
-                {scoped.campaigns.map((campaign) => (
-                  <tr key={campaign.id} className="border-b border-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800">{campaign.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{campaign.region}</td>
-                    <td className="px-4 py-3 text-slate-600">{campaign.operationDistrict}</td>
-                    <td className="px-4 py-3 text-slate-600">{campaign.projectManagerName}</td>
-                    <td className="px-4 py-3">{patients.filter((item) => item.campaignId === campaign.id).length}</td>
-                    <td className="px-4 py-3">{screenings.filter((item) => item.campaignId === campaign.id).length}</td>
-                    <td className="px-4 py-3">{surgeries.filter((item) => item.campaignId === campaign.id && item.status === 'Scheduled').length}</td>
-                    <td className="px-4 py-3">{surgeries.filter((item) => item.campaignId === campaign.id && item.status === 'Completed').length}</td>
-                    <td className="px-4 py-3">{campaign.targetSurgeries}</td>
+      {/* ── Section: Campaign Breakdown ───────────────────────────────── */}
+      <Section title="Campaign Breakdown">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-[#E2DDD5] bg-[#FAFAF8]">
+                  <tr>
+                    {[
+                      'Campaign', 'Type', 'Region', 'District', 'Manager', 'Status',
+                      'Patients', 'Screened', 'Scheduled', 'Completed', 'Target', 'Rate',
+                    ].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </thead>
+                <tbody>
+                  {(scoped?.campaigns ?? []).map((c) => {
+                    const stats = agg?.campaignStats.find((cs) => cs.id === c.id);
+                    const cRate = completionRate(stats?.completed ?? 0, c.targetSurgeries);
+                    return (
+                      <tr key={c.id} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
+                        <td className="px-4 py-3 font-medium text-[#1C2B22]">{c.name}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{c.type}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{c.region}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{c.operationDistrict}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{c.projectManagerName}</td>
+                        <td className="px-4 py-3"><CampaignStatusBadge status={c.status} /></td>
+                        <td className="px-4 py-3 text-[#4A6455]">{stats?.patients ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{stats?.screenings ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{stats?.scheduled ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{stats?.completed ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4A6455]">{c.targetSurgeries}</td>
+                        <td className="px-4 py-3">
+                          <span className={`font-semibold ${
+                            cRate >= 75 ? 'text-[#1A7A46]' : cRate >= 25 ? 'text-[#C47D11]' : 'text-[#B52A2A]'
+                          }`}>{cRate}%</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(scoped?.campaigns ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={12} className="px-4 py-8 text-center text-sm text-[#7A9A87]">No campaigns</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </Section>
     </div>
   );
 }
 
-function Metric({ title, value }: { title: string; value: number | string }) {
+// ── Helper components ─────────────────────────────────────────────────────────
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#7A9A87]">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+type KPIColor = 'default' | 'green' | 'red' | 'amber' | 'sage';
+
+function KPI({ title, value, color = 'default' }: { title: string; value: number | string; color?: KPIColor }) {
+  const valueColor: Record<KPIColor, string> = {
+    default: 'text-[#1C2B22]',
+    green: 'text-[#1A7A46]',
+    red: 'text-[#B52A2A]',
+    amber: 'text-[#C47D11]',
+    sage: 'text-[#4A6455]',
+  };
   return (
     <Card className="border-0 shadow-sm">
       <CardContent className="p-4">
-        <p className="text-xs font-medium text-slate-500">{title}</p>
-        <p className="mt-1 text-lg font-bold text-slate-900">{value}</p>
+        <p className="text-xs font-medium text-[#4A6455]">{title}</p>
+        <p className={`mt-1 text-2xl font-bold ${valueColor[color]}`}>{value}</p>
       </CardContent>
     </Card>
   );
 }
 
-function shortRegion(region: string) {
-  return region
-    .replace(' / Mogadishu', '')
-    .replace(' Somalia', '')
-    .replace(' State', '');
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div className="flex h-full items-center justify-center rounded-xl bg-[#FAFAF8] text-sm text-[#7A9A87]">
+      {message}
+    </div>
+  );
 }
 
-function formatChartValue(value: unknown) {
-  return Number(value ?? 0).toLocaleString();
-}
-
-function StatusBadge({ status }: { status: RegionPerformance['status'] }) {
-  const styles: Record<RegionPerformance['status'], string> = {
-    'No campaign': 'bg-slate-100 text-slate-600',
-    'No activity': 'bg-red-100 text-red-700',
-    Behind: 'bg-amber-100 text-amber-700',
-    Active: 'bg-blue-100 text-blue-700',
-    Strong: 'bg-green-100 text-green-700',
+function StatusBadge({ status }: { status: RegionStatus }) {
+  const styles: Record<RegionStatus, string> = {
+    'No campaign': 'bg-[#F0EDE6] text-[#4A6455]',
+    'No activity': 'bg-[#FEF3DC] text-[#C47D11]',
+    Behind: 'bg-[#FCE8E8] text-[#B52A2A]',
+    Active: 'bg-[#E8F5EE] text-[#0F4D2A]',
+    Strong: 'bg-[#E8F5EE] text-[#1A7A46]',
   };
-  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status]}`}>{status}</span>;
+  return (
+    <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+function CampaignStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    Planned: 'bg-[#F0EDE6] text-[#4A6455]',
+    Active: 'bg-[#E8F5EE] text-[#1A7A46]',
+    Completed: 'bg-[#D0E8DA] text-[#0F4D2A]',
+    Suspended: 'bg-[#FCE8E8] text-[#B52A2A]',
+  };
+  return (
+    <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#F0EDE6] text-[#4A6455]'}`}>
+      {status}
+    </span>
+  );
+}
+
+function shortRegion(region: string) {
+  return region.replace(' / Mogadishu', '').replace(' Somalia', '').replace(' State', '');
 }

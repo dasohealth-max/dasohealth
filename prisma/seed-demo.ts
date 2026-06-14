@@ -288,7 +288,6 @@ async function main() {
                   vaLeftPost: days === 1 ? '6/24' : null,
                   complications: i % 8 === 0 ? 'Redness and discomfort reported' : '',
                   notes: `${DEMO} seeded follow-up`,
-                  smsReminderSent: false,
                   needsDoctorReview: i % 8 === 0,
                   completedById: days === 1 ? `demo-screener-${regionIndex + 1}` : '',
                   completedByName: days === 1 ? `Demo Screener ${regionIndex + 1}` : '',

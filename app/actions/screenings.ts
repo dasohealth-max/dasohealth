@@ -1,14 +1,75 @@
 'use server';
 
+import { z } from 'zod';
+import { updateTag } from 'next/cache';
+import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAllScreenings as fetchAllScreenings, createScreening, updateScreening, deleteScreening } from '@/lib/api/screenings';
+import { getAllScreenings as fetchAllScreenings, createScreening, updateScreening, deleteScreening, fromPrisma as screeningFromPrisma } from '@/lib/api/screenings';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Screening } from '@/types';
+import type { Prisma } from '@/lib/generated/prisma/client';
+
+const VAGradeEnum = z.enum(['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'HM', 'PL', 'NPL']);
+
+const ScreeningSchema = z.object({
+  patientId: z.string().min(1, 'Patient is required'),
+  campaignId: z.string().min(1, 'Campaign is required'),
+  screenedAt: z.string().min(1, 'Screening date is required'),
+  vaRightUnaided: VAGradeEnum,
+  vaLeftUnaided: VAGradeEnum,
+  vaRightCorrected: VAGradeEnum.optional(),
+  vaLeftCorrected: VAGradeEnum.optional(),
+  iopRight: z.number().optional(),
+  iopLeft: z.number().optional(),
+  cataractSuspected: z.boolean(),
+  glaucomaSuspected: z.boolean(),
+  diabeticRetinopathy: z.boolean(),
+  otherFindings: z.string(),
+  medicalHistory: z.string(),
+  currentMedications: z.string(),
+  recommendation: z.enum(['No Surgery - Release', 'Refer for Surgery', 'Positive', 'Further Investigation', 'Glasses', 'Follow-up']),
+  notes: z.string(),
+  patientName: z.string().optional(),
+  region: z.string().optional(),
+  operationDistrict: z.string().optional(),
+  screenedBy: z.string().optional(),
+  screenedById: z.string().optional(),
+  screenedByName: z.string().optional(),
+});
 
 export async function getAllScreenings(): Promise<Screening[]> {
   const actor = await requireActor('screening', 'view');
   if ('error' in actor) throw new Error(actor.error);
   return fetchAllScreenings(scopedRegionWhere(actor));
+}
+
+export async function getScreeningHistoryPaginated(params: {
+  search?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ data: Screening[]; total: number }> {
+  const actor = await requireActor('screening', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const where: Prisma.ScreeningWhereInput = {
+    ...scopedRegionWhere(actor),
+    ...(params.search && {
+      OR: [
+        { patientName: { contains: params.search, mode: 'insensitive' } },
+        { region: { contains: params.search, mode: 'insensitive' } },
+      ],
+    }),
+  };
+
+  const pageSize = Math.min(Math.max(1, params.pageSize), 200);
+  const page = Math.max(1, params.page);
+  const skip = (page - 1) * pageSize;
+  const [rows, total] = await Promise.all([
+    prisma.screening.findMany({ where, skip, take: pageSize, orderBy: { screenedAt: 'desc' } }),
+    prisma.screening.count({ where }),
+  ]);
+
+  return { data: rows.map(screeningFromPrisma), total };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
@@ -64,6 +125,9 @@ export async function actionCreateScreening(
   const actor = await requireActor('screening', 'create');
   if ('error' in actor) return { ok: false, error: actor.error };
 
+  const parsed = ScreeningSchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
   try {
     if (!data.patientId || !data.campaignId) {
       return { ok: false, error: 'Patient and campaign are required' };
@@ -89,7 +153,10 @@ export async function actionCreateScreening(
       data: { screeningStatus: 'Screened' },
     });
     await routeSurgery(screening, data.vaRightUnaided);
-    await auditLog({
+    updateTag('screenings');
+    updateTag('patients');
+    updateTag('surgeries');
+    after(() => auditLog({
       actor,
       action: 'create',
       entity: 'Screening',
@@ -98,7 +165,7 @@ export async function actionCreateScreening(
       campaignId: screening.campaignId,
       details: `Completed screening for ${screening.patientName}`,
       after: screening,
-    });
+    }));
     return { ok: true, data: screening };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -111,6 +178,9 @@ export async function actionUpdateScreening(
 ): Promise<ActionResult<Screening>> {
   const actor = await requireActor('screening', 'edit');
   if ('error' in actor) return { ok: false, error: actor.error };
+
+  const parsed = ScreeningSchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
   try {
     if (!data.patientId || !data.campaignId) {
@@ -138,7 +208,10 @@ export async function actionUpdateScreening(
       screenedByName: data.screenedByName || actor.name,
     });
     await routeSurgery(screening, data.vaRightUnaided);
-    await auditLog({
+    updateTag('screenings');
+    updateTag('patients');
+    updateTag('surgeries');
+    after(() => auditLog({
       actor,
       action: 'update',
       entity: 'Screening',
@@ -148,7 +221,7 @@ export async function actionUpdateScreening(
       details: `Updated screening for ${screening.patientName}`,
       before: beforeRow,
       after: screening,
-    });
+    }));
     return { ok: true, data: screening };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -166,7 +239,8 @@ export async function actionDeleteScreening(id: string): Promise<ActionResult> {
       if (denied) return denied;
     }
     await deleteScreening(id);
-    await auditLog({
+    updateTag('screenings');
+    after(() => auditLog({
       actor,
       action: 'delete',
       entity: 'Screening',
@@ -175,7 +249,7 @@ export async function actionDeleteScreening(id: string): Promise<ActionResult> {
       campaignId: before?.campaignId,
       details: 'Deleted screening',
       before,
-    });
+    }));
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

@@ -1,24 +1,21 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const font = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  weight: ["300","400","500","600","700","800"],
-  display: "swap",
-});
-
 export const metadata: Metadata = {
-  title: "EyeCare Pro — Eye Health Management Platform",
-  description: "Multi-tenant eye health management platform for campaigns, patients, surgeries and outcomes.",
+  title: "DASO Health",
+  description: "Regional eye-care campaign management for Direct Aid Somalia.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${font.variable} h-full`}>
-      <body className="font-sans antialiased h-full bg-slate-50 text-slate-800">
+    <html lang="en" className="h-full">
+      <body className="h-full bg-[#FAFAF8] font-sans text-[#1C2B22] antialiased">
         <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>

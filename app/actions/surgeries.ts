@@ -1,15 +1,74 @@
 'use server';
 
+import { z } from 'zod';
+import { updateTag } from 'next/cache';
+import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, deleteSurgery, fromPrisma } from '@/lib/api/surgeries';
 import { surgeryStatusFromApp } from '@/lib/prisma-enums';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
+import type { Prisma } from '@/lib/generated/prisma/client';
+
+const SurgerySchema = z.object({
+  patientId: z.string().min(1, 'Patient is required'),
+  campaignId: z.string().min(1, 'Campaign is required'),
+  createdFromScreeningId: z.string().optional(),
+  surgeonName: z.string(),
+  eye: z.enum(['Right', 'Left', 'Both']),
+  lensType: z.enum(['PMMA', 'Foldable Acrylic', 'Hydrophilic', 'Hydrophobic']),
+  scheduledAt: z.string().min(1, 'Scheduled date is required'),
+  performedAt: z.string().optional(),
+  status: z.enum(['Scheduled', 'In-Theatre', 'Completed', 'Cancelled', 'Postponed']),
+  preOpVA: z.string(),
+  postOpVA: z.string().optional(),
+  complications: z.string(),
+  intraopNotes: z.string(),
+  patientName: z.string().optional(),
+  region: z.string().optional(),
+  operationDistrict: z.string().optional(),
+  completedById: z.string().optional(),
+  completedByName: z.string().optional(),
+});
 
 export async function getAllSurgeries(): Promise<Surgery[]> {
   const actor = await requireActor('surgeries', 'view');
   if ('error' in actor) throw new Error(actor.error);
   return fetchAllSurgeries(scopedRegionWhere(actor));
+}
+
+export async function getSurgeriesPaginated(params: {
+  search?: string;
+  region?: string;
+  status?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ data: Surgery[]; total: number }> {
+  const actor = await requireActor('surgeries', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const where: Prisma.SurgeryWhereInput = {
+    ...scopedRegionWhere(actor),
+    ...(params.region && { region: params.region }),
+    ...(params.status && { status: surgeryStatusFromApp(params.status) as never }),
+    ...(params.search && {
+      OR: [
+        { patientName: { contains: params.search, mode: 'insensitive' } },
+        { region: { contains: params.search, mode: 'insensitive' } },
+        { surgeonName: { contains: params.search, mode: 'insensitive' } },
+      ],
+    }),
+  };
+
+  const pageSize = Math.min(Math.max(1, params.pageSize), 200);
+  const page = Math.max(1, params.page);
+  const skip = (page - 1) * pageSize;
+  const [rows, total] = await Promise.all([
+    prisma.surgery.findMany({ where, skip, take: pageSize, orderBy: { scheduledAt: 'desc' } }),
+    prisma.surgery.count({ where }),
+  ]);
+
+  return { data: rows.map(fromPrisma), total };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
@@ -30,7 +89,7 @@ async function deriveScope(data: Omit<Surgery, 'id' | 'createdAt'>) {
 
 async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
   const base = new Date(performedAt);
-  const milestones: [string, number][] = [['Day1', 1], ['Week1', 7]];
+  const milestones: [string, number][] = [['Day1', 1], ['Week1', 7], ['Month1', 30]];
   for (const [milestone, days] of milestones) {
     const exists = await prisma.followUp.findFirst({
       where: { surgeryId: surgery.id, milestone: milestone as never },
@@ -48,8 +107,13 @@ async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
         dueDate: new Date(base.getTime() + days * 86400_000),
         status: 'Pending' as never,
         needsDoctorReview: false,
+        doctorReviewStatus: 'NotNeeded' as never,
         complications: '',
         notes: '',
+        doctorName: '',
+        doctorDiagnosis: '',
+        doctorTreatmentPlan: '',
+        doctorNotes: '',
       },
     });
   }
@@ -60,6 +124,9 @@ export async function actionCreateSurgery(
 ): Promise<ActionResult<Surgery>> {
   const actor = await requireActor('surgeries', 'create');
   if ('error' in actor) return { ok: false, error: actor.error };
+
+  const parsed = SurgerySchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
   try {
     if (!data.patientId || !data.campaignId) {
@@ -85,8 +152,10 @@ export async function actionCreateSurgery(
     });
     if (surgery.status === 'Completed' && surgery.performedAt) {
       await createInitialFollowUps(surgery, surgery.performedAt);
+      updateTag('follow-ups');
     }
-    await auditLog({
+    updateTag('surgeries');
+    after(() => auditLog({
       actor,
       action: 'create',
       entity: 'Surgery',
@@ -95,7 +164,7 @@ export async function actionCreateSurgery(
       campaignId: surgery.campaignId,
       details: `Created surgery for ${surgery.patientName}`,
       after: surgery,
-    });
+    }));
     return { ok: true, data: surgery };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -108,6 +177,9 @@ export async function actionUpdateSurgery(
 ): Promise<ActionResult<Surgery>> {
   const actor = await requireActor('surgeries', 'edit');
   if ('error' in actor) return { ok: false, error: actor.error };
+
+  const parsed = SurgerySchema.safeParse(data);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
 
   try {
     const beforeRow = await prisma.surgery.findUnique({ where: { id } });
@@ -138,9 +210,10 @@ export async function actionUpdateSurgery(
 
     if (newStatusKey === 'Completed' && beforeRow.status !== ('Completed' as never) && updated.performedAt) {
       await createInitialFollowUps(updated, updated.performedAt);
+      updateTag('follow-ups');
     }
-
-    await auditLog({
+    updateTag('surgeries');
+    after(() => auditLog({
       actor,
       action: 'update',
       entity: 'Surgery',
@@ -152,7 +225,7 @@ export async function actionUpdateSurgery(
         : `Updated surgery for ${updated.patientName}`,
       before: fromPrisma(beforeRow),
       after: updated,
-    });
+    }));
     return { ok: true, data: updated };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -170,7 +243,8 @@ export async function actionDeleteSurgery(id: string): Promise<ActionResult> {
       if (denied) return denied;
     }
     await deleteSurgery(id);
-    await auditLog({
+    updateTag('surgeries');
+    after(() => auditLog({
       actor,
       action: 'delete',
       entity: 'Surgery',
@@ -179,7 +253,7 @@ export async function actionDeleteSurgery(id: string): Promise<ActionResult> {
       campaignId: before?.campaignId,
       details: before ? `Deleted surgery for ${before.patientName}` : 'Deleted surgery',
       before,
-    });
+    }));
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

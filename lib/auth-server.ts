@@ -40,13 +40,14 @@ async function getAuthUser() {
 export async function getActor(): Promise<ServerActor | null> {
   const user = await getAuthUser();
   if (!user) return null;
-  const metadata = user.user_metadata ?? {};
+  const appMeta = user.app_metadata ?? {};
+  const userMeta = user.user_metadata ?? {};
   return {
     id: user.id,
     email: user.email ?? '',
-    name: String(metadata.name ?? user.email ?? 'Unknown user'),
-    role: String(metadata.role ?? ''),
-    assignedRegion: metadata.assignedRegion ? String(metadata.assignedRegion) : undefined,
+    name: String(userMeta.name ?? user.email ?? 'Unknown user'),
+    role: String(appMeta.role ?? ''),
+    assignedRegion: appMeta.assignedRegion ? String(appMeta.assignedRegion) : undefined,
   };
 }
 

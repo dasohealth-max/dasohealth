@@ -95,7 +95,7 @@ export interface Screening {
   otherFindings: string;
   medicalHistory: string;
   currentMedications: string;
-  recommendation: 'Discharge' | 'Refer for Surgery' | 'Further Investigation' | 'Glasses' | 'Follow-up';
+  recommendation: 'No Surgery - Release' | 'Refer for Surgery' | 'Positive' | 'Further Investigation' | 'Glasses' | 'Follow-up';
   notes: string;
   createdAt: string;
 }
@@ -127,8 +127,10 @@ export interface Surgery {
   createdAt: string;
 }
 
-export type FollowUpMilestone = 'Day 1' | 'Week 1';
+export type FollowUpMilestone = 'Day 1' | 'Week 1' | 'Month 1' | 'Month 3';
 export type FollowUpStatus = 'Pending' | 'Due' | 'Overdue' | 'Completed' | 'Missed';
+export type DoctorReviewStatus = 'Not Needed' | 'Pending' | 'Completed';
+export type MedicationStatus = 'Prescribed' | 'Taking' | 'Completed' | 'Stopped';
 
 export interface FollowUp {
   id: string;
@@ -146,8 +148,28 @@ export interface FollowUp {
   complications: string;
   notes: string;
   needsDoctorReview: boolean;
+  doctorReviewStatus: DoctorReviewStatus;
+  doctorReviewedAt?: string;
+  doctorName: string;
+  doctorDiagnosis: string;
+  doctorTreatmentPlan: string;
+  doctorNotes: string;
+  nextAppointmentDate?: string;
   completedById: string;
   completedByName: string;
+  createdAt: string;
+}
+
+export interface FollowUpMedication {
+  id: string;
+  followUpId: string;
+  drugName: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+  status: MedicationStatus;
+  notes: string;
   createdAt: string;
 }
 

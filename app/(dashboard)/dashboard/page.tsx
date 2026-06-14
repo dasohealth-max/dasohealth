@@ -53,11 +53,11 @@ const STATUS_PRIORITY: Record<RegionStatus, number> = {
 };
 
 const STATUS_STYLES: Record<RegionStatus, { border: string; badge: string; bar: string }> = {
-  'No Campaign': { border: 'border-l-slate-300',  badge: 'bg-slate-100 text-slate-600',  bar: 'bg-slate-300'  },
-  'No Activity': { border: 'border-l-orange-400', badge: 'bg-orange-50 text-orange-700', bar: 'bg-orange-400' },
-  Behind:        { border: 'border-l-red-500',    badge: 'bg-red-50 text-red-700',       bar: 'bg-red-500'    },
-  Active:        { border: 'border-l-blue-500',   badge: 'bg-blue-50 text-blue-700',     bar: 'bg-blue-500'   },
-  Strong:        { border: 'border-l-teal-500',   badge: 'bg-teal-50 text-teal-700',     bar: 'bg-teal-500'   },
+  'No Campaign': { border: 'border-l-[#D0E8DA]',  badge: 'bg-[#F0EDE6] text-[#7A9A87]',  bar: 'bg-[#D0E8DA]'  },
+  'No Activity': { border: 'border-l-[#C47D11]', badge: 'bg-[#FEF3DC] text-[#C47D11]', bar: 'bg-[#C47D11]' },
+  Behind:        { border: 'border-l-[#B52A2A]', badge: 'bg-[#FCE8E8] text-[#B52A2A]', bar: 'bg-[#B52A2A]' },
+  Active:        { border: 'border-l-[#2B9E5C]', badge: 'bg-[#E8F5EE] text-[#0F4D2A]', bar: 'bg-[#2B9E5C]' },
+  Strong:        { border: 'border-l-[#1A7A46]', badge: 'bg-[#E8F5EE] text-[#0F4D2A]', bar: 'bg-[#1A7A46]' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -142,25 +142,20 @@ export default function DashboardPage() {
     });
   }, []);
 
-  // Non-super-admin: lock to their assigned region
-  useEffect(() => {
-    if (role && role !== 'Super Administrator') {
-      setSelectedRegion(user?.assignedRegion ?? 'all');
-    }
-  }, [role, user?.assignedRegion]);
-
   const allStats = useMemo(
     () => computeRegionStats(campaigns, patients, screenings, surgeries, followUps),
     [campaigns, followUps, patients, screenings, surgeries],
   );
 
-  const currentStats = selectedRegion === 'all'
+  const effectiveSelectedRegion = isSuperAdmin ? selectedRegion : (user?.assignedRegion ?? 'all');
+
+  const currentStats = effectiveSelectedRegion === 'all'
     ? null
-    : (allStats.find((r) => r.region === selectedRegion) ?? null);
+    : (allStats.find((r) => r.region === effectiveSelectedRegion) ?? null);
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+      <div className="flex h-64 items-center justify-center text-sm text-[#7A9A87]">
         Loading dashboard...
       </div>
     );
@@ -169,8 +164,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl font-bold text-[#1C2B22]">Dashboard</h1>
+        <p className="text-sm text-[#4A6455]">
           {isSuperAdmin
             ? 'National overview across all 9 regions — select a region to drill down'
             : `${currentStats?.region ?? 'Regional'} performance`}
@@ -181,7 +176,7 @@ export default function DashboardPage() {
         <RegionTabBar selected={selectedRegion} onChange={setSelectedRegion} stats={allStats} />
       )}
 
-      {selectedRegion === 'all' ? (
+      {effectiveSelectedRegion === 'all' ? (
         <AllRegionsView stats={allStats} onDrillDown={setSelectedRegion} />
       ) : (
         <SingleRegionView
@@ -214,7 +209,7 @@ function RegionTabBar({
   ];
 
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-xl border border-slate-100 bg-white p-1 shadow-sm">
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-[#E2DDD5] bg-white p-1 shadow-sm">
       {tabs.map((tab) => {
         const active = selected === tab.key;
         return (
@@ -222,12 +217,12 @@ function RegionTabBar({
             key={tab.key}
             onClick={() => onChange(tab.key)}
             className={`relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-              active ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              active ? 'bg-[#1A7A46] text-white shadow-sm' : 'text-[#4A6455] hover:bg-[#E8F5EE] hover:text-[#0F4D2A]'
             }`}
           >
             {tab.label}
             {tab.alerts > 0 && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${active ? 'bg-white/30 text-white' : 'bg-red-500 text-white'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${active ? 'bg-white/30 text-white' : 'bg-[#B52A2A] text-white'}`}>
                 {tab.alerts}
               </span>
             )}
@@ -257,19 +252,19 @@ function AllRegionsView({ stats, onDrillDown }: { stats: RegionStats[]; onDrillD
           label="National Surgery Progress"
           value={`${totalCompleted.toLocaleString()} / ${totalTarget.toLocaleString()}`}
           sub={`${totalPct}% of national target reached`}
-          accent="teal"
+          accent="primary"
         />
         <KPICard
           label="Regions Needing Attention"
           value={behindCount}
           sub={`${9 - behindCount} of 9 regions on track`}
-          accent={behindCount >= 4 ? 'red' : behindCount > 1 ? 'amber' : 'teal'}
+          accent={behindCount >= 4 ? 'red' : behindCount > 1 ? 'amber' : 'primary'}
         />
         <KPICard
           label="Active Alerts"
           value={alertCount}
           sub="Overdue follow-ups + pending doctor reviews"
-          accent={alertCount > 0 ? 'red' : 'teal'}
+          accent={alertCount > 0 ? 'red' : 'primary'}
         />
       </div>
 
@@ -292,17 +287,17 @@ function RegionCard({ stats: r, onDrillDown }: { stats: RegionStats; onDrillDown
   return (
     <button
       onClick={() => onDrillDown(r.region)}
-      className={`group w-full rounded-xl border border-slate-100 border-l-4 ${style.border} bg-white p-4 text-left shadow-sm transition-all hover:shadow-md`}
+      className={`group w-full rounded-xl border border-[#E2DDD5] border-l-4 ${style.border} bg-white p-4 text-left shadow-sm transition-all hover:shadow-md`}
     >
       {/* Header row */}
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-semibold text-slate-900">{shortName(r.region)}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{r.district}</p>
+          <p className="truncate font-semibold text-[#1C2B22]">{shortName(r.region)}</p>
+          <p className="mt-0.5 text-xs text-[#4A6455]">{r.district}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {hasAlerts && (
-            <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+            <span className="flex items-center gap-1 rounded-full bg-[#FCE8E8] px-2 py-0.5 text-[10px] font-bold text-[#B52A2A]">
               <AlertTriangle size={9} />
               {r.overdue + r.doctorReview}
             </span>
@@ -314,23 +309,23 @@ function RegionCard({ stats: r, onDrillDown }: { stats: RegionStats; onDrillDown
       </div>
 
       {/* PM */}
-      <p className="mb-3 text-xs text-slate-500">
-        PM: <span className="font-medium text-slate-700">{r.manager || 'Unassigned'}</span>
+      <p className="mb-3 text-xs text-[#4A6455]">
+        PM: <span className="font-medium text-[#1C2B22]">{r.manager || 'Unassigned'}</span>
       </p>
 
       {/* Progress bar */}
       <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="text-slate-500">{r.completed.toLocaleString()} / {r.target.toLocaleString()} surgeries</span>
-        <span className="font-bold text-slate-700">{r.pct}%</span>
+        <span className="text-[#4A6455]">{r.completed.toLocaleString()} / {r.target.toLocaleString()} surgeries</span>
+        <span className="font-bold text-[#1C2B22]">{r.pct}%</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E2DDD5]">
         <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(r.pct, 100)}%` }} />
       </div>
 
       {/* Footer */}
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+      <div className="mt-3 flex items-center justify-between text-xs text-[#7A9A87]">
         <span>{r.patients.toLocaleString()} patients · {r.screened.toLocaleString()} screened</span>
-        <ChevronRight size={14} className="transition-colors group-hover:text-slate-600" />
+        <ChevronRight size={14} className="transition-colors group-hover:text-[#1C2B22]" />
       </div>
     </button>
   );
@@ -349,7 +344,7 @@ function SingleRegionView({
 }) {
   if (!stats) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-200 py-20 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-[#D0E8DA] py-20 text-center text-sm text-[#7A9A87]">
         No data available for this region yet.
       </div>
     );
@@ -373,117 +368,117 @@ function SingleRegionView({
       {showBack && (
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-teal-600"
+          className="flex items-center gap-1.5 text-sm font-medium text-[#4A6455] transition-colors hover:text-[#1A7A46]"
         >
           <ArrowLeft size={15} /> All Regions
         </button>
       )}
 
       {/* Region header */}
-      <div className={`rounded-xl border border-slate-100 border-l-4 ${style.border} bg-white p-5 shadow-sm`}>
+      <div className={`rounded-xl border border-[#E2DDD5] border-l-4 ${style.border} bg-white p-5 shadow-sm`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">{stats.region}</h2>
+              <h2 className="text-xl font-bold text-[#1C2B22]">{stats.region}</h2>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${style.badge}`}>{stats.status}</span>
             </div>
-            <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
+            <p className="mt-1 flex items-center gap-1 text-sm text-[#4A6455]">
               <MapPin size={12} />{stats.district}
             </p>
           </div>
           {stats.manager && (
             <div className="text-sm">
-              <p className="text-xs text-slate-400">Project Manager</p>
-              <p className="font-semibold text-slate-800">{stats.manager}</p>
+              <p className="text-xs text-[#7A9A87]">Project Manager</p>
+              <p className="font-semibold text-[#1C2B22]">{stats.manager}</p>
             </div>
           )}
         </div>
 
         {stats.campaignName && (
-          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-xs">
-            <span className="font-medium text-slate-700">{stats.campaignName}</span>
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#E2DDD5] pt-3 text-xs">
+            <span className="font-medium text-[#1C2B22]">{stats.campaignName}</span>
             {stats.campaignStatus && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">{stats.campaignStatus}</span>
+              <span className="rounded-full bg-[#E8F5EE] px-2 py-0.5 text-[#4A6455]">{stats.campaignStatus}</span>
             )}
             {stats.campaignStart && stats.campaignEnd && (
-              <span className="text-slate-400">{stats.campaignStart} → {stats.campaignEnd}</span>
+              <span className="text-[#7A9A87]">{stats.campaignStart} → {stats.campaignEnd}</span>
             )}
           </div>
         )}
       </div>
 
       {/* Pipeline */}
-      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
-        <p className="mb-5 text-xs font-semibold uppercase tracking-wider text-slate-400">Patient Pipeline</p>
+      <div className="rounded-xl border border-[#E2DDD5] bg-white p-5 shadow-sm">
+        <p className="mb-5 text-xs font-semibold uppercase tracking-wider text-[#7A9A87]">Patient Pipeline</p>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
           {pipeline.map(({ label, value, Icon }) => (
             <div key={label} className="text-center">
-              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
-                <Icon size={17} className="text-teal-700" />
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#E8F5EE]">
+                <Icon size={17} className="text-[#1A7A46]" />
               </div>
-              <p className="text-2xl font-bold text-slate-900">{value.toLocaleString()}</p>
-              <p className="mt-0.5 text-[11px] text-slate-400">{label}</p>
+              <p className="text-2xl font-bold text-[#1C2B22]">{value.toLocaleString()}</p>
+              <p className="mt-0.5 text-[11px] text-[#7A9A87]">{label}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Surgery target */}
-      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-[#E2DDD5] bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Surgery Target</p>
-          <span className={`text-3xl font-bold ${stats.pct >= 75 ? 'text-teal-600' : stats.pct >= 25 ? 'text-blue-600' : 'text-red-600'}`}>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#7A9A87]">Surgery Target</p>
+          <span className={`text-3xl font-bold ${stats.pct >= 75 ? 'text-[#1A7A46]' : stats.pct >= 25 ? 'text-[#2B9E5C]' : 'text-[#B52A2A]'}`}>
             {stats.pct}%
           </span>
         </div>
-        <div className="mb-3 h-5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="mb-3 h-5 w-full overflow-hidden rounded-full bg-[#E2DDD5]">
           <div
             className={`h-full rounded-full transition-all ${style.bar}`}
             style={{ width: `${Math.min(stats.pct, 100)}%` }}
           />
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-600">
+          <span className="text-[#4A6455]">
             <strong>{stats.completed.toLocaleString()}</strong> surgeries completed
           </span>
-          <span className="text-slate-500">Target: <strong>{stats.target.toLocaleString()}</strong></span>
+          <span className="text-[#4A6455]">Target: <strong>{stats.target.toLocaleString()}</strong></span>
         </div>
         {remaining > 0 && (
-          <p className="mt-2 text-xs text-slate-400">{remaining.toLocaleString()} more needed to reach target</p>
+          <p className="mt-2 text-xs text-[#7A9A87]">{remaining.toLocaleString()} more needed to reach target</p>
         )}
       </div>
 
       {/* Alerts */}
       {hasAlerts ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-500">Risk Alerts</p>
+        <div className="rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#B52A2A]">Risk Alerts</p>
           <div className="flex flex-wrap gap-6">
             {stats.overdue > 0 && (
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100">
-                  <AlertTriangle size={16} className="text-red-600" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FCE8E8]/80 border border-[#F0C0C0]">
+                  <AlertTriangle size={16} className="text-[#B52A2A]" />
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-red-700">{stats.overdue}</p>
-                  <p className="text-xs text-red-500">overdue follow-up{stats.overdue !== 1 ? 's' : ''}</p>
+                  <p className="text-lg font-bold text-[#B52A2A]">{stats.overdue}</p>
+                  <p className="text-xs text-[#B52A2A]/80">overdue follow-up{stats.overdue !== 1 ? 's' : ''}</p>
                 </div>
               </div>
             )}
             {stats.doctorReview > 0 && (
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-100">
-                  <Eye size={16} className="text-red-600" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FCE8E8]/80 border border-[#F0C0C0]">
+                  <Eye size={16} className="text-[#B52A2A]" />
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-red-700">{stats.doctorReview}</p>
-                  <p className="text-xs text-red-500">need{stats.doctorReview === 1 ? 's' : ''} doctor review</p>
+                  <p className="text-lg font-bold text-[#B52A2A]">{stats.doctorReview}</p>
+                  <p className="text-xs text-[#B52A2A]/80">need{stats.doctorReview === 1 ? 's' : ''} doctor review</p>
                 </div>
               </div>
             )}
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2.5 rounded-xl border border-teal-100 bg-teal-50 px-5 py-3.5 text-sm text-teal-700">
+        <div className="flex items-center gap-2.5 rounded-xl border border-[#D0E8DA] bg-[#E8F5EE] px-5 py-3.5 text-sm text-[#0F4D2A]">
           <CheckCircle size={16} />
           No active alerts for this region
         </div>
@@ -503,16 +498,16 @@ function KPICard({
   label: string;
   value: string | number;
   sub: string;
-  accent: 'teal' | 'red' | 'amber';
+  accent: 'primary' | 'red' | 'amber';
 }) {
-  const accentClass = { teal: 'text-teal-600', red: 'text-red-600', amber: 'text-amber-600' }[accent];
+  const accentClass = { primary: 'text-[#1A7A46]', red: 'text-[#B52A2A]', amber: 'text-[#C47D11]' }[accent];
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="rounded-xl border border-[#E2DDD5] bg-white p-5 shadow-sm">
+      <p className="text-xs font-medium text-[#4A6455]">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${accentClass}`}>
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
-      <p className="mt-0.5 text-xs text-slate-400">{sub}</p>
+      <p className="mt-0.5 text-xs text-[#7A9A87]">{sub}</p>
     </div>
   );
 }

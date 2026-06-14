@@ -12,10 +12,22 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 enum UserRole {
-  SuperAdministrator  @map("Super Administrator")
-  ProjectManager      @map("Project Manager")
-  DataClerk           @map("Data Clerk")
-  ScreeningOfficer    @map("Screening Officer")
+  SuperAdministrator     @map("Super Administrator")
+  ProjectManager         @map("Project Manager")
+  DataClerk              @map("Data Clerk")
+  ScreeningOfficer       @map("Screening Officer")
+  // Legacy roles preserved for existing database records
+  CampaignManager        @map("Campaign Manager")
+  HospitalCoordinator    @map("Hospital Coordinator")
+  Ophthalmologist
+  Surgeon
+  FollowUpOfficer        @map("Follow-Up Officer")
+  OutreachOfficer        @map("Outreach Officer")
+  LogisticsOfficer       @map("Logistics Officer")
+  InventoryOfficer       @map("Inventory Officer")
+  MEALOfficer            @map("MEAL Officer")
+  FinanceOfficer         @map("Finance Officer")
+  DonorUser              @map("Donor User")
 
   @@map("user_role")
 }
@@ -81,6 +93,7 @@ enum ScreeningRecommendation {
   FurtherInvestigation @map("Further Investigation")
   Glasses
   FollowUp             @map("Follow-up")
+  Positive
 
   @@map("screening_recommendation")
 }
@@ -113,8 +126,10 @@ enum SurgeryStatus {
 }
 
 enum FollowUpMilestone {
-  Day1   @map("Day 1")
-  Week1  @map("Week 1")
+  Day1    @map("Day 1")
+  Week1   @map("Week 1")
+  Month1  @map("Month 1")
+  Month3  @map("Month 3")
 
   @@map("follow_up_milestone")
 }
@@ -127,6 +142,23 @@ enum FollowUpStatus {
   Missed
 
   @@map("follow_up_status")
+}
+
+enum DoctorReviewStatus {
+  NotNeeded  @map("Not Needed")
+  Pending
+  Completed
+
+  @@map("doctor_review_status")
+}
+
+enum MedicationStatus {
+  Prescribed
+  Taking
+  Completed
+  Stopped
+
+  @@map("medication_status")
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +204,9 @@ model Campaign {
   followUps  FollowUp[]
 
   @@index([region], map: "idx_campaigns_region")
+  @@index([region, status], map: "idx_campaigns_region_status")
   @@index([projectManagerId], map: "idx_campaigns_project_manager_id")
+  @@index([createdAt(sort: Desc)], map: "idx_campaigns_created_at")
   @@map("campaigns")
 }
 
@@ -212,6 +246,9 @@ model Patient {
   @@index([patientCode], map: "idx_patients_patient_code")
   @@index([region], map: "idx_patients_region")
   @@index([screeningStatus], map: "idx_patients_screening_status")
+  @@index([region, screeningStatus], map: "idx_patients_region_screening_status")
+  @@index([createdAt(sort: Desc)], map: "idx_patients_created_at")
+  @@index([fullName, phone, campaignId], map: "idx_patients_duplicate_guard")
   @@map("patients")
 }
 
@@ -248,7 +285,9 @@ model Screening {
   @@index([patientId], map: "idx_screenings_patient_id")
   @@index([campaignId], map: "idx_screenings_campaign_id")
   @@index([region], map: "idx_screenings_region")
+  @@index([region, campaignId], map: "idx_screenings_region_campaign_id")
   @@index([screenedAt(sort: Desc)], map: "idx_screenings_screened_at")
+  @@index([createdAt(sort: Desc)], map: "idx_screenings_created_at")
   @@map("screenings")
 }
 
@@ -282,41 +321,77 @@ model Surgery {
   @@index([campaignId], map: "idx_surgeries_campaign_id")
   @@index([region], map: "idx_surgeries_region")
   @@index([status], map: "idx_surgeries_status")
+  @@index([region, status], map: "idx_surgeries_region_status")
+  @@index([region, campaignId], map: "idx_surgeries_region_campaign_id")
   @@index([scheduledAt(sort: Desc)], map: "idx_surgeries_scheduled_at")
+  @@index([createdAt(sort: Desc)], map: "idx_surgeries_created_at")
   @@map("surgeries")
 }
 
 model FollowUp {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  patientId       String            @map("patient_id") @db.Uuid
-  patientName     String            @map("patient_name")
-  surgeryId       String            @map("surgery_id") @db.Uuid
-  campaignId      String            @map("campaign_id") @db.Uuid
-  region          String            @default("Banadir / Mogadishu")
-  milestone       FollowUpMilestone
-  dueDate         DateTime          @map("due_date") @db.Date
-  completedAt     DateTime?         @map("completed_at") @db.Timestamptz(3)
-  status          FollowUpStatus    @default(Pending)
-  vaRightPost     String?           @map("va_right_post")
-  vaLeftPost      String?           @map("va_left_post")
-  complications   String            @default("")
-  notes           String            @default("")
-  needsDoctorReview Boolean         @default(false) @map("needs_doctor_review")
-  completedById   String            @default("") @map("completed_by_id")
-  completedByName String            @default("") @map("completed_by_name")
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId            String             @map("patient_id") @db.Uuid
+  patientName          String             @map("patient_name")
+  surgeryId            String             @map("surgery_id") @db.Uuid
+  campaignId           String             @map("campaign_id") @db.Uuid
+  region               String             @default("Banadir / Mogadishu")
+  milestone            FollowUpMilestone
+  dueDate              DateTime           @map("due_date") @db.Date
+  completedAt          DateTime?          @map("completed_at") @db.Timestamptz(3)
+  status               FollowUpStatus     @default(Pending)
+  vaRightPost          String?            @map("va_right_post")
+  vaLeftPost           String?            @map("va_left_post")
+  complications        String             @default("")
+  notes                String             @default("")
+  needsDoctorReview    Boolean            @default(false) @map("needs_doctor_review")
+  doctorReviewStatus   DoctorReviewStatus @default(NotNeeded) @map("doctor_review_status")
+  doctorReviewedAt     DateTime?          @map("doctor_reviewed_at") @db.Timestamptz(3)
+  doctorName           String             @default("") @map("doctor_name")
+  doctorDiagnosis      String             @default("") @map("doctor_diagnosis")
+  doctorTreatmentPlan  String             @default("") @map("doctor_treatment_plan")
+  doctorNotes          String             @default("") @map("doctor_notes")
+  nextAppointmentDate  DateTime?          @map("next_appointment_date") @db.Date
+  completedById        String             @default("") @map("completed_by_id")
+  completedByName      String             @default("") @map("completed_by_name")
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient  Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  surgery  Surgery  @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  patient     Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  surgery     Surgery              @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
+  campaign    Campaign             @relation(fields: [campaignId], references: [id])
+  medications FollowUpMedication[]
 
   @@index([patientId], map: "idx_follow_ups_patient_id")
   @@index([surgeryId], map: "idx_follow_ups_surgery_id")
+  @@index([surgeryId, milestone], map: "idx_follow_ups_surgery_milestone")
   @@index([campaignId], map: "idx_follow_ups_campaign_id")
   @@index([region], map: "idx_follow_ups_region")
+  @@index([region, status], map: "idx_follow_ups_region_status")
+  @@index([region, dueDate], map: "idx_follow_ups_region_due_date")
   @@index([dueDate], map: "idx_follow_ups_due_date")
   @@index([status], map: "idx_follow_ups_status")
+  @@index([status, dueDate], map: "idx_follow_ups_status_due_date")
+  @@index([needsDoctorReview], map: "idx_follow_ups_needs_doctor_review")
+  @@index([doctorReviewStatus], map: "idx_follow_ups_doctor_review_status")
+  @@index([createdAt(sort: Desc)], map: "idx_follow_ups_created_at")
   @@map("follow_ups")
+}
+
+model FollowUpMedication {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  followUpId   String           @map("follow_up_id") @db.Uuid
+  drugName     String           @map("drug_name")
+  dosage       String           @default("")
+  frequency    String           @default("")
+  duration     String           @default("")
+  instructions String           @default("")
+  status       MedicationStatus @default(Prescribed)
+  notes        String           @default("")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  followUp FollowUp @relation(fields: [followUpId], references: [id], onDelete: Cascade)
+
+  @@index([followUpId], map: "idx_follow_up_medications_follow_up_id")
+  @@map("follow_up_medications")
 }
 
 model AuditLog {
@@ -338,6 +413,9 @@ model AuditLog {
   @@index([entity, entityId], map: "idx_audit_logs_entity")
   @@index([region], map: "idx_audit_logs_region")
   @@index([campaignId], map: "idx_audit_logs_campaign_id")
+  @@index([actorId], map: "idx_audit_logs_actor_id")
+  @@index([action], map: "idx_audit_logs_action")
+  @@index([region, createdAt(sort: Desc)], map: "idx_audit_logs_region_created_at")
   @@index([createdAt(sort: Desc)], map: "idx_audit_logs_created_at")
   @@map("audit_logs")
 }
