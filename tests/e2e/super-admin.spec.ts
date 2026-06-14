@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Demo credentials – must match what `npm run seed:demo` creates.
+// E2E credentials must point at a prepared non-production test account.
 const EMAIL = process.env.E2E_SUPER_EMAIL ?? 'super@demo.eyecare.org';
 const PASSWORD = process.env.E2E_PASSWORD ?? 'Demo1234!';
 

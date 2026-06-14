@@ -116,7 +116,6 @@ export default function FollowUpsPage() {
   // Load paginated data
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
     getFollowUpsPaginated({ tab, search: debouncedSearch, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
         if (!cancelled) { setFollowUps(data); setTotal(t); setIsLoading(false); }

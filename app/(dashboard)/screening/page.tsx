@@ -105,7 +105,6 @@ export default function ScreeningPage() {
   // Load paginated screening history
   useEffect(() => {
     let cancelled = false;
-    setHistLoading(true);
     getScreeningHistoryPaginated({ search: debouncedHistSearch, page: screeningsPage, pageSize: PAGE_SIZE })
       .then(({ data, total }) => {
         if (!cancelled) { setScreenings(data); setScreeningsTotal(total); setHistLoading(false); }

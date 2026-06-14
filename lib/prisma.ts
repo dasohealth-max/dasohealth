@@ -3,10 +3,23 @@ import { PrismaPg } from '@prisma/adapter-pg';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
+function buildConnectionString(rawUrl: string) {
+  const url = new URL(rawUrl);
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true';
+
+  url.searchParams.set('sslmode', rejectUnauthorized ? 'require' : 'no-verify');
+  return url.toString();
+}
+
 function createPrismaClient() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required to connect to the production database.');
+  }
+
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true';
   const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL!,
-    ssl: { rejectUnauthorized: true },
+    connectionString: buildConnectionString(process.env.DATABASE_URL),
+    ssl: { rejectUnauthorized },
     // Keep pool size within Supabase PgBouncer limits.
     // Each Next.js worker opens its own Pool; 10 is safe for the free tier.
     max: 10,

@@ -30,7 +30,6 @@ export default function ReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     getReportAggregation({ filterRegion: effectiveRegion, filterCampaignId: campaignId })
       .then((data) => { if (!cancelled) { setAgg(data); setLoading(false); } })
       .catch(() => { if (!cancelled) setLoading(false); });

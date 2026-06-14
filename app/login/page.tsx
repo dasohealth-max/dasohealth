@@ -116,6 +116,8 @@ function LoginForm() {
               <Label className="mb-2 block text-sm font-semibold text-[#1C2B22]">Email Address</Label>
               <Input
                 type="email"
+                autoComplete="username"
+                suppressHydrationWarning
                 placeholder="admin@dasohealth.org"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -128,6 +130,8 @@ function LoginForm() {
               <div className="relative">
                 <Input
                   type={showPass ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  suppressHydrationWarning
                   placeholder="Password"
                   value={pass}
                   onChange={(e) => setPass(e.target.value)}

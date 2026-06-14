@@ -87,7 +87,6 @@ export default function SurgeriesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
     getSurgeriesPaginated({ search: debouncedSearch, region: regionFilter, status: statusFilter, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
         if (!cancelled) { setSurgeries(data); setTotal(t); setIsLoading(false); }

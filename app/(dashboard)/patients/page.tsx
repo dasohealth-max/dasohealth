@@ -96,7 +96,6 @@ export default function PatientsPage() {
   // Fetch page from server
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
     getPatientsPaginated({ search: debouncedSearch, region: regionFilter, status: statusFilter, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
         if (!cancelled) { setPatients(data); setTotal(t); setIsLoading(false); }
