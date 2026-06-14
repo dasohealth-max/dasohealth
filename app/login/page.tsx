@@ -24,7 +24,7 @@ function LoginForm() {
 
   useEffect(() => {
     getUser().then((user) => {
-      if (user) router.replace(from || defaultPathForRole(String(user.app_metadata?.role ?? '')));
+      if (user) router.replace(from || defaultPathForRole(String(user.app_metadata?.role ?? user.user_metadata?.role ?? '')));
     });
   }, [router, from]);
 
@@ -35,7 +35,7 @@ function LoginForm() {
 
     try {
       const session = await signIn(email.trim(), pass);
-      router.push(from || defaultPathForRole(String(session.user.app_metadata?.role ?? '')));
+      router.push(from || defaultPathForRole(String(session.user.app_metadata?.role ?? session.user.user_metadata?.role ?? '')));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Sign in failed.';
       setError(

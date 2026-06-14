@@ -62,7 +62,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isProtected && user) {
-    const role = String(user.app_metadata?.role ?? '');
+    const role = String(user.app_metadata?.role ?? user.user_metadata?.role ?? '');
     const current = ROUTE_MODULES.find(
       (route) => pathname === route.path || pathname.startsWith(route.path + '/')
     );
@@ -73,7 +73,8 @@ export async function proxy(request: NextRequest) {
   }
 
   if (pathname === '/login' && user) {
-    return NextResponse.redirect(new URL(defaultPathForRole(String(user.app_metadata?.role ?? '')), request.url));
+    const role = String(user.app_metadata?.role ?? user.user_metadata?.role ?? '');
+    return NextResponse.redirect(new URL(defaultPathForRole(role), request.url));
   }
 
   return response;

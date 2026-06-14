@@ -46,8 +46,10 @@ export async function getActor(): Promise<ServerActor | null> {
     id: user.id,
     email: user.email ?? '',
     name: String(userMeta.name ?? user.email ?? 'Unknown user'),
-    role: String(appMeta.role ?? ''),
-    assignedRegion: appMeta.assignedRegion ? String(appMeta.assignedRegion) : undefined,
+    role: String(appMeta.role ?? userMeta.role ?? ''),
+    assignedRegion: (appMeta.assignedRegion ?? userMeta.assignedRegion)
+      ? String(appMeta.assignedRegion ?? userMeta.assignedRegion)
+      : undefined,
   };
 }
 

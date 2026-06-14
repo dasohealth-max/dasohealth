@@ -56,8 +56,10 @@ function toSessionUser(user: {
     id:       user.id,
     email:    user.email ?? '',
     name:     String(m.name     ?? ''),
-    role:     String(a.role     ?? ''),
-    assignedRegion: a.assignedRegion ? String(a.assignedRegion) : undefined,
+    role:     String(a.role     ?? m.role ?? ''),
+    assignedRegion: (a.assignedRegion ?? m.assignedRegion)
+      ? String(a.assignedRegion ?? m.assignedRegion)
+      : undefined,
     initials: String(m.initials ?? ''),
     color:    String(m.color    ?? '#0d9488'),
   };
