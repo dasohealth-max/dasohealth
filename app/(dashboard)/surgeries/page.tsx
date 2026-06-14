@@ -286,7 +286,7 @@ export default function SurgeriesPage() {
                 {isLoading && (
                   <tr><td colSpan={9} className="py-12 text-center text-sm text-[#7A9A87]">Loading surgeries...</td></tr>
                 )}
-                {!isLoading && filtered.length === 0 && (
+                {!isLoading && surgeries.length === 0 && (
                   <tr><td colSpan={9} className="py-12 text-center text-sm text-[#7A9A87]">
                     {hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}
                   </td></tr>
