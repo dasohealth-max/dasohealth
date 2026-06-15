@@ -35,7 +35,7 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
   const { canAccess } = usePermissions();
   const visibleNav = NAV.filter(({ module }) => canAccess(module));
   return (
-    <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+    <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
       {visibleNav.map(({ label, href, icon: Icon }) => {
         const active = path === href || path.startsWith(href + '/');
         return (
@@ -44,19 +44,22 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
             href={href}
             onClick={onClose}
             className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all group',
+              'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-all group',
               active
-                ? 'bg-[#1A7A46] text-white shadow-sm'
-                : 'text-[#8FBFA4] hover:bg-[#0F4D2A] hover:text-white',
+                ? 'bg-white/10 text-white shadow-sm'
+                : 'text-white/70 hover:bg-white/10 hover:text-white',
               collapsed && 'justify-center px-0',
             )}
             title={collapsed ? label : undefined}
           >
+            {active && !collapsed && (
+              <span className="absolute left-[-10px] top-2 bottom-2 w-1 rounded-full bg-[#6FCFA0]" />
+            )}
             <Icon
               size={18}
               className={cn(
                 'shrink-0',
-                active ? 'text-white' : 'text-[#8FBFA4] group-hover:text-white',
+                active ? 'text-white' : 'text-white/60 group-hover:text-white',
               )}
             />
             {!collapsed && <span className="truncate">{label}</span>}
@@ -74,11 +77,11 @@ function Logo({ collapsed }: { collapsed: boolean }) {
       collapsed && 'justify-center px-0',
     )}>
       <Image
-        src={collapsed ? '/brand/08_daso-health-mark-transparent.svg' : '/brand/07_daso-health-reversed-transparent.svg'}
-        alt="DASO Health"
-        width={collapsed ? 36 : 216}
-        height={collapsed ? 36 : 66}
-        className={collapsed ? 'h-9 w-9 shrink-0' : 'h-auto w-full max-w-[216px] shrink-0'}
+        src={collapsed ? '/brand/das-health-icon-white.png' : '/brand/das-health-logo-white.png'}
+        alt="DAS Health"
+        width={collapsed ? 34 : 208}
+        height={collapsed ? 34 : 62}
+        className={collapsed ? 'h-9 w-9 shrink-0 object-contain' : 'h-auto w-full max-w-[208px] shrink-0 object-contain'}
         priority
       />
     </div>
@@ -98,16 +101,16 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
 
       {/* ── Mobile drawer ── */}
       <aside className={cn(
-        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-[#1C2B22] text-white transition-transform duration-300 lg:hidden',
+        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-[#0F4D2A] text-white transition-transform duration-300 lg:hidden',
         mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
       )}>
         <div className="flex items-center justify-between gap-3 px-4 py-5 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <Image src="/brand/07_daso-health-reversed-transparent.svg" alt="DASO Health" width={216} height={66} className="h-auto w-52 max-w-full" priority />
+            <Image src="/brand/das-health-logo-white.png" alt="DAS Health" width={208} height={62} className="h-auto w-48 max-w-full object-contain" priority />
           </div>
           <button
             onClick={onMobileClose}
-            className="p-1.5 rounded-lg text-[#8FBFA4] transition-colors hover:bg-[#0F4D2A] hover:text-white"
+            className="p-1.5 rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white"
           >
             <X size={18} />
           </button>
@@ -117,14 +120,14 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
 
       {/* ── Desktop sidebar (always visible, collapsible) ── */}
       <aside className={cn(
-        'hidden lg:relative lg:flex lg:flex-col bg-[#1C2B22] text-white transition-all duration-300 shrink-0',
-        collapsed ? 'w-16' : 'w-60',
+        'hidden lg:relative lg:flex lg:flex-col bg-[#0F4D2A] text-white transition-all duration-300 shrink-0',
+        collapsed ? 'w-[72px]' : 'w-[264px]',
       )}>
         <Logo collapsed={collapsed} />
         <NavLinks collapsed={collapsed} />
         <button
           onClick={onToggleCollapse}
-          className="flex items-center justify-center h-10 border-t border-white/10 text-[#8FBFA4] transition-colors hover:bg-[#0F4D2A] hover:text-white shrink-0"
+          className="flex items-center justify-center h-12 border-t border-white/10 text-white/65 transition-colors hover:bg-white/10 hover:text-white shrink-0"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}

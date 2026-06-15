@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import type { FollowUp, FollowUpMedication, FollowUpStatus, DoctorReviewStatus, MedicationStatus } from '@/types';
@@ -74,7 +74,7 @@ function drBadge(status: DoctorReviewStatus) {
 }
 
 function milestoneBadge(m: string) {
-  const c = m === 'Day 1' ? 'bg-[#E8F5EE] text-[#0F4D2A]' : m === 'Week 1' ? 'bg-[#D0E8DA] text-[#1A7A46]' : 'bg-[#FEF3DC] text-[#C47D11]';
+  const c = m === 'Day 1' ? 'bg-[#E8F5EE] text-[#0F4D2A]' : m === 'Week 1' ? 'bg-[#8FBFA4] text-[#1A7A46]' : 'bg-[#FEF3DC] text-[#C47D11]';
   return `rounded-full px-2 py-1 text-xs font-medium ${c}`;
 }
 
@@ -307,14 +307,14 @@ export default function FollowUpsPage() {
               <textarea
                 value={form.notes}
                 onChange={(e) => set('notes', e.target.value)}
-                className="h-20 w-full resize-none rounded-xl border border-[#E2DDD5] px-3 py-2 text-sm outline-none focus:border-[#1A7A46]"
+                className="h-20 w-full resize-none rounded-xl border border-[#D0E8DA] px-3 py-2 text-sm outline-none focus:border-[#1A7A46]"
               />
             </div>
           </div>
 
           {/* Doctor review section */}
           {showDoctorSection && (
-            <div className="mt-4 rounded-xl border border-[#F0D898] bg-[#FEF3DC]/60 p-4">
+            <div className="mt-4 rounded-xl border border-[#FFE3B3] bg-[#FEF3DC]/60 p-4">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#C47D11]">Doctor Review</p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div>
@@ -362,7 +362,7 @@ export default function FollowUpsPage() {
                   <textarea
                     value={form.doctorNotes}
                     onChange={(e) => set('doctorNotes', e.target.value)}
-                    className="h-16 w-full resize-none rounded-xl border border-[#E2DDD5] bg-white px-3 py-2 text-sm outline-none focus:border-[#1A7A46]"
+                    className="h-16 w-full resize-none rounded-xl border border-[#D0E8DA] bg-white px-3 py-2 text-sm outline-none focus:border-[#1A7A46]"
                   />
                 </div>
               </div>
@@ -385,7 +385,7 @@ export default function FollowUpsPage() {
             </div>
 
             {showMedForm && (
-              <div className="mb-3 rounded-xl border border-[#E2DDD5] bg-[#FAFAF8] p-3">
+              <div className="mb-3 rounded-xl border border-[#D0E8DA] bg-[#FAFAF8] p-3">
                 {medError && <p className="mb-2 text-xs text-[#B52A2A]">{medError}</p>}
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   <div className="md:col-span-2">
@@ -428,7 +428,7 @@ export default function FollowUpsPage() {
             {medications.length === 0 ? (
               <p className="text-xs text-[#7A9A87]">No medications recorded.</p>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-[#E2DDD5]">
+              <div className="overflow-hidden rounded-xl border border-[#D0E8DA]">
                 <table className="w-full text-xs">
                   <thead className="bg-[#FAFAF8]">
                     <tr>
@@ -471,7 +471,7 @@ export default function FollowUpsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-[#E2DDD5] pb-0">
+      <div className="flex flex-wrap gap-1 border-b border-[#D0E8DA] pb-0">
         {TABS.map((t) => (
           <button
             key={t.id}

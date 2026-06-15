@@ -3,19 +3,19 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
-  title: "DASO Health",
+  title: "DAS Health",
   description: "Regional eye-care campaign management for Direct Aid Somalia.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/brand/das-health-icon.png",
+    shortcut: "/brand/das-health-icon.png",
+    apple: "/brand/das-health-icon.png",
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full bg-[#FAFAF8] font-sans text-[#1C2B22] antialiased">
+      <body className="h-full bg-background font-sans text-foreground antialiased">
         <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>

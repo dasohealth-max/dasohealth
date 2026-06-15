@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { AlertTriangle } from 'lucide-react';
 
@@ -35,14 +35,14 @@ export default function ConfirmDialog({
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-md border border-[#E2DDD5] py-2 text-sm font-medium text-[#4A6455] transition hover:bg-[#F0EDE6]"
+            className="flex-1 rounded-md border border-[#D0E8DA] py-2 text-sm font-medium text-[#4A6455] transition hover:bg-[#F0EDE6]"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             className={`flex-1 rounded-md py-2 text-sm font-medium text-white transition ${
-              danger ? 'bg-[#B52A2A] hover:bg-[#8F1F1F]' : 'bg-[#C47D11] hover:bg-[#A36A0E]'
+              danger ? 'bg-[#B52A2A] hover:bg-[#9E2424]' : 'bg-[#C47D11] hover:bg-[#8A5509]'
             }`}
           >
             {confirmLabel}

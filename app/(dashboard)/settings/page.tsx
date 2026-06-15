@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import type { Role, User } from '@/types';
@@ -228,11 +228,11 @@ export default function SettingsPage() {
           </div>
 
           {role === 'Super Administrator' && (
-            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#E2DDD5] bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#D0E8DA] bg-white px-4 py-3 shadow-sm">
               <div className="min-w-72">
                 <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Filter by State</Label>
                 <Select value={selectedRegion} onValueChange={(value) => { if (value) setSelectedRegion(value); }}>
-                  <SelectTrigger className="rounded-xl border-[#E2DDD5]">
+                  <SelectTrigger className="rounded-xl border-[#D0E8DA]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -360,11 +360,11 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="audit" className="mt-4">
-          <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#E2DDD5] bg-white p-4 shadow-sm md:grid-cols-3">
+          <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#D0E8DA] bg-white p-4 shadow-sm md:grid-cols-3">
             <div>
               <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Region</Label>
               <Select value={auditRegion} onValueChange={(value) => { if (value) setAuditRegion(value); }}>
-                <SelectTrigger className="rounded-xl border-[#E2DDD5]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl border-[#D0E8DA]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All regions</SelectItem>
                   {REGIONAL_CAMPAIGN_AREAS.map((area) => (
@@ -376,7 +376,7 @@ export default function SettingsPage() {
             <div>
               <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Action</Label>
               <Select value={auditAction} onValueChange={(value) => { if (value) setAuditAction(value); }}>
-                <SelectTrigger className="rounded-xl border-[#E2DDD5]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl border-[#D0E8DA]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All actions</SelectItem>
                   {auditActions.map((action) => (
@@ -387,7 +387,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Date</Label>
-              <Input type="date" value={auditDate} onChange={(event) => setAuditDate(event.target.value)} className="rounded-xl border-[#E2DDD5]" />
+              <Input type="date" value={auditDate} onChange={(event) => setAuditDate(event.target.value)} className="rounded-xl border-[#D0E8DA]" />
             </div>
           </div>
           <Card className="overflow-hidden border-0 shadow-sm">

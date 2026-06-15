@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Campaign, Patient, Screening, VAGrade } from '@/types';
@@ -38,7 +38,7 @@ const REC_STYLE: Record<string, string> = {
 // Shared field styles
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#E2DDD5] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
   sel:   'rounded-md',
 };
 
@@ -496,7 +496,7 @@ function ScreeningFormBody({
           </div>
           <div>
             <label className={F.label}>Screening Time</label>
-            <div className="flex items-center gap-2.5 rounded-md border border-[#E2DDD5] bg-[#FAFAF8] px-3 py-2">
+            <div className="flex items-center gap-2.5 rounded-md border border-[#D0E8DA] bg-[#FAFAF8] px-3 py-2">
               <Clock size={13} className="shrink-0 text-[#7A9A87]" />
               <span className="text-sm text-[#4A6455]">{form.screenedAt.replace('T', ' ')}</span>
               <span className="ml-auto shrink-0 rounded bg-[#E8F5EE] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1A7A46]">
@@ -557,12 +557,12 @@ function ScreeningFormBody({
             { key: 'glaucomaSuspected' as const,    label: 'Glaucoma Suspected' },
             { key: 'diabeticRetinopathy' as const,  label: 'Diabetic Retinopathy' },
           ].map(({ key, label }) => (
-            <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-md border border-[#E2DDD5] px-3 py-2.5 transition hover:bg-[#FAFAF8]">
+            <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-md border border-[#D0E8DA] px-3 py-2.5 transition hover:bg-[#FAFAF8]">
               <input
                 type="checkbox"
                 checked={form[key]}
                 onChange={(e) => set(key, e.target.checked)}
-                className="h-4 w-4 rounded border-[#D0E8DA] accent-[#1A7A46]"
+                className="h-4 w-4 rounded border-[#8FBFA4] accent-[#1A7A46]"
               />
               <span className="text-sm text-[#1C2B22]">{label}</span>
             </label>

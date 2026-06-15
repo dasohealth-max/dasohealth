@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Campaign, CampaignStatus, CampaignType, User } from '@/types';
@@ -21,7 +21,7 @@ const STATUSES: CampaignStatus[] = ['Planned', 'Active', 'Completed', 'Suspended
 // Shared input / label styles — professional, not bubbly
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#E2DDD5] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
   select: 'rounded-md',
 };
 
@@ -258,7 +258,7 @@ export default function CampaignsPage() {
             />
           ))}
           {campaigns.length === 0 && (
-            <div className="rounded-xl border border-dashed border-[#E2DDD5] py-14 text-center text-sm text-[#7A9A87] md:col-span-2 xl:col-span-3">
+            <div className="rounded-xl border border-dashed border-[#D0E8DA] py-14 text-center text-sm text-[#7A9A87] md:col-span-2 xl:col-span-3">
               No campaigns yet. Create the first one above.
             </div>
           )}
@@ -329,14 +329,14 @@ function CampaignCard({
             {canEdit ? (
               <button
                 onClick={onEdit}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[#E2DDD5] py-1.5 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[#D0E8DA] py-1.5 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
               >
                 <Pencil size={12} /> Edit
               </button>
             ) : editDeniedReason ? (
               <Tooltip>
                 <TooltipTrigger
-                  className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-md border border-[#E2DDD5] bg-[#F0EDE6] py-1.5 text-xs font-medium text-[#7A9A87] opacity-80"
+                  className="flex flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-md border border-[#D0E8DA] bg-[#F0EDE6] py-1.5 text-xs font-medium text-[#7A9A87] opacity-80"
                   aria-disabled="true"
                 >
                   <Pencil size={12} /> Edit
@@ -477,7 +477,7 @@ function BulkCampaignForm({
         <button
           type="button"
           onClick={resetBulkDefaults}
-          className="flex items-center gap-1.5 rounded-md border border-[#E2DDD5] px-3 py-1.5 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+          className="flex items-center gap-1.5 rounded-md border border-[#D0E8DA] px-3 py-1.5 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
         >
           <RotateCcw size={13} /> Reset Defaults
         </button>
@@ -490,10 +490,10 @@ function BulkCampaignForm({
           return (
             <div
               key={`${campaign.region}-${index}`}
-              className={`overflow-hidden rounded-xl border transition ${campaign.enabled ? 'border-[#E2DDD5] bg-white' : 'border-[#F0EDE6] bg-[#FAFAF8] opacity-60'}`}
+              className={`overflow-hidden rounded-xl border transition ${campaign.enabled ? 'border-[#D0E8DA] bg-white' : 'border-[#F0EDE6] bg-[#FAFAF8] opacity-60'}`}
             >
               {/* Card header — region prominent */}
-              <div className={`flex items-center justify-between gap-2 px-4 py-3 ${campaign.enabled ? 'bg-[#1C2B22]' : 'bg-[#E2DDD5]'}`}>
+              <div className={`flex items-center justify-between gap-2 px-4 py-3 ${campaign.enabled ? 'bg-[#1C2B22]' : 'bg-[#D0E8DA]'}`}>
                 <div className="min-w-0">
                   <p className={`text-[10px] font-semibold uppercase tracking-widest ${campaign.enabled ? 'text-[#7A9A87]' : 'text-[#4A6455]'}`}>
                     {campaign.region}
@@ -507,9 +507,9 @@ function BulkCampaignForm({
                     type="checkbox"
                     checked={campaign.enabled}
                     onChange={(e) => updateBulk(index, { enabled: e.target.checked })}
-                    className="h-4 w-4 rounded border-[#D0E8DA] accent-[#1A7A46]"
+                    className="h-4 w-4 rounded border-[#8FBFA4] accent-[#1A7A46]"
                   />
-                  <span className={campaign.enabled ? 'text-[#8FBFA4]' : 'text-[#4A6455]'}>Include</span>
+                  <span className={campaign.enabled ? 'text-[#8593A5]' : 'text-[#4A6455]'}>Include</span>
                 </label>
               </div>
 

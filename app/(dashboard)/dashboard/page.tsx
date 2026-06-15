@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Campaign, FollowUp, Patient, Screening, Surgery } from '@/types';
@@ -53,7 +53,7 @@ const STATUS_PRIORITY: Record<RegionStatus, number> = {
 };
 
 const STATUS_STYLES: Record<RegionStatus, { border: string; badge: string; bar: string }> = {
-  'No Campaign': { border: 'border-l-[#D0E8DA]',  badge: 'bg-[#F0EDE6] text-[#7A9A87]',  bar: 'bg-[#D0E8DA]'  },
+  'No Campaign': { border: 'border-l-[#8FBFA4]',  badge: 'bg-[#F0EDE6] text-[#7A9A87]',  bar: 'bg-[#8FBFA4]'  },
   'No Activity': { border: 'border-l-[#C47D11]', badge: 'bg-[#FEF3DC] text-[#C47D11]', bar: 'bg-[#C47D11]' },
   Behind:        { border: 'border-l-[#B52A2A]', badge: 'bg-[#FCE8E8] text-[#B52A2A]', bar: 'bg-[#B52A2A]' },
   Active:        { border: 'border-l-[#2B9E5C]', badge: 'bg-[#E8F5EE] text-[#0F4D2A]', bar: 'bg-[#2B9E5C]' },
@@ -209,7 +209,7 @@ function RegionTabBar({
   ];
 
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-xl border border-[#E2DDD5] bg-white p-1 shadow-sm">
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-[#D0E8DA] bg-white p-1 shadow-sm">
       {tabs.map((tab) => {
         const active = selected === tab.key;
         return (
@@ -287,7 +287,7 @@ function RegionCard({ stats: r, onDrillDown }: { stats: RegionStats; onDrillDown
   return (
     <button
       onClick={() => onDrillDown(r.region)}
-      className={`group w-full rounded-xl border border-[#E2DDD5] border-l-4 ${style.border} bg-white p-4 text-left shadow-sm transition-all hover:shadow-md`}
+      className={`group w-full rounded-xl border border-[#D0E8DA] border-l-4 ${style.border} bg-white p-4 text-left shadow-sm transition-all hover:shadow-md`}
     >
       {/* Header row */}
       <div className="mb-3 flex items-start justify-between gap-2">
@@ -318,7 +318,7 @@ function RegionCard({ stats: r, onDrillDown }: { stats: RegionStats; onDrillDown
         <span className="text-[#4A6455]">{r.completed.toLocaleString()} / {r.target.toLocaleString()} surgeries</span>
         <span className="font-bold text-[#1C2B22]">{r.pct}%</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E2DDD5]">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#D0E8DA]">
         <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(r.pct, 100)}%` }} />
       </div>
 
@@ -344,7 +344,7 @@ function SingleRegionView({
 }) {
   if (!stats) {
     return (
-      <div className="rounded-xl border border-dashed border-[#D0E8DA] py-20 text-center text-sm text-[#7A9A87]">
+      <div className="rounded-xl border border-dashed border-[#8FBFA4] py-20 text-center text-sm text-[#7A9A87]">
         No data available for this region yet.
       </div>
     );
@@ -375,7 +375,7 @@ function SingleRegionView({
       )}
 
       {/* Region header */}
-      <div className={`rounded-xl border border-[#E2DDD5] border-l-4 ${style.border} bg-white p-5 shadow-sm`}>
+      <div className={`rounded-xl border border-[#D0E8DA] border-l-4 ${style.border} bg-white p-5 shadow-sm`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -395,7 +395,7 @@ function SingleRegionView({
         </div>
 
         {stats.campaignName && (
-          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#E2DDD5] pt-3 text-xs">
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#D0E8DA] pt-3 text-xs">
             <span className="font-medium text-[#1C2B22]">{stats.campaignName}</span>
             {stats.campaignStatus && (
               <span className="rounded-full bg-[#E8F5EE] px-2 py-0.5 text-[#4A6455]">{stats.campaignStatus}</span>
@@ -408,7 +408,7 @@ function SingleRegionView({
       </div>
 
       {/* Pipeline */}
-      <div className="rounded-xl border border-[#E2DDD5] bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-[#D0E8DA] bg-white p-5 shadow-sm">
         <p className="mb-5 text-xs font-semibold uppercase tracking-wider text-[#7A9A87]">Patient Pipeline</p>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
           {pipeline.map(({ label, value, Icon }) => (
@@ -424,14 +424,14 @@ function SingleRegionView({
       </div>
 
       {/* Surgery target */}
-      <div className="rounded-xl border border-[#E2DDD5] bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-[#D0E8DA] bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#7A9A87]">Surgery Target</p>
           <span className={`text-3xl font-bold ${stats.pct >= 75 ? 'text-[#1A7A46]' : stats.pct >= 25 ? 'text-[#2B9E5C]' : 'text-[#B52A2A]'}`}>
             {stats.pct}%
           </span>
         </div>
-        <div className="mb-3 h-5 w-full overflow-hidden rounded-full bg-[#E2DDD5]">
+        <div className="mb-3 h-5 w-full overflow-hidden rounded-full bg-[#D0E8DA]">
           <div
             className={`h-full rounded-full transition-all ${style.bar}`}
             style={{ width: `${Math.min(stats.pct, 100)}%` }}
@@ -478,7 +478,7 @@ function SingleRegionView({
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2.5 rounded-xl border border-[#D0E8DA] bg-[#E8F5EE] px-5 py-3.5 text-sm text-[#0F4D2A]">
+        <div className="flex items-center gap-2.5 rounded-xl border border-[#8FBFA4] bg-[#E8F5EE] px-5 py-3.5 text-sm text-[#0F4D2A]">
           <CheckCircle size={16} />
           No active alerts for this region
         </div>
@@ -502,7 +502,7 @@ function KPICard({
 }) {
   const accentClass = { primary: 'text-[#1A7A46]', red: 'text-[#B52A2A]', amber: 'text-[#C47D11]' }[accent];
   return (
-    <div className="rounded-xl border border-[#E2DDD5] bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-[#D0E8DA] bg-white p-5 shadow-sm">
       <p className="text-xs font-medium text-[#4A6455]">{label}</p>
       <p className={`mt-1 text-2xl font-bold ${accentClass}`}>
         {typeof value === 'number' ? value.toLocaleString() : value}

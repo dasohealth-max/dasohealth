@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -25,7 +25,7 @@ export default function Pagination({ page, pageSize, total, onPageChange }: Pagi
         <button
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E2DDD5] text-[#4A6455] transition hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-[#D0E8DA] text-[#4A6455] transition hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ChevronLeft size={14} />
         </button>
@@ -35,7 +35,7 @@ export default function Pagination({ page, pageSize, total, onPageChange }: Pagi
         <button
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E2DDD5] text-[#4A6455] transition hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-[#D0E8DA] text-[#4A6455] transition hover:bg-[#FAFAF8] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ChevronRight size={14} />
         </button>

@@ -38,7 +38,7 @@ export default function ModalForm({
       {/* Panel */}
       <div className={`relative flex w-full flex-col rounded-xl bg-white shadow-2xl ${wide ? 'max-w-5xl' : 'max-w-2xl'} my-auto`}>
         {/* Header — sticky */}
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-xl border-b border-[#E2DDD5] bg-white px-6 py-4">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-xl border-b border-[#D0E8DA] bg-white px-6 py-4">
           <div>
             <h2 className="text-sm font-bold text-[#1C2B22]">{title}</h2>
             {subtitle && <p className="mt-0.5 text-xs text-[#4A6455]">{subtitle}</p>}
@@ -57,10 +57,10 @@ export default function ModalForm({
         </div>
 
         {/* Footer — sticky */}
-        <div className="sticky bottom-0 flex shrink-0 justify-end gap-3 rounded-b-xl border-t border-[#E2DDD5] bg-white px-6 py-4">
+        <div className="sticky bottom-0 flex shrink-0 justify-end gap-3 rounded-b-xl border-t border-[#D0E8DA] bg-white px-6 py-4">
           <button
             onClick={onClose}
-            className="rounded-md border border-[#E2DDD5] px-4 py-2 text-sm font-medium text-[#4A6455] transition hover:bg-[#F0EDE6]"
+            className="rounded-md border border-[#D0E8DA] px-4 py-2 text-sm font-medium text-[#4A6455] transition hover:bg-[#F0EDE6]"
           >
             Cancel
           </button>

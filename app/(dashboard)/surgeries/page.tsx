@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import type { LensType, Surgery, SurgeryEye, SurgeryStatus } from '@/types';
@@ -23,7 +23,7 @@ const LENSES: LensType[]        = ['PMMA', 'Foldable Acrylic', 'Hydrophilic', 'H
 
 const STATUS_STYLE: Record<SurgeryStatus, string> = {
   Scheduled:    'bg-[#E8F5EE] text-[#4A6455]',
-  'In-Theatre': 'bg-[#D0E8DA] text-[#0F4D2A]',
+  'In-Theatre': 'bg-[#8FBFA4] text-[#0F4D2A]',
   Completed:    'bg-[#E8F5EE] text-[#1A7A46]',
   Cancelled:    'bg-[#FCE8E8] text-[#B52A2A]',
   Postponed:    'bg-[#FEF3DC] text-[#C47D11]',
@@ -32,7 +32,7 @@ const STATUS_STYLE: Record<SurgeryStatus, string> = {
 // Shared field styles
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#E2DDD5] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
   sel:   'rounded-md',
 };
 
@@ -258,7 +258,7 @@ export default function SurgeriesPage() {
         {hasFilters && (
           <button
             onClick={() => { setSearch(''); setStatusFilter(''); setRegionFilter(''); setPage(1); }}
-            className="flex items-center gap-1.5 rounded-md border border-[#E2DDD5] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+            className="flex items-center gap-1.5 rounded-md border border-[#D0E8DA] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
           >
             <X size={12} /> Clear
           </button>
@@ -320,7 +320,7 @@ export default function SurgeriesPage() {
                         {surgery.status !== 'Completed' && can('surgeries', 'edit') && (
                           <button
                             onClick={() => setCompleteTarget(surgery)}
-                            className="flex items-center gap-1 rounded-md bg-[#E8F5EE] px-2 py-1 text-xs font-medium text-[#1A7A46] transition hover:bg-[#D0E8DA]"
+                            className="flex items-center gap-1 rounded-md bg-[#E8F5EE] px-2 py-1 text-xs font-medium text-[#1A7A46] transition hover:bg-[#8FBFA4]"
                           >
                             <CheckCircle size={11} /> Complete
                           </button>

@@ -1,17 +1,23 @@
-'use client';
-import { useRouter } from 'next/navigation';
-import { signOut, usePermissions } from '@/lib/auth';
-import { Bell, LogOut, Search, ChevronDown, Menu } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+﻿'use client';
+
 import Link from 'next/link';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { getAllPatients } from '@/app/actions/patients';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import { Bell, ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
-import type { Patient, Campaign, FollowUp } from '@/types';
+import { getAllPatients } from '@/app/actions/patients';
+import { signOut, usePermissions } from '@/lib/auth';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import type { Campaign, FollowUp, Patient } from '@/types';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -24,20 +30,19 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const [patients, setPatients]   = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
 
   useEffect(() => {
     Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps()])
-      .then(([p, c, f]) => { setPatients(p); setCampaigns(c); setFollowUps(f); });
+      .then(([p, c, f]) => {
+        setPatients(p);
+        setCampaigns(c);
+        setFollowUps(f);
+      });
   }, []);
 
-  // Real notification count
-  const overdueCount  = followUps.filter((f) => f.status === 'Overdue').length;
-  const notifCount    = overdueCount;
-
-  // Close search on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -53,7 +58,6 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     router.replace('/login');
   }
 
-  // Quick search: patients + campaigns
   const q = search.trim().toLowerCase();
   const patientResults = q.length >= 2
     ? patients
@@ -68,134 +72,144 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     ? campaigns.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 3)
     : [];
   const hasResults = patientResults.length > 0 || campaignResults.length > 0;
+  const notifCount = followUps.filter((f) => f.status === 'Overdue').length;
 
   return (
-    <header className="h-14 bg-white border-b border-[#E2DDD5] flex items-center px-4 gap-3 shrink-0 shadow-sm z-30">
-      {/* Hamburger – mobile only */}
+    <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-[#D0E8DA] bg-white px-5 shadow-[var(--shadow-xs)]">
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 rounded-lg hover:bg-[#E8F5EE] text-[#7A9A87] transition-colors"
+        className="rounded-md p-2 text-[#7A9A87] transition-colors hover:bg-[#E8F5EE] lg:hidden"
         aria-label="Open menu"
       >
         <Menu size={20} />
       </button>
 
-      {/* Global search */}
-      <div ref={searchRef} className="relative flex-1 max-w-sm">
-        <div className="flex items-center gap-2 bg-[#FAFAF8] border border-[#E2DDD5] rounded-lg px-3 py-1.5">
-          <Search className="w-3.5 h-3.5 text-[#7A9A87] shrink-0" />
+      <div ref={searchRef} className="relative max-w-sm flex-1">
+        <div className="flex h-10 items-center gap-2 rounded-md border border-[#C0D8CC] bg-[#FAFAF8] px-3 shadow-[var(--shadow-xs)] transition-colors focus-within:border-[#1A7A46] focus-within:ring-3 focus-within:ring-[#1A7A46]/20">
+          <Search className="h-4 w-4 shrink-0 text-[#7A9A87]" />
           <input
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setShowResults(true); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setShowResults(true);
+            }}
             onFocus={() => search.length >= 2 && setShowResults(true)}
-            placeholder="Search patients, campaigns…"
-            className="bg-transparent text-sm outline-none text-[#1C2B22] placeholder:text-[#7A9A87] w-full"
+            placeholder="Search patients, campaigns..."
+            className="w-full bg-transparent text-sm text-[#1C2B22] outline-none placeholder:text-[#7A9A87]"
           />
           {search && (
             <button
-              onClick={() => { setSearch(''); setShowResults(false); }}
-              className="text-[#7A9A87] hover:text-[#1C2B22] text-xs font-bold shrink-0"
+              onClick={() => {
+                setSearch('');
+                setShowResults(false);
+              }}
+              className="shrink-0 text-xs font-bold text-[#7A9A87] hover:text-[#1C2B22]"
+              aria-label="Clear search"
             >
-              ✕
+              x
             </button>
           )}
         </div>
 
-        {/* Dropdown results */}
         {showResults && hasResults && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-[#E2DDD5] overflow-hidden z-50">
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-[#D0E8DA] bg-white shadow-[var(--shadow-lg)]">
             {patientResults.length > 0 && (
               <div>
-                <p className="text-[10px] text-[#7A9A87] font-semibold uppercase tracking-wider px-3 pt-2.5 pb-1">Patients</p>
+                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#7A9A87]">Patients</p>
                 {patientResults.map((p) => (
                   <Link
                     key={p.id}
                     href="/patients"
-                    onClick={() => { setShowResults(false); setSearch(''); }}
-                    className="flex items-center gap-3 px-3 py-2 hover:bg-[#F0EDE6] transition-colors"
+                    onClick={() => {
+                      setShowResults(false);
+                      setSearch('');
+                    }}
+                    className="flex items-center gap-3 px-3 py-2 text-[#1C2B22] transition-colors hover:bg-[#FAFAF8]"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-[#E8F5EE] flex items-center justify-center text-[#0F4D2A] text-[10px] font-bold shrink-0">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#E8F5EE] text-[10px] font-bold text-[#0F4D2A]">
                       {p.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-[#1C2B22] leading-tight">{p.fullName}</p>
-                      <p className="text-[10px] text-[#7A9A87]">{p.patientCode} · {p.phone}</p>
+                      <p className="text-sm font-semibold leading-tight text-[#1C2B22]">{p.fullName}</p>
+                      <p className="text-[10px] text-[#7A9A87]">{p.patientCode} - {p.phone}</p>
                     </div>
                   </Link>
                 ))}
               </div>
             )}
+
             {campaignResults.length > 0 && (
-              <div className="border-t border-[#F0EDE6]">
-                <p className="text-[10px] text-[#7A9A87] font-semibold uppercase tracking-wider px-3 pt-2.5 pb-1">Campaigns</p>
+              <div className="border-t border-[#D0E8DA]">
+                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#7A9A87]">Campaigns</p>
                 {campaignResults.map((c) => (
                   <Link
                     key={c.id}
                     href="/campaigns"
-                    onClick={() => { setShowResults(false); setSearch(''); }}
-                    className="flex items-center gap-3 px-3 py-2 hover:bg-[#F0EDE6] transition-colors"
+                    onClick={() => {
+                      setShowResults(false);
+                      setSearch('');
+                    }}
+                    className="flex items-center gap-3 px-3 py-2 text-[#1C2B22] transition-colors hover:bg-[#FAFAF8]"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-[#FEF3DC] flex items-center justify-center shrink-0">
-                      <span className="text-[#C47D11] text-[10px] font-bold">C</span>
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#E8F5EE]">
+                      <span className="text-[10px] font-bold text-[#0F4D2A]">C</span>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-[#1C2B22] leading-tight">{c.name}</p>
-                      <p className="text-[10px] text-[#7A9A87]">{c.type} · {c.status}</p>
+                      <p className="text-sm font-semibold leading-tight text-[#1C2B22]">{c.name}</p>
+                      <p className="text-[10px] text-[#7A9A87]">{c.type} - {c.status}</p>
                     </div>
                   </Link>
                 ))}
               </div>
             )}
-            <div className="border-t border-[#E2DDD5] px-3 py-2">
-              <p className="text-[10px] text-[#7A9A87]">Showing top results — go to module for full list</p>
+
+            <div className="border-t border-[#D0E8DA] px-3 py-2">
+              <p className="text-[10px] text-[#7A9A87]">Showing top results - go to module for full list</p>
             </div>
           </div>
         )}
+
         {showResults && q.length >= 2 && !hasResults && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-[#E2DDD5] px-3 py-3 z-50">
-            <p className="text-sm text-[#7A9A87] text-center">No results for &quot;{q}&quot;</p>
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-[#D0E8DA] bg-white px-3 py-3 shadow-[var(--shadow-lg)]">
+            <p className="text-center text-sm text-[#7A9A87]">No results for &quot;{q}&quot;</p>
           </div>
         )}
       </div>
 
-      {/* Org badge */}
-      <div className="hidden sm:flex items-center gap-2 text-xs font-medium text-[#4A6455] bg-[#E8F5EE] border border-[#D0E8DA] rounded-lg px-3 py-1.5 shrink-0">
-        <span className="w-2 h-2 rounded-full bg-[#1A7A46] animate-pulse" />
+      <div className="hidden shrink-0 items-center gap-2 rounded-full border border-[#8FBFA4] bg-[#E8F5EE] px-3 py-1.5 text-xs font-semibold text-[#0F4D2A] sm:flex">
+        <span className="h-2 w-2 rounded-full bg-[#1A7A46]" />
         Direct Aid Somalia
       </div>
 
       <div className="flex-1" />
 
-      {/* Notifications — use div inside Link to avoid <a><button> nesting */}
       <Link
         href="/followups"
         title="View overdue follow-ups"
-        className="relative p-2 rounded-lg hover:bg-[#E8F5EE] text-[#7A9A87] transition-colors flex items-center justify-center"
+        className="relative flex size-10 items-center justify-center rounded-md border border-transparent text-[#7A9A87] transition-colors hover:border-[#D0E8DA] hover:bg-[#FAFAF8] hover:text-[#1C2B22]"
       >
         <Bell size={18} />
         {notifCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-[#B52A2A] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#B52A2A] px-0.5 text-[9px] font-bold text-white">
             {notifCount > 99 ? '99+' : notifCount}
           </span>
         )}
       </Link>
 
-      {/* User menu */}
       {user && (
         <DropdownMenu>
-          {/* DropdownMenuTrigger already renders a <button> — use div inside, not button */}
-          <DropdownMenuTrigger className="flex items-center gap-2 hover:bg-[#E8F5EE] rounded-lg px-2 py-1.5 transition-colors outline-none">
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                style={{ background: user.color }}
-              >
-                {user.initials}
-              </div>
-              <div className="hidden sm:block text-left">
-                <p className="text-xs font-semibold text-[#1C2B22] leading-tight">{user.name}</p>
-                <p className="text-[10px] text-[#7A9A87]">{user.role}</p>
-              </div>
-              <ChevronDown size={14} className="text-[#7A9A87] hidden sm:block" />
+          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-[#FAFAF8] focus-visible:ring-3 focus-visible:ring-[#1A7A46]/25">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ring-2 ring-[#E8F5EE]"
+              style={{ background: user.color }}
+            >
+              {user.initials}
+            </div>
+            <div className="hidden text-left sm:block">
+              <p className="text-xs font-semibold leading-tight text-[#1C2B22]">{user.name}</p>
+              <p className="text-[10px] text-[#7A9A87]">{user.role}</p>
+            </div>
+            <ChevronDown size={14} className="hidden text-[#7A9A87] sm:block" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuGroup>
@@ -209,7 +223,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={logout} className="text-[#B52A2A] focus:text-[#B52A2A] focus:bg-[#FCE8E8]">
+              <DropdownMenuItem onClick={logout} className="text-[#B52A2A] focus:bg-[#FCE8E8] focus:text-[#8B1E1E]">
                 <LogOut size={14} className="mr-2" /> Sign out
               </DropdownMenuItem>
             </DropdownMenuGroup>

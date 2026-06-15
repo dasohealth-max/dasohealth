@@ -50,70 +50,64 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-5 py-8">
-      <div className="grid min-h-[680px] w-full max-w-6xl overflow-hidden rounded-[28px] border border-[#E2DDD5] bg-white shadow-2xl shadow-[#1C2B22]/12 lg:grid-cols-[1.12fr_500px]">
-        <section className="hidden border-r border-[#E2DDD5] bg-[#F0EDE6] p-12 lg:flex lg:flex-col lg:justify-between xl:p-14">
-          <div className="max-w-xl">
+      <div className="grid min-h-[680px] w-full max-w-6xl overflow-hidden rounded-2xl border border-[#D0E8DA] bg-white shadow-[var(--shadow-lg)] lg:grid-cols-[1.12fr_500px]">
+        <section className="hidden border-r border-[#D0E8DA] bg-[#0F4D2A] p-12 text-white lg:flex lg:flex-col lg:justify-between xl:p-14">
+          {/* Empty top spacer — pushes logo + tagline into center zone */}
+          <div />
+
+          {/* Logo + Tagline grouped in center zone */}
+          <div>
             <Image
-              src="/brand/01_daso-health-primary.svg"
-              alt="DASO Health"
-              width={280}
-              height={90}
+              src="/brand/das-health-logo-white.png"
+              alt="DAS Health"
+              width={300}
+              height={96}
               priority
-              className="h-auto w-72"
+              className="h-auto w-64 object-contain"
             />
-            <div className="mt-14">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#7A9A87]">Direct Aid Somalia</p>
-              <h1 className="mt-4 max-w-lg text-5xl font-bold leading-[1.05] text-[#1C2B22]">
-                Regional Eye Care Management
+            <div className="mt-5">
+              <h1 className="max-w-sm text-[2.6rem] font-bold leading-[1.1] tracking-tight text-white">
+                Caring today,<br />healthier tomorrow.
               </h1>
-              <p className="mt-5 max-w-lg text-base leading-7 text-[#4A6455]">
-                Manage campaigns, patients, screening, surgery, follow-up, and reporting with region-based accountability.
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
+                Supporting eye health campaigns across all regions of Somalia.
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4 text-xs">
-            <div className="rounded-2xl border border-[#D0E8DA] bg-white/75 p-4 shadow-sm">
-              <p className="text-sm font-semibold text-[#0F4D2A]">Secure</p>
-              <p className="mt-1.5 leading-5 text-[#4A6455]">Role based access</p>
-            </div>
-            <div className="rounded-2xl border border-[#D0E8DA] bg-white/75 p-4 shadow-sm">
-              <p className="text-sm font-semibold text-[#0F4D2A]">Regional</p>
-              <p className="mt-1.5 leading-5 text-[#4A6455]">State scoped data</p>
-            </div>
-            <div className="rounded-2xl border border-[#D0E8DA] bg-white/75 p-4 shadow-sm">
-              <p className="text-sm font-semibold text-[#0F4D2A]">Clinical</p>
-              <p className="mt-1.5 leading-5 text-[#4A6455]">Surgery follow-up</p>
-            </div>
+
+          {/* Bottom attribution */}
+          <div>
+            <div className="mb-4 h-px bg-white/12" />
           </div>
         </section>
 
         <section className="flex flex-col justify-center p-8 sm:p-12">
           <div className="mb-10 lg:hidden">
             <Image
-              src="/brand/01_daso-health-primary.svg"
-              alt="DASO Health"
-              width={240}
-              height={78}
+              src="/brand/das-health-logo-transparent.png"
+              alt="DAS Health"
+              width={260}
+              height={84}
               priority
-              className="h-auto w-60"
+              className="h-auto w-64 object-contain"
             />
           </div>
 
           <div className="mb-9">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7A9A87]">Secure access</p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight text-[#1C2B22]">Sign in to DASO Health</h2>
-            <p className="mt-2 text-base text-[#4A6455]">Regional Eye Care Management</p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight text-[#1C2B22]">Sign in to DAS Health</h2>
+            <p className="mt-2 text-base text-[#7A9A87]">Regional Eye Care Management</p>
           </div>
 
           {error && (
-            <div className="mb-5 rounded-2xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-3 text-sm text-[#B52A2A]">
+            <div className="mb-5 rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-3 text-sm text-[#8B1E1E]">
               {error}
             </div>
           )}
 
           <form onSubmit={submit} className="space-y-5">
             <div>
-              <Label className="mb-2 block text-sm font-semibold text-[#1C2B22]">Email Address</Label>
+              <Label className="mb-2 block text-sm font-semibold text-[#1C2B22]">Email address</Label>
               <Input
                 type="email"
                 autoComplete="username"
@@ -122,7 +116,7 @@ function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="h-12 rounded-2xl border-[#E2DDD5] bg-[#FAFAF8] px-4 text-base focus:border-[#1A7A46] focus:ring-[#1A7A46]/20"
+                className="h-12 rounded-md border-[#C0D8CC] bg-[#FAFAF8] px-4 text-base focus:border-[#1A7A46] focus:ring-[#1A7A46]/20"
               />
             </div>
             <div>
@@ -136,7 +130,7 @@ function LoginForm() {
                   value={pass}
                   onChange={(e) => setPass(e.target.value)}
                   required
-                  className="h-12 rounded-2xl border-[#E2DDD5] bg-[#FAFAF8] px-4 pr-11 text-base focus:border-[#1A7A46] focus:ring-[#1A7A46]/20"
+                  className="h-12 rounded-md border-[#C0D8CC] bg-[#FAFAF8] px-4 pr-11 text-base focus:border-[#1A7A46] focus:ring-[#1A7A46]/20"
                 />
                 <button
                   type="button"
@@ -151,14 +145,14 @@ function LoginForm() {
             <Button
               type="submit"
               disabled={loading}
-              className="mt-2 h-12 w-full rounded-2xl bg-[#1A7A46] text-base font-semibold text-white shadow-lg shadow-[#1A7A46]/20 hover:bg-[#0F4D2A]"
+              className="mt-2 h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#0F4D2A]"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
 
-          <p className="mt-10 text-center text-xs text-[#7A9A87]">
-            DASO Health v1.0 | Direct Aid Somalia
+          <p className="mt-10 text-center text-[11px] text-[#7A9A87]">
+            DAS Health
           </p>
         </section>
       </div>

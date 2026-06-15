@@ -50,73 +50,121 @@
 }
 
 :root {
-  --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-sans: "Poppins", "Inter", "Arial", Helvetica, sans-serif;
   --font-geist-mono: "Cascadia Code", "Consolas", monospace;
-  --background: #FAFAF8;
-  --foreground: #1C2B22;
+  --background: #FAFAF8;           /* Paper */
+  --foreground: #1C2B22;           /* Slate Night */
   --card: #FFFFFF;
   --card-foreground: #1C2B22;
   --popover: #FFFFFF;
   --popover-foreground: #1C2B22;
-  --primary: #1A7A46;
+  --primary: #1A7A46;              /* Nile Green — brand primary */
   --primary-foreground: #FFFFFF;
-  --secondary: #E8F5EE;
-  --secondary-foreground: #0F4D2A;
-  --muted: #F0EDE6;
-  --muted-foreground: #4A6455;
-  --accent: #E8F5EE;
-  --accent-foreground: #0F4D2A;
-  --destructive: #B52A2A;
-  --border: #E2DDD5;
-  --input: #E2DDD5;
-  --ring: #1A7A46;
-  --chart-1: #1A7A46;
-  --chart-2: #2B9E5C;
-  --chart-3: #C47D11;
-  --chart-4: #B52A2A;
-  --chart-5: #4A6455;
-  --radius: 0.625rem;
-  --sidebar: #1C2B22;
-  --sidebar-foreground: #F7F7F5;
-  --sidebar-primary: #1A7A46;
+  --secondary: #E8F5EE;            /* Foam — green tint */
+  --secondary-foreground: #0F4D2A; /* Forest Anchor */
+  --muted: #F0EDE6;                /* Bone White */
+  --muted-foreground: #7A9A87;     /* Herb Gray */
+  --accent: #E8F5EE;               /* Foam */
+  --accent-foreground: #0F4D2A;    /* Forest Anchor */
+  --destructive: #B52A2A;          /* Clinical Red */
+  --border: #D0E8DA;               /* green-tinted border */
+  --input: #C0D8CC;                /* green-tinted input */
+  --ring: #1A7A46;                 /* Nile Green */
+  --chart-1: #1A7A46;              /* Nile Green */
+  --chart-2: #0F4D2A;              /* Forest Anchor */
+  --chart-3: #C47D11;              /* Desert Amber */
+  --chart-4: #B52A2A;              /* Clinical Red */
+  --chart-5: #6FCFA0;              /* Mint */
+  --radius: 0.75rem;
+  --sidebar: #0F4D2A;              /* Forest Anchor */
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #2B9E5C;      /* Vitality */
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #0F4D2A;
+  --sidebar-accent: rgba(255, 255, 255, 0.1);
   --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: rgba(232, 245, 238, 0.14);
-  --sidebar-ring: #6FCFA0;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --sidebar-ring: #6FCFA0;         /* Mint */
+
+  /* ── Brand Green Scale ──────────────────────── */
+  --green-50:  #E8F5EE;            /* Foam */
+  --green-100: #C5E0CE;
+  --green-200: #8FBFA4;            /* Herb Gray-green */
+  --green-300: #6FCFA0;            /* Mint */
+  --green-400: #2B9E5C;            /* Vitality */
+  --green-500: #1A7A46;            /* Nile Green — PRIMARY */
+  --green-600: #0F4D2A;            /* Forest Anchor */
+  --green-700: #1C2B22;            /* Slate Night */
+  --green-800: #0D1A12;
+  --green-900: #060D09;
+
+  /* ── Clinical Neutrals ──────────────────────── */
+  --neutral-25:  #FAFAF8;          /* Paper */
+  --neutral-50:  #F0EDE6;          /* Bone White */
+  --neutral-100: #D8E5DD;
+  --neutral-200: #C0D8CC;
+  --neutral-400: #7A9A87;          /* Herb Gray */
+  --neutral-500: #4A6455;          /* Sage */
+  --neutral-700: #1C2B22;          /* Slate Night */
+  --neutral-900: #0F1A12;
+
+  /* ── Amber (Caution / Pending) ──────────────── */
+  --amber-50:  #FEF3DC;            /* Amber Tint */
+  --amber-100: #F8E0B0;
+  --amber-500: #C47D11;            /* Desert Amber */
+  --amber-700: #8A5509;
+
+  /* ── Red (Alert / Critical) ─────────────────── */
+  --red-50:  #FCE8E8;              /* Red Tint */
+  --red-100: #F0C0C0;
+  --red-500: #B52A2A;              /* Clinical Red */
+  --red-600: #9E2424;
+
+  /* ── Surface aliases ────────────────────────── */
+  --surface-app:      #FAFAF8;
+  --surface-card:     #FFFFFF;
+  --surface-hover:    #F0EDE6;
+  --surface-selected: #E8F5EE;
+  --text-link:        #0F4D2A;
+
+  /* ── Shadows ─────────────────────────────────── */
+  --shadow-xs:    0 1px 2px rgba(12, 30, 18, 0.06);
+  --shadow-sm:    0 1px 3px rgba(12, 30, 18, 0.08), 0 1px 2px rgba(12, 30, 18, 0.04);
+  --shadow-md:    0 4px 12px rgba(12, 30, 18, 0.08), 0 2px 4px rgba(12, 30, 18, 0.05);
+  --shadow-lg:    0 12px 28px rgba(12, 30, 18, 0.12), 0 4px 8px rgba(12, 30, 18, 0.06);
+  --shadow-brand: 0 6px 18px rgba(26, 122, 70, 0.28);
 }
 
 .dark {
-  --background: #1C2B22;
-  --foreground: #FAFAF8;
-  --card: #24362B;
-  --card-foreground: #FAFAF8;
-  --popover: #24362B;
-  --popover-foreground: #FAFAF8;
-  --primary: #6FCFA0;
-  --primary-foreground: #0F4D2A;
-  --secondary: #0F4D2A;
-  --secondary-foreground: #E8F5EE;
+  --background: #0D1A12;
+  --foreground: #F0EDE6;           /* Bone White */
+  --card: #1C2B22;                 /* Slate Night */
+  --card-foreground: #F0EDE6;
+  --popover: #1C2B22;
+  --popover-foreground: #F0EDE6;
+  --primary: #6FCFA0;              /* Mint */
+  --primary-foreground: #060D09;
+  --secondary: #0F4D2A;            /* Forest Anchor */
+  --secondary-foreground: #E8F5EE; /* Foam */
   --muted: #0F4D2A;
   --muted-foreground: #8FBFA4;
-  --accent: #0F4D2A;
-  --accent-foreground: #E8F5EE;
-  --destructive: #F0C0C0;
-  --border: rgba(232, 245, 238, 0.14);
-  --input: rgba(232, 245, 238, 0.18);
+  --accent: rgba(111, 207, 160, 0.14);
+  --accent-foreground: #C5E0CE;
+  --destructive: #D94040;
+  --border: rgba(208, 232, 218, 0.18);
+  --input: rgba(208, 232, 218, 0.22);
   --ring: #6FCFA0;
   --chart-1: #6FCFA0;
-  --chart-2: #2B9E5C;
-  --chart-3: #F0D898;
-  --chart-4: #F0C0C0;
-  --chart-5: #8FBFA4;
-  --sidebar: #1C2B22;
-  --sidebar-foreground: #FAFAF8;
+  --chart-2: #8FBFA4;
+  --chart-3: #C47D11;
+  --chart-4: #D94040;
+  --chart-5: #2B9E5C;
+  --sidebar: #0D1A12;
+  --sidebar-foreground: #F0EDE6;
   --sidebar-primary: #6FCFA0;
-  --sidebar-primary-foreground: #0F4D2A;
-  --sidebar-accent: #0F4D2A;
-  --sidebar-accent-foreground: #E8F5EE;
-  --sidebar-border: rgba(232, 245, 238, 0.14);
+  --sidebar-primary-foreground: #060D09;
+  --sidebar-accent: rgba(255, 255, 255, 0.1);
+  --sidebar-accent-foreground: #F0EDE6;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
   --sidebar-ring: #6FCFA0;
 }
 
@@ -126,9 +174,20 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "tnum" 0;
   }
   html {
     @apply font-sans;
+  }
+  a {
+    @apply text-primary underline-offset-4 transition-colors;
+  }
+  a:hover {
+    @apply text-primary/80;
+  }
+  ::selection {
+    background: var(--green-100);
+    color: var(--green-900);
   }
 }
 

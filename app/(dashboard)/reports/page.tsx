@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { actionAuditReportExport, getReportAggregation, getReportRawData, type ReportAggregation } from '@/app/actions/reports';
@@ -374,7 +374,7 @@ export default function ReportsPage() {
       {/* Filters */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {regionLocked ? (
-          <div className="rounded-xl border border-[#E2DDD5] bg-[#FAFAF8] px-3 py-2.5">
+          <div className="rounded-xl border border-[#D0E8DA] bg-[#FAFAF8] px-3 py-2.5">
             <p className="text-xs font-medium text-[#7A9A87]">Assigned region (locked)</p>
             <p className="text-sm font-semibold text-[#1C2B22]">{assignedRegion}</p>
           </div>
@@ -495,7 +495,7 @@ export default function ReportsPage() {
                       formatter={(v) => (v === 'targetSurgeries' ? 'Target' : 'Completed')}
                       iconType="square"
                     />
-                    <Bar dataKey="targetSurgeries" fill="#D0E8DA" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="targetSurgeries" fill="#8FBFA4" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="completed" fill="#1A7A46" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -600,7 +600,7 @@ export default function ReportsPage() {
           <CardContent className="pt-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b border-[#E2DDD5] bg-[#FAFAF8]">
+                <thead className="border-b border-[#D0E8DA] bg-[#FAFAF8]">
                   <tr>
                     {[
                       'Region', 'Status', 'Campaigns', 'Target', 'Patients', 'Screened',
@@ -663,7 +663,7 @@ export default function ReportsPage() {
           <CardContent className="pt-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b border-[#E2DDD5] bg-[#FAFAF8]">
+                <thead className="border-b border-[#D0E8DA] bg-[#FAFAF8]">
                   <tr>
                     {[
                       'Campaign', 'Type', 'Region', 'District', 'Manager', 'Status',
@@ -773,7 +773,7 @@ function CampaignStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     Planned: 'bg-[#F0EDE6] text-[#4A6455]',
     Active: 'bg-[#E8F5EE] text-[#1A7A46]',
-    Completed: 'bg-[#D0E8DA] text-[#0F4D2A]',
+    Completed: 'bg-[#8FBFA4] text-[#0F4D2A]',
     Suspended: 'bg-[#FCE8E8] text-[#B52A2A]',
   };
   return (

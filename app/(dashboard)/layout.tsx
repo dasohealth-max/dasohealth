@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useState } from 'react';
 import AuthGuard from '@/components/layout/AuthGuard';
 import Sidebar from '@/components/layout/Sidebar';

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import type { Campaign, DisabilityStatus, Patient, Sex } from '@/types';
@@ -26,7 +26,7 @@ const SCREENING_STATUSES = ['Awaiting Screening', 'Screened'] as const;
 
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#E2DDD5] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
   sel:   'rounded-md',
 };
 
@@ -275,7 +275,7 @@ export default function PatientsPage() {
         {hasFilters && (
           <button
             onClick={() => { setSearch(''); setRegionFilter(''); setStatusFilter(''); setPage(1); }}
-            className="flex items-center gap-1.5 rounded-md border border-[#E2DDD5] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+            className="flex items-center gap-1.5 rounded-md border border-[#D0E8DA] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
           >
             <X size={12} /> Clear
           </button>
@@ -383,7 +383,7 @@ function PatientRegistrationForm({
           <div className="sm:col-span-3">
             <label className={F.label}>Campaign *</label>
             {campaignLocked && selectedCampaign ? (
-              <div className="rounded-md border border-[#E2DDD5] bg-[#FAFAF8] px-3 py-2 text-sm text-[#4A6455]">
+              <div className="rounded-md border border-[#D0E8DA] bg-[#FAFAF8] px-3 py-2 text-sm text-[#4A6455]">
                 {selectedCampaign.name}
                 <span className="ml-2 text-[#7A9A87]">— {selectedCampaign.region}</span>
               </div>
@@ -498,12 +498,12 @@ function PatientRegistrationForm({
           </div>
           <div>
             <label className={F.label}>Consent Given</label>
-            <div className="flex h-9.5 items-center gap-3 rounded-md border border-[#E2DDD5] bg-white px-3">
+            <div className="flex h-9.5 items-center gap-3 rounded-md border border-[#D0E8DA] bg-white px-3">
               <input
                 type="checkbox"
                 checked={form.consentGiven}
                 onChange={(e) => set('consentGiven', e.target.checked)}
-                className="h-4 w-4 rounded border-[#D0E8DA] accent-[#1A7A46]"
+                className="h-4 w-4 rounded border-[#8FBFA4] accent-[#1A7A46]"
               />
               <span className="text-sm text-[#4A6455]">Patient has consented to treatment</span>
             </div>
