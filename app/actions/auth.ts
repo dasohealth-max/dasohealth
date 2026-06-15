@@ -3,10 +3,12 @@
 import { createServerClient, createBrowserClient } from '@/lib/supabase';
 
 export async function actionRequestPasswordReset(
-  email: string
+  email: string,
+  redirectUrl: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!email) return { ok: false, error: 'Email is required.' };
 
+  // Verify the email belongs to a Super Administrator before sending anything
   const adminDb = createServerClient();
   const { data, error } = await adminDb.auth.admin.listUsers({ perPage: 1000 });
   if (error) return { ok: false, error: 'Unable to process request.' };
@@ -16,8 +18,7 @@ export async function actionRequestPasswordReset(
   );
 
   if (!match) {
-    // Don't reveal whether the email exists — return ok so enumeration isn't possible.
-    // The user will wait for an OTP that never arrives.
+    // Silent success — don't reveal whether the email exists in the system
     return { ok: true };
   }
 
@@ -34,12 +35,12 @@ export async function actionRequestPasswordReset(
     };
   }
 
+  // Send reset link — redirectTo must be in Supabase Dashboard → Auth → URL Configuration → Redirect URLs
   const anonDb = createBrowserClient();
-  const { error: otpError } = await anonDb.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false },
+  const { error: resetError } = await anonDb.auth.resetPasswordForEmail(email, {
+    redirectTo: redirectUrl,
   });
 
-  if (otpError) return { ok: false, error: otpError.message };
+  if (resetError) return { ok: false, error: resetError.message };
   return { ok: true };
 }
