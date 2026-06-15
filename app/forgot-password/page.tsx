@@ -39,15 +39,37 @@ export default function ForgotPasswordPage() {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  // When the user clicks the email link they land back on /forgot-password with
-  // a #access_token=...&type=recovery hash. Supabase fires PASSWORD_RECOVERY
-  // via onAuthStateChange — we jump straight to the password form.
+  // When the user clicks the email link they land on /forgot-password with a
+  // #access_token=...&type=recovery hash. We parse it immediately on mount
+  // (before any async subscription can miss the event) and call setSession
+  // directly to establish the recovery session, then show the password form.
   useEffect(() => {
+    const hash = window.location.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash.slice(1));
+      const type         = params.get('type');
+      const accessToken  = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+
+      if (type === 'recovery' && accessToken && refreshToken) {
+        getClient()
+          .auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          .then(({ error }) => {
+            if (!error) {
+              window.history.replaceState(null, '', window.location.pathname);
+              setStep('password');
+            }
+          });
+        return;
+      }
+    }
+
+    // Fallback: also listen for the PASSWORD_RECOVERY event in case the hash
+    // is processed by Supabase before we read it above.
     const { data: { subscription } } = getClient().auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
-        setStep('password');
-        // Remove the token hash from the address bar
         window.history.replaceState(null, '', window.location.pathname);
+        setStep('password');
       }
     });
     return () => subscription.unsubscribe();
@@ -144,7 +166,7 @@ export default function ForgotPasswordPage() {
           />
         </div>
 
-        <div className="rounded-2xl border border-[#D0E8DA] bg-white p-8 shadow-[var(--shadow-lg)]">
+        <div className="rounded-2xl border border-[#D0E8DA] bg-white p-8 shadow-(--shadow-lg)">
 
           {/* ─── Done ──────────────────────────────────────────────────────── */}
           {step === 'done' && (
@@ -195,7 +217,7 @@ export default function ForgotPasswordPage() {
                 <Button
                   type="submit"
                   disabled={loading || cooldown > 0}
-                  className="h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#0F4D2A] disabled:opacity-60"
+                  className="h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-(--shadow-brand) hover:bg-[#0F4D2A] disabled:opacity-60"
                 >
                   {loading ? 'Sending…' : cooldown > 0 ? `Resend available in ${cooldown}s` : 'Send Reset Link'}
                 </Button>
@@ -290,7 +312,7 @@ export default function ForgotPasswordPage() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#0F4D2A]"
+                  className="h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-(--shadow-brand) hover:bg-[#0F4D2A]"
                 >
                   {loading ? 'Saving…' : 'Set New Password'}
                 </Button>
