@@ -30,6 +30,14 @@ export default function ForgotPasswordPage() {
   const [showPass, setShow]   = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [cooldown, setCooldown] = useState(0); // seconds remaining before resend is allowed
+
+  // Countdown timer — ticks down every second when cooldown > 0
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   // When the user clicks the email link they land back on /forgot-password with
   // a #access_token=...&type=recovery hash. Supabase fires PASSWORD_RECOVERY
@@ -45,6 +53,12 @@ export default function ForgotPasswordPage() {
     return () => subscription.unsubscribe();
   }, []);
 
+  function friendlyError(msg: string): string {
+    if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many'))
+      return 'Too many attempts. Please wait 60 seconds before requesting another link.';
+    return msg;
+  }
+
   // ── Step 1: send reset link ──────────────────────────────────────────────────
   async function handleSendLink(e: React.FormEvent) {
     e.preventDefault();
@@ -56,19 +70,29 @@ export default function ForgotPasswordPage() {
     setLoading(false);
 
     if (!result.ok) {
-      setError(result.error ?? 'An error occurred.');
+      setError(friendlyError(result.error ?? 'An error occurred.'));
+      if ((result.error ?? '').toLowerCase().includes('rate limit') ||
+          (result.error ?? '').toLowerCase().includes('too many')) {
+        setCooldown(60);
+      }
       return;
     }
+    setCooldown(60);
     setStep('sent');
   }
 
   // ── Resend ───────────────────────────────────────────────────────────────────
   async function handleResend() {
+    if (cooldown > 0) return;
     setLoading(true);
     setError('');
     const redirectUrl = `${window.location.origin}/forgot-password`;
-    await actionRequestPasswordReset(email.trim(), redirectUrl);
+    const result = await actionRequestPasswordReset(email.trim(), redirectUrl);
     setLoading(false);
+    if (!result.ok) {
+      setError(friendlyError(result.error ?? 'An error occurred.'));
+    }
+    setCooldown(60);
   }
 
   // ── Step 2: set new password ─────────────────────────────────────────────────
@@ -170,10 +194,10 @@ export default function ForgotPasswordPage() {
 
                 <Button
                   type="submit"
-                  disabled={loading}
-                  className="h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#0F4D2A]"
+                  disabled={loading || cooldown > 0}
+                  className="h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#0F4D2A] disabled:opacity-60"
                 >
-                  {loading ? 'Sending…' : 'Send Reset Link'}
+                  {loading ? 'Sending…' : cooldown > 0 ? `Resend available in ${cooldown}s` : 'Send Reset Link'}
                 </Button>
               </form>
             </>
@@ -200,14 +224,18 @@ export default function ForgotPasswordPage() {
 
               <div className="mt-6 flex items-center justify-center gap-1.5 text-sm text-[#7A9A87]">
                 <span>Didn&apos;t get it?</span>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={handleResend}
-                  className="font-semibold text-[#1A7A46] hover:text-[#0F4D2A] disabled:opacity-50"
-                >
-                  {loading ? 'Sending…' : 'Resend link'}
-                </button>
+                {cooldown > 0 ? (
+                  <span className="font-semibold text-[#7A9A87]">Resend in {cooldown}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleResend}
+                    className="font-semibold text-[#1A7A46] hover:text-[#0F4D2A] disabled:opacity-50"
+                  >
+                    {loading ? 'Sending…' : 'Resend link'}
+                  </button>
+                )}
               </div>
             </div>
           )}
