@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
@@ -120,7 +121,15 @@ function LoginForm() {
               />
             </div>
             <div>
-              <Label className="mb-2 block text-sm font-semibold text-[#1C2B22]">Password</Label>
+              <div className="mb-2 flex items-center justify-between">
+                <Label className="text-sm font-semibold text-[#1C2B22]">Password</Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-[#7A9A87] transition-colors hover:text-[#1A7A46]"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <Input
                   type={showPass ? 'text' : 'password'}
