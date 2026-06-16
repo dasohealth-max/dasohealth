@@ -20,7 +20,7 @@ import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { defaultOperationDistrict, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
-import { Activity, Calendar, ClipboardList, Eye, MapPin, PanelRightClose, PanelRightOpen, Pencil, Plus, Target, Trash2, UserRound } from 'lucide-react';
+import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2, UserRound } from 'lucide-react';
 
 const TYPES: CampaignType[] = ['Cataract Surgery Outreach', 'Eye Vision Outreach', 'General Eye Screening', 'Mixed Outreach'];
 const SUB_CONTRACT_TYPES: CampaignType[] = ['Cataract Surgery Outreach', 'Eye Vision Outreach'];
@@ -93,7 +93,7 @@ export default function CampaignsPage() {
   const [saveError, setSaveError] = useState('');
   const [activity, setActivity] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([getAllCampaigns(), actionGetAllUsers()]).then(([rows, userResult]) => {
@@ -357,117 +357,369 @@ export default function CampaignsPage() {
         </ModalForm>
       )}
 
-      <div className={`grid grid-cols-1 gap-4 ${detailsOpen ? 'xl:grid-cols-[360px_minmax(0,1fr)]' : 'xl:grid-cols-1'}`}>
-        <section className="rounded-md border border-[#DDE3EA] bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-2 border-b border-[#EAEEF3] px-4 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-[#647184]">Campaign List</p>
-            {selected && !detailsOpen && (
+      <CampaignsTable
+        campaigns={campaigns}
+        isLoading={isLoading}
+        selectedId={selected?.id}
+        canEdit={can('campaigns', 'edit')}
+        canDelete={can('campaigns', 'delete')}
+        onOpen={(campaign) => { setSelectedId(campaign.id); setTab('overview'); setDetailsOpen(true); }}
+        onEdit={openEditCampaign}
+        onDelete={setDeleteCampaignTarget}
+      />
+
+      {detailsOpen && selected && (
+        <CampaignDetailsPanel
+          campaign={selected}
+          regions={regions}
+          summary={selectedSummary}
+          tab={tab}
+          activity={activity}
+          canCreate={can('campaigns', 'create')}
+          canEdit={can('campaigns', 'edit')}
+          canDelete={can('campaigns', 'delete')}
+          setTab={setTab}
+          onClose={() => setDetailsOpen(false)}
+          onAddPlan={openNewPlan}
+          onEditCampaign={openEditCampaign}
+          onDeleteCampaign={setDeleteCampaignTarget}
+          onEditPlan={openEditPlan}
+          onDeletePlan={setDeletePlanTarget}
+        />
+      )}
+    </div>
+  );
+}
+
+function CampaignsTable({ campaigns, isLoading, selectedId, canEdit, canDelete, onOpen, onEdit, onDelete }: {
+  campaigns: Campaign[];
+  isLoading: boolean;
+  selectedId?: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  onOpen: (campaign: Campaign) => void;
+  onEdit: (campaign: Campaign) => void;
+  onDelete: (campaign: Campaign) => void;
+}) {
+  const pageSize = 5;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(campaigns.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const visibleCampaigns = campaigns.slice(startIndex, startIndex + pageSize);
+
+  return (
+    <section className="rounded-md border border-[#DDE3EA] bg-white shadow-sm">
+      <div className="border-b border-[#EAEEF3] px-4 py-3">
+        <p className="text-sm font-bold text-[#141920]">All Campaigns</p>
+      </div>
+      {isLoading && <div className="py-12 text-center text-sm text-[#647184]">Loading campaigns...</div>}
+      {!isLoading && campaigns.length === 0 && (
+        <div className="m-4 rounded-md border border-dashed border-[#DDE3EA] p-8 text-center text-sm text-[#647184]">
+          No campaigns yet.
+        </div>
+      )}
+      {!isLoading && campaigns.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm">
+            <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
+              <tr>
+                {['#', 'Campaign Name', 'Description', 'Start Date', 'End Date', 'Regions Involved', 'Status', 'Actions'].map((heading) => (
+                  <th key={heading} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleCampaigns.map((campaign, index) => (
+                <tr
+                  key={campaign.id}
+                  onClick={() => onOpen(campaign)}
+                  className={`cursor-pointer border-b border-[#EAEEF3] transition hover:bg-[#F5F7FA] ${selectedId === campaign.id ? 'bg-[#EBF7EE]/60' : ''}`}
+                >
+                  <td className="px-4 py-3 text-[#647184]">{startIndex + index + 1}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-[#141920]">{campaign.name}</p>
+                    <p className="mt-0.5 text-xs text-[#647184]">{campaign.type}</p>
+                  </td>
+                  <td className="max-w-[360px] px-4 py-3 text-[#4B5666]">
+                    <span className="line-clamp-2">{campaign.description || campaign.notes || '-'}</span>
+                  </td>
+                  <td className="px-4 py-3 text-[#4B5666]">{campaign.startDate}</td>
+                  <td className="px-4 py-3 text-[#4B5666]">{campaign.endDate}</td>
+                  <td className="px-4 py-3 font-semibold text-[#141920]">{campaign.regions?.length ?? 0}</td>
+                  <td className="px-4 py-3"><StatusBadge status={campaign.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1" onClick={(event) => event.stopPropagation()}>
+                      <IconButton label="View campaign overview" onClick={() => onOpen(campaign)} icon={<Eye size={13} />} />
+                      {canEdit && <IconButton label="Edit campaign" onClick={() => onEdit(campaign)} icon={<Pencil size={13} />} />}
+                      {canDelete && <IconButton label="Delete campaign" onClick={() => onDelete(campaign)} icon={<Trash2 size={13} />} danger />}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#EAEEF3] px-4 py-3 text-sm">
+            <p className="text-xs font-medium text-[#647184]">
+              Showing {startIndex + 1} to {Math.min(startIndex + pageSize, campaigns.length)} of {campaigns.length} campaigns
+            </p>
+            <div className="flex items-center gap-1">
+              <PaginationButton
+                label="Previous page"
+                disabled={currentPage === 1}
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+              >
+                <ChevronLeft size={15} />
+              </PaginationButton>
+              {Array.from({ length: totalPages }, (_, index) => index + 1).map((item) => (
+                <PaginationButton
+                  key={item}
+                  label={`Page ${item}`}
+                  active={item === currentPage}
+                  onClick={() => setPage(item)}
+                >
+                  {item}
+                </PaginationButton>
+              ))}
+              <PaginationButton
+                label="Next page"
+                disabled={currentPage === totalPages}
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+              >
+                <ChevronRight size={15} />
+              </PaginationButton>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PaginationButton({ label, active = false, disabled = false, children, onClick }: {
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${active ? 'border-[#2C9942] bg-[#2C9942] text-white' : 'border-[#DDE3EA] bg-white text-[#647184] hover:border-[#A6DCB5] hover:bg-[#EBF7EE] hover:text-[#2C9942]'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CampaignDetailsPanel({
+  campaign,
+  regions,
+  summary,
+  tab,
+  activity,
+  canCreate,
+  canEdit,
+  canDelete,
+  setTab,
+  onClose,
+  onAddPlan,
+  onEditCampaign,
+  onDeleteCampaign,
+  onEditPlan,
+  onDeletePlan,
+}: {
+  campaign: Campaign;
+  regions: CampaignRegion[];
+  summary: ReturnType<typeof summarizeCampaign>;
+  tab: Tab;
+  activity: AuditLog[];
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  setTab: (tab: Tab) => void;
+  onClose: () => void;
+  onAddPlan: () => void;
+  onEditCampaign: (campaign: Campaign) => void;
+  onDeleteCampaign: (campaign: Campaign) => void;
+  onEditPlan: (plan: CampaignRegion) => void;
+  onDeletePlan: (plan: CampaignRegion) => void;
+}) {
+  return (
+      <section className="rounded-md border border-[#DDE3EA] bg-white shadow-sm">
+        <div className="border-b border-[#DDE3EA] px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-bold text-[#141920]">Campaign Overview</h2>
+                <StatusBadge status={campaign.status} />
+              </div>
+              <p className="mt-1 text-sm font-semibold text-[#141920]">{campaign.name}</p>
+              <p className="mt-1 text-sm text-[#4B5666]">{campaign.type}</p>
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-[#647184]">
+                <span className="flex items-center gap-1.5"><Calendar size={13} /> {campaign.startDate} - {campaign.endDate}</span>
+                <span className="flex items-center gap-1.5"><UserRound size={13} /> {campaign.projectManagerName}</span>
+                <span className="flex items-center gap-1.5"><MapPin size={13} /> {campaign.region}</span>
+                <span className="flex items-center gap-1.5"><MapPin size={13} /> {regions.length} regions added</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {canEdit && (
+                <IconButton label="Edit campaign" onClick={() => onEditCampaign(campaign)} icon={<Pencil size={15} />} />
+              )}
+              {canDelete && (
+                <IconButton label="Delete campaign" onClick={() => onDeleteCampaign(campaign)} icon={<Trash2 size={15} />} danger />
+              )}
               <button
                 type="button"
-                onClick={() => setDetailsOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[#DDE3EA] px-2 py-1.5 text-xs font-semibold text-[#647184] transition hover:border-[#A6DCB5] hover:bg-[#EBF7EE] hover:text-[#2C9942]"
+                onClick={onClose}
+                className="rounded-md border border-[#DDE3EA] px-3 py-1.5 text-xs font-semibold text-[#647184] transition hover:bg-[#F5F7FA]"
               >
-                <PanelRightOpen size={14} /> Show details
+                Close
               </button>
-            )}
+            </div>
           </div>
-          <div className="max-h-[650px] overflow-y-auto p-2">
-            {isLoading && <div className="py-12 text-center text-sm text-[#647184]">Loading campaigns...</div>}
-            {!isLoading && campaigns.length === 0 && (
-              <div className="rounded-md border border-dashed border-[#DDE3EA] p-8 text-center text-sm text-[#647184]">
-                No campaigns yet.
-              </div>
-            )}
-            {campaigns.map((campaign) => (
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EAEEF3] px-4 py-3 sm:px-6">
+          <div className="flex gap-1">
+            {(['overview', 'regions', 'activity'] as Tab[]).map((item) => (
               <button
-                key={campaign.id}
-                onClick={() => { setSelectedId(campaign.id); setTab('regions'); setDetailsOpen(true); }}
-                className={`mb-2 w-full rounded-md border p-3 text-left transition ${selected?.id === campaign.id ? 'border-[#2C9942] bg-[#EBF7EE]' : 'border-[#EAEEF3] bg-white hover:border-[#A6DCB5]'}`}
+                key={item}
+                onClick={() => setTab(item)}
+                className={`rounded-md px-3 py-2 text-sm font-semibold capitalize ${tab === item ? 'bg-[#2C9942] text-white' : 'text-[#4B5666] hover:bg-[#F5F7FA]'}`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-[#141920]">{campaign.name}</p>
-                    <p className="mt-0.5 text-xs text-[#4B5666]">{campaign.type}</p>
-                  </div>
-                  <StatusBadge status={campaign.status} />
-                </div>
-                <div className="mt-3 flex items-center justify-between text-xs text-[#647184]">
-                  <span>{campaign.regions?.length ?? 0} regions</span>
-                  <span>{campaign.startDate} - {campaign.endDate}</span>
-                </div>
+                {item}
               </button>
             ))}
           </div>
-        </section>
-
-        {detailsOpen && (
-        <section className="min-w-0 rounded-md border border-[#DDE3EA] bg-white shadow-sm">
-          {!selected ? (
-            <div className="p-12 text-center text-sm text-[#647184]">Select or create a campaign to view details.</div>
-          ) : (
-            <>
-              <div className="border-b border-[#DDE3EA] bg-[#002E63] px-5 py-4 text-white">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-bold">{selected.name}</h2>
-                      <StatusBadge status={selected.status} />
-                    </div>
-                    <p className="mt-1 text-sm text-white/80">{selected.type}</p>
-                    <div className="mt-3 flex flex-wrap gap-4 text-xs text-white/80">
-                      <span className="flex items-center gap-1.5"><Calendar size={13} /> {selected.startDate} - {selected.endDate}</span>
-                      <span className="flex items-center gap-1.5"><UserRound size={13} /> {selected.projectManagerName}</span>
-                      <span className="flex items-center gap-1.5"><MapPin size={13} /> {selected.region}</span>
-                      <span className="flex items-center gap-1.5"><MapPin size={13} /> {regions.length} regions added</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setDetailsOpen(false)} className="rounded-md bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Hide campaign details">
-                      <PanelRightClose size={15} />
-                    </button>
-                    {can('campaigns', 'edit') && (
-                      <button onClick={() => openEditCampaign(selected)} className="rounded-md bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Edit campaign">
-                        <Pencil size={15} />
-                      </button>
-                    )}
-                    {can('campaigns', 'delete') && (
-                      <button onClick={() => setDeleteCampaignTarget(selected)} className="rounded-md bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Delete campaign">
-                        <Trash2 size={15} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EAEEF3] px-4 py-3">
-                <div className="flex gap-1">
-                  {(['regions', 'overview', 'activity'] as Tab[]).map((item) => (
-                    <button
-                      key={item}
-                      onClick={() => setTab(item)}
-                      className={`rounded-md px-3 py-2 text-sm font-semibold capitalize ${tab === item ? 'bg-[#2C9942] text-white' : 'text-[#4B5666] hover:bg-[#F5F7FA]'}`}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-                {tab === 'regions' && can('campaigns', 'create') && (
-                  <Button onClick={openNewPlan} className="gap-2 rounded-md bg-[#2C9942] text-white hover:bg-[#002E63]">
-                    <Plus size={14} /> Add Sub-contract
-                  </Button>
-                )}
-              </div>
-
-              {tab === 'regions' && (
-                <RegionsTab regions={regions} canEdit={can('campaigns', 'edit')} canDelete={can('campaigns', 'delete')} onEdit={openEditPlan} onDelete={setDeletePlanTarget} />
-              )}
-              {tab === 'overview' && <OverviewTab summary={selectedSummary} />}
-              {tab === 'activity' && <ActivityTab activity={activity} />}
-            </>
+          {canCreate && (
+            <Button onClick={onAddPlan} className="gap-2 rounded-md bg-[#2C9942] text-white hover:bg-[#002E63]">
+              <Plus size={14} /> Add Sub-contract
+            </Button>
           )}
-        </section>
-        )}
+        </div>
+
+        <div>
+          {tab === 'overview' && <CampaignOverview campaign={campaign} regions={regions} summary={summary} />}
+          {tab === 'regions' && (
+            <RegionsTab regions={regions} canEdit={canEdit} canDelete={canDelete} onEdit={onEditPlan} onDelete={onDeletePlan} />
+          )}
+          {tab === 'activity' && <ActivityTab activity={activity} />}
+        </div>
+      </section>
+  );
+}
+
+function CampaignOverview({ campaign, regions, summary }: {
+  campaign: Campaign;
+  regions: CampaignRegion[];
+  summary: ReturnType<typeof summarizeCampaign>;
+}) {
+  return (
+    <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <section className="rounded-md border border-[#EAEEF3] bg-white p-4">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-14 w-14 items-center justify-center rounded-md bg-[#EBF7EE] text-[#2C9942]">
+            <ClipboardList size={24} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-bold text-[#141920]">Campaign Overview</h3>
+              <StatusBadge status={campaign.status} />
+            </div>
+            <p className="mt-1 text-sm text-[#4B5666]">{campaign.description || 'No description provided.'}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 border-y border-[#EAEEF3] py-4 lg:grid-cols-4">
+          <OverviewFact icon={<Calendar size={15} />} label="Start Date" value={campaign.startDate} />
+          <OverviewFact icon={<Calendar size={15} />} label="End Date" value={campaign.endDate} />
+          <OverviewFact icon={<MapPin size={15} />} label="Total Regions" value={String(summary.regions)} />
+          <OverviewFact icon={<UserRound size={15} />} label="Project Manager" value={campaign.projectManagerName || '-'} />
+        </div>
+
+        <div className="pt-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-[#141920]">Campaign Progress</p>
+            <p className="text-sm font-bold text-[#2C9942]">{summary.progress}%</p>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-[#EAEEF3]">
+            <div className="h-full rounded-full bg-[#2C9942]" style={{ width: `${summary.progress}%` }} />
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#647184]">
+            <span>{summary.completedSurgeries.toLocaleString()} surgeries completed</span>
+            <span>Target: {summary.targetSurgeries.toLocaleString()}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-md border border-[#EAEEF3] bg-white">
+        <div className="border-b border-[#EAEEF3] px-4 py-3">
+          <h3 className="font-bold text-[#141920]">Regions Participating in this Campaign</h3>
+        </div>
+        <RegionsPreview regions={regions} />
+      </section>
+    </div>
+  );
+}
+
+function OverviewFact({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{label}</p>
+      <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-[#141920]">
+        <span className="text-[#647184]">{icon}</span>
+        <span className="truncate">{value}</span>
       </div>
+    </div>
+  );
+}
+
+function RegionsPreview({ regions }: { regions: CampaignRegion[] }) {
+  if (regions.length === 0) {
+    return <div className="p-10 text-center text-sm text-[#647184]">No regional plans added yet.</div>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
+          <tr>
+            {['#', 'Region', 'Surgeries Target', 'Completed', 'Progress', 'Status'].map((heading) => (
+              <th key={heading} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {regions.map((plan, index) => {
+            const completed = 0;
+            const progress = plan.targetSurgeries > 0 ? Math.round((completed / plan.targetSurgeries) * 100) : 0;
+            return (
+              <tr key={plan.id} className="border-b border-[#EAEEF3]">
+                <td className="px-4 py-3 text-[#647184]">{index + 1}</td>
+                <td className="px-4 py-3 font-semibold text-[#141920]">{plan.region}</td>
+                <td className="px-4 py-3">{plan.targetSurgeries.toLocaleString()}</td>
+                <td className="px-4 py-3">{completed.toLocaleString()}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-20 overflow-hidden rounded-full bg-[#EAEEF3]">
+                      <div className="h-full rounded-full bg-[#2C9942]" style={{ width: `${progress}%` }} />
+                    </div>
+                    <span className="text-xs font-semibold text-[#4B5666]">{progress}%</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3"><StatusBadge status={plan.status} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -673,29 +925,6 @@ function RegionsTab({ regions, canEdit, canDelete, onEdit, onDelete }: {
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function OverviewTab({ summary }: { summary: ReturnType<typeof summarizeCampaign> }) {
-  const items = [
-    ['Total Target Patients', summary.targetPatients],
-    ['Total Target Screenings', summary.targetScreenings],
-    ['Total Target Surgeries', summary.targetSurgeries],
-    ['Regions Added', summary.regions],
-    ['On Track Regions', summary.onTrack],
-    ['Behind Regions', summary.behind],
-    ['Completed Surgeries', summary.completedSurgeries],
-    ['Progress', `${summary.progress}%`],
-  ];
-  return (
-    <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
-      {items.map(([label, value]) => (
-        <div key={label} className="rounded-md border border-[#EAEEF3] bg-white p-4">
-          <p className="text-xl font-bold text-[#141920]">{value}</p>
-          <p className="mt-1 text-xs font-medium text-[#647184]">{label}</p>
-        </div>
-      ))}
     </div>
   );
 }

@@ -235,6 +235,7 @@ export default function ScreeningPage() {
           onSave={save}
           saveLabel={editing ? 'Save Changes' : 'Save Screening'}
           saveDisabled={formInvalid}
+          wide
         >
           {saveError && (
             <div className="mb-5 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
@@ -460,12 +461,12 @@ function ScreeningFormBody({
     : form.patientName;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Section 1: Patient & Timestamp */}
       <section>
-        <p className={`${F.label} mb-3`}>Patient & Session</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+        <p className={`${F.label} mb-2`}>Patient & Session</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="md:col-span-2">
             <label className={F.label}>Patient *</label>
             <Select value={form.patientId} onValueChange={(v) => { if (v) choosePatient(v); }}>
               <SelectTrigger className={F.sel}>
@@ -487,11 +488,11 @@ function ScreeningFormBody({
             <label className={F.label}>Region</label>
             <input value={form.region} disabled className={F.input} placeholder="Auto-filled from patient" />
           </div>
-          <div>
+          <div className="md:col-span-3 xl:col-span-1">
             <label className={F.label}>Screening Time</label>
             <div className="flex items-center gap-2.5 rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2">
               <Clock size={13} className="shrink-0 text-[#647184]" />
-              <span className="text-sm text-[#4B5666]">{form.screenedAt.replace('T', ' ')}</span>
+              <span className="min-w-0 truncate text-sm text-[#4B5666]">{form.screenedAt.replace('T', ' ')}</span>
               <span className="ml-auto shrink-0 rounded bg-[#EBF7EE] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#2C9942]">
                 {isEditing ? 'Original time' : 'Auto'}
               </span>
@@ -502,8 +503,8 @@ function ScreeningFormBody({
 
       {/* Section 2: Visual Acuity */}
       <section>
-        <p className={`${F.label} mb-3`}>Visual Acuity (Unaided)</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <p className={`${F.label} mb-2`}>Visual Acuity (Unaided)</p>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div>
             <label className={F.label}>VA — Right Eye</label>
             <Select value={form.vaRightUnaided} onValueChange={(v) => { if (v) set('vaRightUnaided', v as VAGrade); }}>
@@ -543,21 +544,21 @@ function ScreeningFormBody({
 
       {/* Section 3: Findings */}
       <section>
-        <p className={`${F.label} mb-3`}>Clinical Findings</p>
-        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <p className={`${F.label} mb-2`}>Clinical Findings</p>
+        <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
           {[
             { key: 'cataractSuspected' as const,    label: 'Cataract Suspected' },
             { key: 'glaucomaSuspected' as const,    label: 'Glaucoma Suspected' },
             { key: 'diabeticRetinopathy' as const,  label: 'Diabetic Retinopathy' },
           ].map(({ key, label }) => (
-            <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-md border border-[#DDE3EA] px-3 py-2.5 transition hover:bg-[#F5F7FA]">
+            <label key={key} className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border border-[#DDE3EA] px-3 py-2 transition hover:bg-[#F5F7FA]">
               <input
                 type="checkbox"
                 checked={form[key]}
                 onChange={(e) => set(key, e.target.checked)}
                 className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
               />
-              <span className="text-sm text-[#141920]">{label}</span>
+              <span className="text-sm leading-tight text-[#141920]">{label}</span>
             </label>
           ))}
         </div>
@@ -574,8 +575,8 @@ function ScreeningFormBody({
 
       {/* Section 4: Patient History */}
       <section>
-        <p className={`${F.label} mb-3`}>Patient History</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <p className={`${F.label} mb-2`}>Patient History</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label className={F.label}>Medical History</label>
             <input
@@ -599,8 +600,8 @@ function ScreeningFormBody({
 
       {/* Section 5: Outcome */}
       <section>
-        <p className={`${F.label} mb-3`}>Outcome</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <p className={`${F.label} mb-2`}>Outcome</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)]">
           <div>
             <label className={F.label}>Recommendation *</label>
             <Select

@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Campaign, FollowUp, Patient, Screening, Surgery } from '@/types';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
@@ -21,13 +22,21 @@ import {
   Calendar,
   CalendarCheck,
   CheckCircle,
-  ChevronRight,
   Eye,
   MapPin,
   Microscope,
   Users,
-  X,
 } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,10 +63,6 @@ type RegionStats = {
 };
 
 // ─── Status config ────────────────────────────────────────────────────────────
-
-const STATUS_PRIORITY: Record<RegionStatus, number> = {
-  Behind: 0, 'No Activity': 1, Active: 2, Strong: 3, 'No Campaign': 4,
-};
 
 const STATUS_STYLES: Record<RegionStatus, { border: string; badge: string; bar: string }> = {
   'No Campaign': { border: 'border-l-[#A6DCB5]',  badge: 'bg-[#EAEEF3] text-[#647184]',  bar: 'bg-[#A6DCB5]'  },
@@ -144,7 +149,6 @@ export default function DashboardPage() {
   const { role, user } = usePermissions();
   const isSuperAdmin = role === 'Super Administrator';
 
-  const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [campaigns,  setCampaigns]  = useState<Campaign[]>([]);
   const [patients,   setPatients]   = useState<Patient[]>([]);
   const [screenings, setScreenings] = useState<Screening[]>([]);
@@ -190,245 +194,240 @@ export default function DashboardPage() {
         <h1 className="text-xl font-bold text-[#141920]">Dashboard</h1>
         <p className="text-sm text-[#4B5666]">
           {isSuperAdmin
-            ? 'National overview across all 9 regions — select a region to view details'
+            ? 'National overview across all 9 regions'
             : `${currentStats?.region ?? 'Regional'} performance`}
         </p>
       </div>
 
-      {isSuperAdmin && (
-        <RegionTabBar selected={selectedRegion} onChange={setSelectedRegion} stats={allStats} />
-      )}
-
       {isSuperAdmin ? (
         <AllRegionsView
           stats={allStats}
-          selectedRegion={selectedRegion === 'all' ? null : selectedRegion}
-          onRegionSelect={setSelectedRegion}
-          onPanelClose={() => setSelectedRegion('all')}
         />
       ) : effectiveSelectedRegion === 'all' ? (
         <AllRegionsView
           stats={allStats}
-          selectedRegion={null}
-          onRegionSelect={() => undefined}
-          onPanelClose={() => undefined}
         />
       ) : (
         <SingleRegionView
           stats={currentStats}
           showBack={isSuperAdmin}
-          onBack={() => setSelectedRegion('all')}
+          onBack={() => undefined}
         />
       )}
-    </div>
-  );
-}
-
-// ─── Region Tab Bar ───────────────────────────────────────────────────────────
-
-function RegionTabBar({
-  selected,
-  onChange,
-  stats,
-}: {
-  selected: string;
-  onChange: (region: string) => void;
-  stats: RegionStats[];
-}) {
-  const tabs = [
-    { key: 'all', label: 'All Regions', alerts: 0 },
-    ...REGIONAL_CAMPAIGN_AREAS.map((area) => {
-      const s = stats.find((r) => r.region === area.region);
-      return { key: area.region, label: shortName(area.region), alerts: (s?.overdue ?? 0) + (s?.doctorReview ?? 0) };
-    }),
-  ];
-
-  return (
-    <div className="flex gap-1 overflow-x-auto rounded-xl border border-[#DDE3EA] bg-white p-1 shadow-sm">
-      {tabs.map((tab) => {
-        const active = selected === tab.key;
-        return (
-          <button
-            key={tab.key}
-            onClick={() => onChange(tab.key)}
-            className={`relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-              active ? 'bg-[#2C9942] text-white shadow-sm' : 'text-[#4B5666] hover:bg-[#EBF7EE] hover:text-[#002E63]'
-            }`}
-          >
-            {tab.label}
-            {tab.alerts > 0 && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${active ? 'bg-white/30 text-white' : 'bg-[#E53935] text-white'}`}>
-                {tab.alerts}
-              </span>
-            )}
-          </button>
-        );
-      })}
     </div>
   );
 }
 
 // ─── All Regions View ─────────────────────────────────────────────────────────
 
-function AllRegionsView({
-  stats,
-  selectedRegion,
-  onRegionSelect,
-  onPanelClose,
-}: {
-  stats: RegionStats[];
-  selectedRegion: string | null;
-  onRegionSelect: (region: string) => void;
-  onPanelClose: () => void;
-}) {
+function AllRegionsView({ stats }: { stats: RegionStats[] }) {
   const totalCompleted  = stats.reduce((s, r) => s + r.completed, 0);
   const totalTarget     = stats.reduce((s, r) => s + r.target, 0);
   const totalPct        = totalTarget ? Math.round((totalCompleted / totalTarget) * 100) : 0;
+  const totalPatients   = stats.reduce((s, r) => s + r.patients, 0);
+  const totalScreened   = stats.reduce((s, r) => s + r.screened, 0);
+  const totalScheduled  = stats.reduce((s, r) => s + r.scheduled, 0);
+  const followUpsDone   = stats.reduce((s, r) => s + r.followUpsDone, 0);
   const behindCount     = stats.filter((r) => r.status === 'Behind' || r.status === 'No Activity').length;
   const alertCount      = stats.reduce((s, r) => s + r.overdue + r.doctorReview, 0);
+  const noCampaignCount = stats.filter((r) => r.status === 'No Campaign').length;
 
-  const sorted = [...stats].sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status]);
-  const panelStats = selectedRegion ? (stats.find((r) => r.region === selectedRegion) ?? null) : null;
+  const regionalChart = [...stats]
+    .sort((a, b) => b.target - a.target || b.completed - a.completed)
+    .map((r) => ({
+      region: shortName(r.region),
+      completed: r.completed,
+      remaining: Math.max(0, r.target - r.completed),
+      target: r.target,
+      pct: r.pct,
+      status: r.status,
+    }));
+  const funnelData = [
+    { step: 'Registered', count: totalPatients, fill: 'var(--chart-2)' },
+    { step: 'Screened', count: totalScreened, fill: '#2473B5' },
+    { step: 'Scheduled', count: totalScheduled, fill: 'var(--chart-3)' },
+    { step: 'Surgeries', count: totalCompleted, fill: 'var(--chart-1)' },
+    { step: 'Follow-ups', count: followUpsDone, fill: '#45B066' },
+  ];
+  const surgeryGap = Math.max(0, totalTarget - totalCompleted);
 
   return (
-    <div className="space-y-4">
-      {/* 3 national KPIs */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <KPICard
-          label="National Surgery Progress"
-          value={`${totalCompleted.toLocaleString()} / ${totalTarget.toLocaleString()}`}
-          sub={`${totalPct}% of national target reached`}
-          accent="primary"
-        />
-        <KPICard
-          label="Regions Needing Attention"
-          value={behindCount}
-          sub={`${9 - behindCount} of 9 regions on track`}
-          accent={behindCount >= 4 ? 'red' : behindCount > 1 ? 'amber' : 'primary'}
-        />
-        <KPICard
-          label="Active Alerts"
-          value={alertCount}
-          sub="Overdue follow-ups + pending doctor reviews"
-          accent={alertCount > 0 ? 'red' : 'primary'}
-        />
-      </div>
+    <div className="space-y-5">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <div className="rounded-xl border border-[#DDE3EA] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#0E1726] dark:shadow-none">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#647184]">National Command View</p>
+              <h2 className="mt-2 text-2xl font-bold text-[#141920]">{totalPct}% surgery target reached</h2>
+              <p className="mt-1 text-sm text-[#4B5666]">
+                {totalCompleted.toLocaleString()} completed of {totalTarget.toLocaleString()} targeted surgeries across {stats.length} regions.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <ExecutiveMetric label="Attention" value={behindCount} tone={behindCount ? 'red' : 'green'} />
+              <ExecutiveMetric label="Alerts" value={alertCount} tone={alertCount ? 'red' : 'green'} />
+              <ExecutiveMetric label="No Campaign" value={noCampaignCount} tone={noCampaignCount ? 'amber' : 'green'} />
+            </div>
+          </div>
 
-      <div className={panelStats ? 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]' : ''}>
-        {/* 9 region cards sorted by urgency */}
-        <div className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${panelStats ? '2xl:grid-cols-3' : 'xl:grid-cols-3'}`}>
-          {sorted.map((r) => (
-            <RegionCard
-              key={r.region}
-              stats={r}
-              selected={selectedRegion === r.region}
-              onSelect={onRegionSelect}
-            />
-          ))}
+          <div className="mt-5 h-4 overflow-hidden rounded-full bg-[#EAEEF3] dark:bg-[#1B2A3F]">
+            <div className="h-full rounded-full bg-[#2C9942] dark:bg-[#6FC587]" style={{ width: `${Math.min(totalPct, 100)}%` }} />
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <SnapshotTile label="Patients" value={totalPatients} sub={`${totalScreened.toLocaleString()} screened`} />
+            <SnapshotTile label="Scheduled" value={totalScheduled} sub="awaiting theatre" />
+            <SnapshotTile label="Follow-ups" value={followUpsDone} sub="completed visits" />
+            <SnapshotTile label="At Risk" value={behindCount + alertCount} sub="regions + alerts" tone="red" />
+          </div>
         </div>
 
-        {panelStats && (
-          <RegionDetailsPanel stats={panelStats} onClose={onPanelClose} />
-        )}
+        <ActionRequiredPanel
+          attentionRegions={behindCount}
+          alertCount={alertCount}
+          noCampaignCount={noCampaignCount}
+          surgeryGap={surgeryGap}
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <ChartCard title="Regional Surgery Progress" subtitle="Completed surgeries against remaining target">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={regionalChart} layout="vertical" margin={{ left: 8, right: 28, top: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border-default)" />
+              <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
+              <YAxis type="category" dataKey="region" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={92} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
+              <Tooltip
+                formatter={(value, name) => [Number(value).toLocaleString(), name === 'completed' ? 'Completed' : 'Remaining']}
+                labelFormatter={(label) => `${label}`}
+              />
+              <Bar dataKey="completed" stackId="surgeries" fill="var(--chart-1)" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="remaining" stackId="surgeries" fill="var(--dashboard-remaining-bar)" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Patient Workflow" subtitle="Registered to follow-up conversion">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={funnelData} margin={{ left: 0, right: 8, top: 8, bottom: 24 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-default)" />
+              <XAxis dataKey="step" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} interval={0} angle={-15} textAnchor="end" height={42} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
+              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
+              <Tooltip formatter={(value) => [Number(value).toLocaleString(), 'Patients']} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {funnelData.map((entry) => <Cell key={entry.step} fill={entry.fill} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </section>
+
+    </div>
+  );
+}
+
+function ExecutiveMetric({ label, value, tone }: { label: string; value: number; tone: 'green' | 'red' | 'amber' }) {
+  const toneClass = {
+    green: 'bg-[#EBF7EE] text-[#2C9942] dark:bg-[#173523] dark:text-[#6FC587]',
+    red: 'bg-[#FDECEB] text-[#E53935] dark:bg-[#3A171A] dark:text-[#F87171]',
+    amber: 'bg-[#FFF5E6] text-[#F59E0B] dark:bg-[#3B2A12] dark:text-[#FBBF24]',
+  }[tone];
+
+  return (
+    <div className={`rounded-lg px-3 py-2 ${toneClass}`}>
+      <p className="text-xl font-bold">{value.toLocaleString()}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide">{label}</p>
+    </div>
+  );
+}
+
+function SnapshotTile({ label, value, sub, tone = 'default' }: { label: string; value: number; sub: string; tone?: 'default' | 'red' }) {
+  return (
+    <div className="rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3 dark:border-white/10 dark:bg-[#111C2D]">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#647184] dark:text-[#9FB0C5]">{label}</p>
+      <p className={`mt-1 text-xl font-bold ${tone === 'red' ? 'text-[#E53935]' : 'text-[#141920]'}`}>{value.toLocaleString()}</p>
+      <p className="mt-0.5 text-xs text-[#647184] dark:text-[#AFBBC9]">{sub}</p>
+    </div>
+  );
+}
+
+function ActionRequiredPanel({
+  attentionRegions,
+  alertCount,
+  noCampaignCount,
+  surgeryGap,
+}: {
+  attentionRegions: number;
+  alertCount: number;
+  noCampaignCount: number;
+  surgeryGap: number;
+}) {
+  const items = [
+    {
+      label: 'Regions behind or inactive',
+      value: attentionRegions,
+      detail: 'Review managers and field activity today.',
+      tone: attentionRegions > 0 ? 'red' : 'green',
+    },
+    {
+      label: 'Clinical alerts open',
+      value: alertCount,
+      detail: 'Overdue follow-ups and doctor reviews.',
+      tone: alertCount > 0 ? 'red' : 'green',
+    },
+    {
+      label: 'Regions without campaigns',
+      value: noCampaignCount,
+      detail: 'Assign campaign coverage before reporting closes.',
+      tone: noCampaignCount > 0 ? 'amber' : 'green',
+    },
+    {
+      label: 'Surgeries remaining',
+      value: surgeryGap,
+      detail: 'National target gap still to be delivered.',
+      tone: surgeryGap > 0 ? 'navy' : 'green',
+    },
+  ] as const;
+
+  return (
+    <div className="rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0E1726] dark:shadow-none">
+      <div className="mb-4">
+        <p className="text-sm font-bold text-[#141920]">Action Required</p>
+        <p className="text-xs text-[#647184]">The operational items super admins should check first.</p>
+      </div>
+      <div className="space-y-3">
+        {items.map((item) => (
+          <div key={item.label} className="flex items-start justify-between gap-3 rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3 dark:border-white/10 dark:bg-[#111C2D]">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#141920]">{item.label}</p>
+              <p className="mt-1 text-xs text-[#647184]">{item.detail}</p>
+            </div>
+            <span className={`shrink-0 rounded-lg px-2.5 py-1 text-sm font-bold ${ACTION_TONE[item.tone]}`}>
+              {item.value.toLocaleString()}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-// ─── Region Card ──────────────────────────────────────────────────────────────
+const ACTION_TONE = {
+  green: 'bg-[#EBF7EE] text-[#2C9942] dark:bg-[#173523] dark:text-[#6FC587]',
+  red: 'bg-[#FDECEB] text-[#E53935] dark:bg-[#3A171A] dark:text-[#F87171]',
+  amber: 'bg-[#FFF5E6] text-[#F59E0B] dark:bg-[#3B2A12] dark:text-[#FBBF24]',
+  navy: 'bg-[#E7F0FB] text-[#002E63] dark:bg-[#0A1423] dark:text-[#C2D2E6]',
+};
 
-function RegionCard({
-  stats: r,
-  selected,
-  onSelect,
-}: {
-  stats: RegionStats;
-  selected: boolean;
-  onSelect: (region: string) => void;
-}) {
-  const style     = STATUS_STYLES[r.status];
-  const hasAlerts = r.overdue > 0 || r.doctorReview > 0;
-
+function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
-    <button
-      onClick={() => onSelect(r.region)}
-      aria-pressed={selected}
-      className={`group w-full rounded-xl border bg-white p-4 text-left shadow-sm transition-all hover:border-[#A6DCB5] hover:shadow-md ${
-        selected ? 'border-[#2C9942] ring-2 ring-[#2C9942]/25' : 'border-[#DDE3EA]'
-      }`}
-    >
-      {/* Header row */}
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-[#141920]">{shortName(r.region)}</p>
-          <p className="mt-0.5 text-xs text-[#4B5666]">{r.district}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {hasAlerts && (
-            <span className="flex items-center gap-1 rounded-full bg-[#FDECEB] px-2 py-0.5 text-[10px] font-bold text-[#E53935]">
-              <AlertTriangle size={9} />
-              {r.overdue + r.doctorReview}
-            </span>
-          )}
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${style.badge}`}>
-            {r.status}
-          </span>
-        </div>
+    <div className="rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0E1726] dark:shadow-none">
+      <div className="mb-3">
+        <p className="text-sm font-bold text-[#141920]">{title}</p>
+        <p className="text-xs text-[#647184]">{subtitle}</p>
       </div>
-
-      {/* PM */}
-      <p className="mb-3 text-xs text-[#4B5666]">
-        PM: <span className="font-medium text-[#141920]">{r.manager || 'Unassigned'}</span>
-      </p>
-
-      {/* Progress bar */}
-      <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="text-[#4B5666]">{r.completed.toLocaleString()} / {r.target.toLocaleString()} surgeries</span>
-        <span className="font-bold text-[#141920]">{r.pct}%</span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#DDE3EA]">
-        <div className={`h-full rounded-full ${style.bar}`} style={{ width: `${Math.min(r.pct, 100)}%` }} />
-      </div>
-
-      {/* Footer */}
-      <div className="mt-3 flex items-center justify-between text-xs text-[#647184]">
-        <span>{r.patients.toLocaleString()} patients · {r.screened.toLocaleString()} screened</span>
-        <ChevronRight size={14} className="transition-colors group-hover:text-[#141920]" />
-      </div>
-    </button>
-  );
-}
-
-// ─── Region Details Panel ────────────────────────────────────────────────────
-
-function RegionDetailsPanel({ stats, onClose }: { stats: RegionStats; onClose: () => void }) {
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-[#000D1D]/35 backdrop-blur-[1px] xl:hidden" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-[420px] overflow-y-auto border-l border-[#DDE3EA] bg-[#F5F7FA] shadow-[var(--shadow-lg)] xl:sticky xl:top-4 xl:z-auto xl:max-h-[calc(100vh-7rem)] xl:w-auto xl:rounded-xl xl:border xl:shadow-sm">
-        <div className="sticky top-0 z-10 overflow-hidden bg-[#002E63] px-5 py-4 text-white">
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-[#2C9942]" />
-          <div className="relative flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#A6DCB5]">Region details</p>
-            <h2 className="mt-1 text-lg font-bold text-white">{shortName(stats.region)}</h2>
-            <p className="mt-1 text-xs text-[#C2D2E6]">{stats.district}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-white/75 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label="Close region details"
-          >
-            <X size={16} />
-          </button>
-          </div>
-        </div>
-        <div className="p-4">
-          <SingleRegionView stats={stats} showBack={false} onBack={onClose} compact />
-        </div>
-      </aside>
-    </>
+      <div className="h-72 min-w-0">{children}</div>
+    </div>
   );
 }
 
@@ -589,29 +588,3 @@ function SingleRegionView({
     </div>
   );
 }
-
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
-
-function KPICard({
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  label: string;
-  value: string | number;
-  sub: string;
-  accent: 'primary' | 'red' | 'amber';
-}) {
-  const accentClass = { primary: 'text-[#2C9942]', red: 'text-[#E53935]', amber: 'text-[#F59E0B]' }[accent];
-  return (
-    <div className="rounded-xl border border-[#DDE3EA] bg-white p-5 shadow-sm">
-      <p className="text-xs font-medium text-[#4B5666]">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${accentClass}`}>
-        {typeof value === 'number' ? value.toLocaleString() : value}
-      </p>
-      <p className="mt-0.5 text-xs text-[#647184]">{sub}</p>
-    </div>
-  );
-}
-

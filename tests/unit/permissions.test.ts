@@ -13,10 +13,11 @@ describe('permissions - Super Administrator', () => {
     }
   });
 
-  it('starts at dashboard and can manage operational roles', () => {
+  it('starts at dashboard and can manage administrator and operational roles', () => {
     expect(defaultPathForRole('Super Administrator')).toBe('/dashboard');
     expect(canAccessSettings('Super Administrator')).toBe(true);
     expect(manageableRolesFor('Super Administrator')).toEqual([
+      'Super Administrator',
       'Project Manager',
       'Data Clerk',
       'Screening Officer',

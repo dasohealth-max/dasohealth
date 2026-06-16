@@ -60,7 +60,7 @@ export default function SettingsPage() {
   const [isPending, startTransition] = useTransition();
 
   const allowedRoles: Role[] = useMemo(() => {
-    if (role === 'Super Administrator') return ['Project Manager', 'Data Clerk', 'Screening Officer'];
+    if (role === 'Super Administrator') return ['Super Administrator', 'Project Manager', 'Data Clerk', 'Screening Officer'];
     if (role === 'Project Manager') return ['Data Clerk', 'Screening Officer'];
     return [];
   }, [role]);
@@ -105,6 +105,16 @@ export default function SettingsPage() {
 
   function set<K extends keyof UserFormData>(key: K, value: UserFormData[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function setRole(nextRole: Role) {
+    setForm((current) => ({
+      ...current,
+      role: nextRole,
+      assignedRegion: nextRole === 'Super Administrator'
+        ? undefined
+        : current.assignedRegion ?? BLANK.assignedRegion,
+    }));
   }
 
   function initialsFor(name: string) {
@@ -152,7 +162,11 @@ export default function SettingsPage() {
     setSaveError('');
     startTransition(async () => {
       const initials = initialsFor(form.name);
-      const assignedRegion = role === 'Project Manager' ? sessionUser?.assignedRegion : form.assignedRegion;
+      const assignedRegion = form.role === 'Super Administrator'
+        ? undefined
+        : role === 'Project Manager'
+          ? sessionUser?.assignedRegion
+          : form.assignedRegion;
       const result = editing
         ? await actionUpdateUserMetadata(editing.id, {
             name: form.name,
@@ -261,7 +275,7 @@ export default function SettingsPage() {
               onClose={() => setShowForm(false)}
               onSave={save}
               saveLabel={editing ? 'Update User' : 'Add User'}
-              saveDisabled={!form.name || !form.email || !form.role || !form.assignedRegion || (!editing && form.password.length < 6) || isPending}
+              saveDisabled={!form.name || !form.email || !form.role || (form.role !== 'Super Administrator' && !form.assignedRegion) || (!editing && form.password.length < 6) || isPending}
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div><Label className="mb-1 block text-xs">Full Name *</Label><Input value={form.name} onChange={(e) => set('name', e.target.value)} className="rounded-xl" /></div>
@@ -269,18 +283,20 @@ export default function SettingsPage() {
                 {!editing && <div><Label className="mb-1 block text-xs">Password *</Label><Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} className="rounded-xl" /></div>}
                 <div>
                   <Label className="mb-1 block text-xs">Role *</Label>
-                  <Select value={form.role} onValueChange={(value) => { if (value) set('role', value as Role); }}>
+                  <Select value={form.role} onValueChange={(value) => { if (value) setRole(value as Role); }}>
                     <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                     <SelectContent>{allowedRoles.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="mb-1 block text-xs">Assigned Region *</Label>
-                  <Select value={form.assignedRegion ?? ''} onValueChange={(value) => { if (value) set('assignedRegion', value); }} disabled={role === 'Project Manager'}>
-                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>{REGIONAL_CAMPAIGN_AREAS.map((area) => <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+                {form.role !== 'Super Administrator' && (
+                  <div>
+                    <Label className="mb-1 block text-xs">Assigned Region *</Label>
+                    <Select value={form.assignedRegion ?? ''} onValueChange={(value) => { if (value) set('assignedRegion', value); }} disabled={role === 'Project Manager'}>
+                      <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>{REGIONAL_CAMPAIGN_AREAS.map((area) => <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div><Label className="mb-1 block text-xs">Avatar Colour</Label><Input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className="h-10 rounded-xl p-1" /></div>
               </div>
             </InlineForm>

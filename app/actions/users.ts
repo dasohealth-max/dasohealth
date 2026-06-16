@@ -147,11 +147,13 @@ export async function actionCreateUser(input: {
     return { ok: false, error: 'You cannot create that role' };
   }
 
-  const assignedRegion = actor.role === 'Project Manager'
+  const assignedRegion = input.role === 'Super Administrator'
+    ? undefined
+    : actor.role === 'Project Manager'
     ? actor.assignedRegion
     : input.assignedRegion;
 
-  if (!assignedRegion || !isCampaignRegion(assignedRegion)) {
+  if (input.role !== 'Super Administrator' && (!assignedRegion || !isCampaignRegion(assignedRegion))) {
     return { ok: false, error: 'Valid assigned region is required' };
   }
   if (!input.email || !input.password || !input.name || !input.role) {
@@ -166,7 +168,7 @@ export async function actionCreateUser(input: {
     email: input.email,
     password: input.password,
     email_confirm: true,
-    app_metadata: { role: input.role, assignedRegion },
+    app_metadata: { role: input.role, ...(assignedRegion ? { assignedRegion } : {}) },
     user_metadata: { name: input.name, initials: input.initials, color: input.color },
   });
 
@@ -205,24 +207,32 @@ export async function actionUpdateUserMetadata(
   const current = await db.auth.admin.getUserById(userId);
   if (current.error) return { ok: false, error: current.error.message };
   const before = toUser(current.data.user);
+  const nextRole = (metadata.role ?? before.role) as Role;
 
   if (actor.role === 'Project Manager') {
     if (before.assignedRegion !== actor.assignedRegion) {
       return { ok: false, error: 'Forbidden: region access denied' };
     }
-    const nextRole = metadata.role ?? before.role;
     if (!manageableRolesFor(actor.role).includes(nextRole as Role)) {
       return { ok: false, error: 'You cannot assign that role' };
     }
     metadata.assignedRegion = actor.assignedRegion;
-  } else if (metadata.assignedRegion && !isCampaignRegion(metadata.assignedRegion)) {
+  } else if (!manageableRolesFor(actor.role).includes(nextRole)) {
+    return { ok: false, error: 'You cannot assign that role' };
+  }
+
+  const nextAssignedRegion = nextRole === 'Super Administrator'
+    ? undefined
+    : metadata.assignedRegion ?? before.assignedRegion;
+
+  if (nextRole !== 'Super Administrator' && (!nextAssignedRegion || !isCampaignRegion(nextAssignedRegion))) {
     return { ok: false, error: 'Valid assigned region is required' };
   }
 
   const { error } = await db.auth.admin.updateUserById(userId, {
     app_metadata: {
-      role: metadata.role ?? before.role,
-      assignedRegion: metadata.assignedRegion ?? before.assignedRegion,
+      role: nextRole,
+      assignedRegion: nextAssignedRegion,
     },
     user_metadata: {
       name: metadata.name ?? before.name,
@@ -237,8 +247,8 @@ export async function actionUpdateUserMetadata(
     where: { id: userId },
     data: {
       name: metadata.name ?? before.name,
-      role: ROLE_TO_PRISMA[(metadata.role ?? before.role) as Role] ?? 'ScreeningOfficer',
-      assignedRegion: metadata.assignedRegion ?? before.assignedRegion ?? null,
+      role: ROLE_TO_PRISMA[nextRole] ?? 'ScreeningOfficer',
+      assignedRegion: nextAssignedRegion ?? null,
       initials: metadata.initials ?? before.initials,
       color: metadata.color ?? before.color,
     },
@@ -249,10 +259,10 @@ export async function actionUpdateUserMetadata(
     action: 'update',
     entity: 'User',
     entityId: userId,
-    region: metadata.assignedRegion ?? before.assignedRegion,
+    region: nextAssignedRegion,
     details: `Updated user ${metadata.name ?? before.name}`,
     before,
-    after: metadata,
+    after: { ...metadata, role: nextRole, assignedRegion: nextAssignedRegion },
   });
   return { ok: true, data: null };
 }

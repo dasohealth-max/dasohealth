@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
+import type { jsPDF } from 'jspdf';
 import { actionAuditReportExport, getReportAggregation, getReportRawData, type ReportAggregation } from '@/app/actions/reports';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -48,6 +49,13 @@ export default function ReportsPage() {
     campaignId === 'all'
       ? 'All campaigns'
       : ((agg?.allCampaigns ?? []).find((c) => c.id === campaignId)?.name ?? 'All campaigns');
+  const selectedCampaign = (agg?.allCampaigns ?? []).find((c) => c.id === campaignId);
+  const selectedCampaignLabel = campaignId === 'all'
+    ? 'All campaigns'
+    : selectedCampaign
+      ? `${selectedCampaign.name} · ${selectedCampaign.region}`
+      : selectedCampaignName;
+  const selectedRegionLabel = region === 'all' ? 'All regions' : region;
 
   const today = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
@@ -349,9 +357,24 @@ export default function ReportsPage() {
       const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
       const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
       const registered = patients.length;
+      const workflowChartData = [
+        { label: 'Registered', value: registered, color: [0, 46, 99] as Rgb },
+        { label: 'Screened', value: screenings.length, color: [36, 115, 181] as Rgb },
+        { label: 'Surgery Booked', value: surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted, color: [245, 158, 11] as Rgb },
+        { label: 'Surgery Completed', value: surgeriesCompleted, color: [44, 153, 66] as Rgb },
+        { label: 'Follow-up Done', value: completedFollowUps, color: [69, 176, 102] as Rgb },
+      ];
+      const surgeryStatusChartData = [
+        { label: 'Scheduled', value: surgeriesScheduled, color: [245, 158, 11] as Rgb },
+        { label: 'In-Theatre', value: surgeriesInTheatre, color: [36, 115, 181] as Rgb },
+        { label: 'Completed', value: surgeriesCompleted, color: [44, 153, 66] as Rgb },
+        { label: 'Postponed', value: surgeriesPostponed, color: [100, 113, 132] as Rgb },
+        { label: 'Cancelled', value: surgeriesCancelled, color: [229, 57, 53] as Rgb },
+      ].filter((item) => item.value > 0);
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 36;
 
       doc.setFont('helvetica', 'bold');
@@ -385,10 +408,25 @@ export default function ReportsPage() {
         margin: { left: margin, right: margin },
       });
 
+      drawPdfVisualSummary({
+        doc,
+        x: margin,
+        y: ((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 210) + 18,
+        width: pageWidth - margin * 2,
+        height: pageHeight - (((doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 210) + 70),
+        regionPerformance: rp,
+        workflowData: workflowChartData,
+        surgeryStatusData: surgeryStatusChartData,
+      });
+
+      doc.addPage();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(0, 46, 99);
+      doc.text('Region Performance', margin, 42);
+
       autoTable(doc, {
-        startY: (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
-          ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 20
-          : 220,
+        startY: 58,
         head: [['Region', 'Status', 'Campaigns', 'Patients', 'Screenings', 'Target', 'Completed', 'Rate %', 'FU Done', 'FU Overdue']],
         body: rp.map((r) => [
           r.region,
@@ -552,10 +590,14 @@ export default function ReportsPage() {
               if (v) { setRegion(v); setCampaignId('all'); }
             }}
           >
-            <SelectTrigger className="rounded-xl">
-              <SelectValue placeholder="All regions" />
+            <SelectTrigger className="w-full rounded-xl">
+              {selectedRegionLabel ? (
+                <span className="min-w-0 flex-1 truncate text-left">{selectedRegionLabel}</span>
+              ) : (
+                <SelectValue placeholder="All regions" />
+              )}
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="start" className="min-w-80 max-w-[calc(100vw-2rem)]">
               <SelectItem value="all">All regions</SelectItem>
               {availableRegions.map((r) => (
                 <SelectItem key={r} value={r}>{r}</SelectItem>
@@ -568,10 +610,14 @@ export default function ReportsPage() {
           value={campaignId}
           onValueChange={(v) => { if (v) setCampaignId(v); }}
         >
-          <SelectTrigger className="rounded-xl">
-            <SelectValue placeholder="All campaigns" />
+          <SelectTrigger className="w-full rounded-xl">
+            {selectedCampaignLabel ? (
+              <span className="min-w-0 flex-1 truncate text-left">{selectedCampaignLabel}</span>
+            ) : (
+              <SelectValue placeholder="All campaigns" />
+            )}
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent align="start" className="min-w-[32rem] max-w-[calc(100vw-2rem)]">
             <SelectItem value="all">All campaigns</SelectItem>
             {availableCampaigns.map((c) => (
               <SelectItem key={c.id} value={c.id}>
@@ -883,6 +929,211 @@ export default function ReportsPage() {
 }
 
 // ── Helper components ─────────────────────────────────────────────────────────
+
+type Rgb = [number, number, number];
+
+type PdfRegionPerformance = {
+  region: string;
+  targetSurgeries: number;
+  completed: number;
+  completionRate: number;
+};
+
+type PdfChartDatum = {
+  label: string;
+  value: number;
+  color: Rgb;
+};
+
+function drawPdfVisualSummary({
+  doc,
+  x,
+  y,
+  width,
+  height,
+  regionPerformance,
+  workflowData,
+  surgeryStatusData,
+}: {
+  doc: jsPDF;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  regionPerformance: PdfRegionPerformance[];
+  workflowData: PdfChartDatum[];
+  surgeryStatusData: PdfChartDatum[];
+}) {
+  const gap = 16;
+  const leftWidth = Math.round(width * 0.62);
+  const rightWidth = width - leftWidth - gap;
+  const rightHeight = (height - gap) / 2;
+
+  drawPdfRegionProgressChart(doc, {
+    x,
+    y,
+    width: leftWidth,
+    height,
+    title: 'Regional Surgery Progress',
+    subtitle: 'Completed surgeries compared with remaining target',
+    rows: regionPerformance,
+  });
+
+  drawPdfVerticalBarChart(doc, {
+    x: x + leftWidth + gap,
+    y,
+    width: rightWidth,
+    height: rightHeight,
+    title: 'Patient Workflow',
+    subtitle: 'Registered to completed follow-up',
+    data: workflowData,
+    unit: 'patients',
+  });
+
+  drawPdfVerticalBarChart(doc, {
+    x: x + leftWidth + gap,
+    y: y + rightHeight + gap,
+    width: rightWidth,
+    height: rightHeight,
+    title: 'Surgery Status',
+    subtitle: 'Current surgical workload',
+    data: surgeryStatusData,
+    unit: 'surgeries',
+  });
+}
+
+function drawPdfPanel(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, subtitle: string) {
+  doc.setDrawColor(221, 227, 234);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(x, y, width, height, 8, 8, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(20, 25, 32);
+  doc.text(title, x + 14, y + 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 113, 132);
+  doc.text(subtitle, x + 14, y + 33);
+}
+
+function drawPdfRegionProgressChart(doc: jsPDF, config: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  subtitle: string;
+  rows: PdfRegionPerformance[];
+}) {
+  drawPdfPanel(doc, config.x, config.y, config.width, config.height, config.title, config.subtitle);
+  const rows = config.rows.slice(0, 9);
+  if (rows.length === 0) {
+    drawPdfEmptyState(doc, config.x, config.y, config.width, config.height, 'No regional performance data');
+    return;
+  }
+
+  const chartX = config.x + 112;
+  const chartY = config.y + 52;
+  const chartW = config.width - 142;
+  const rowGap = 18;
+  const barH = 8;
+  const maxTarget = Math.max(1, ...rows.map((row) => row.targetSurgeries || row.completed));
+
+  rows.forEach((row, index) => {
+    const y = chartY + index * rowGap;
+    const targetWidth = Math.max(1, (Math.max(row.targetSurgeries, row.completed) / maxTarget) * chartW);
+    const completedWidth = Math.max(row.completed > 0 ? 1 : 0, (row.completed / maxTarget) * chartW);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(75, 86, 102);
+    doc.text(truncatePdfLabel(row.region, 20), config.x + 14, y + 7);
+
+    doc.setFillColor(221, 227, 234);
+    doc.roundedRect(chartX, y, targetWidth, barH, 3, 3, 'F');
+    if (completedWidth > 0) {
+      doc.setFillColor(44, 153, 66);
+      doc.roundedRect(chartX, y, completedWidth, barH, 3, 3, 'F');
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(row.completionRate >= 25 ? 44 : 229, row.completionRate >= 25 ? 153 : 57, row.completionRate >= 25 ? 66 : 53);
+    doc.text(`${row.completionRate}%`, chartX + chartW + 8, y + 7);
+  });
+
+  drawPdfLegend(doc, config.x + 14, config.y + config.height - 18, [
+    { label: 'Completed', color: [44, 153, 66] },
+    { label: 'Remaining target', color: [221, 227, 234] },
+  ]);
+}
+
+function drawPdfVerticalBarChart(doc: jsPDF, config: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  subtitle: string;
+  data: PdfChartDatum[];
+  unit: string;
+}) {
+  drawPdfPanel(doc, config.x, config.y, config.width, config.height, config.title, config.subtitle);
+  const data = config.data.filter((item) => item.value > 0);
+  if (data.length === 0) {
+    drawPdfEmptyState(doc, config.x, config.y, config.width, config.height, `No ${config.unit} data`);
+    return;
+  }
+
+  const chartX = config.x + 20;
+  const chartY = config.y + 52;
+  const chartW = config.width - 40;
+  const chartH = config.height - 86;
+  const maxValue = Math.max(1, ...data.map((item) => item.value));
+  const slot = chartW / data.length;
+  const barW = Math.min(34, slot * 0.55);
+
+  data.forEach((item, index) => {
+    const barH = Math.max(2, (item.value / maxValue) * chartH);
+    const x = chartX + index * slot + (slot - barW) / 2;
+    const y = chartY + chartH - barH;
+    doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+    doc.roundedRect(x, y, barW, barH, 3, 3, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(20, 25, 32);
+    doc.text(String(item.value), x + barW / 2, y - 4, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 113, 132);
+    doc.text(truncatePdfLabel(item.label, 11), x + barW / 2, chartY + chartH + 12, { align: 'center' });
+  });
+}
+
+function drawPdfLegend(doc: jsPDF, x: number, y: number, items: { label: string; color: Rgb }[]) {
+  let offset = 0;
+  items.forEach((item) => {
+    doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+    doc.roundedRect(x + offset, y - 7, 9, 9, 2, 2, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 113, 132);
+    doc.text(item.label, x + offset + 13, y);
+    offset += doc.getTextWidth(item.label) + 34;
+  });
+}
+
+function drawPdfEmptyState(doc: jsPDF, x: number, y: number, width: number, height: number, message: string) {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 113, 132);
+  doc.text(message, x + width / 2, y + height / 2, { align: 'center' });
+}
+
+function truncatePdfLabel(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, Math.max(0, maxLength - 1))}...` : value;
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

@@ -27,7 +27,7 @@ const SCREENING_STATUSES = ['Awaiting Screening', 'Screened'] as const;
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
   input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
-  sel:   'rounded-md',
+  sel:   'w-full rounded-md',
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -237,6 +237,7 @@ export default function PatientsPage() {
           onSave={save}
           saveLabel={editing ? 'Save Changes' : 'Register Patient'}
           saveDisabled={formInvalid}
+          wide
         >
           {saveError && (
             <div className="mb-4 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
@@ -396,24 +397,34 @@ function PatientRegistrationForm({
   chooseRegionalPlan: (id: string) => void;
 }) {
   const selectedPlan = selectedCampaign?.regions?.find((plan) => plan.id === form.campaignRegionId);
+  const selectedCampaignLabel = selectedCampaign
+    ? `${selectedCampaign.name} - ${selectedCampaign.regions?.length ?? 0} regional plans`
+    : '';
+  const selectedPlanLabel = selectedPlan
+    ? `${selectedPlan.region} - ${selectedPlan.operationDistrict}`
+    : '';
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Campaign & Location</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="sm:col-span-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Campaign & Location</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div>
             <label className={F.label}>Campaign *</label>
             {campaignLocked && selectedCampaign ? (
-              <div className="rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2 text-sm text-[#4B5666]">
+              <div className="truncate rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2 text-sm text-[#4B5666]">
                 {selectedCampaign.name}
                 <span className="ml-2 text-[#647184]">- {selectedPlan?.region ?? 'Select regional plan'}</span>
               </div>
             ) : (
               <Select value={form.campaignId} onValueChange={(v) => { if (v) chooseCampaign(v); }}>
                 <SelectTrigger className={F.sel}>
-                  <SelectValue placeholder="Select campaign" />
+                  {selectedCampaignLabel ? (
+                    <span className="min-w-0 flex-1 truncate text-left">{selectedCampaignLabel}</span>
+                  ) : (
+                    <SelectValue placeholder="Select campaign" />
+                  )}
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start" className="min-w-96 max-w-[calc(100vw-2rem)]">
                   {campaigns.map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name} - {c.regions?.length ?? 0} regional plans</SelectItem>
                   ))}
@@ -421,13 +432,17 @@ function PatientRegistrationForm({
               </Select>
             )}
           </div>
-          <div className="sm:col-span-3">
+          <div>
             <label className={F.label}>Regional Plan *</label>
             <Select value={form.campaignRegionId} disabled={!selectedCampaign} onValueChange={(v) => { if (v) chooseRegionalPlan(v); }}>
               <SelectTrigger className={F.sel}>
-                <SelectValue placeholder={selectedCampaign ? 'Select regional plan' : 'Select campaign first'} />
+                {selectedPlanLabel ? (
+                  <span className="min-w-0 flex-1 truncate text-left">{selectedPlanLabel}</span>
+                ) : (
+                  <SelectValue placeholder={selectedCampaign ? 'Select regional plan' : 'Select campaign first'} />
+                )}
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent align="start" className="min-w-80 max-w-[calc(100vw-2rem)]">
                 {(selectedCampaign?.regions ?? []).map((plan) => (
                   <SelectItem key={plan.id} value={plan.id}>{plan.region} - {plan.operationDistrict}</SelectItem>
                 ))}
@@ -438,7 +453,7 @@ function PatientRegistrationForm({
             <label className={F.label}>State / Region</label>
             <input value={form.region} disabled className={F.input} placeholder="Auto-filled from campaign" />
           </div>
-          <div className="sm:col-span-2">
+          <div>
             <label className={F.label}>Operation City / District</label>
             <input value={form.operationDistrict} disabled className={F.input} placeholder="Auto-filled from campaign" />
           </div>
@@ -446,9 +461,9 @@ function PatientRegistrationForm({
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Patient Identity</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-          <div className="sm:col-span-2">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Patient Identity</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="xl:col-span-2">
             <label className={F.label}>Full Name *</label>
             <input
               value={form.fullName}
@@ -471,7 +486,7 @@ function PatientRegistrationForm({
               <SelectContent>{DISABILITIES.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div className="sm:col-span-4">
+          <div className="md:col-span-2 xl:col-span-2">
             <label className={F.label}>Date of Birth * — Day / Month / Year</label>
             <DateOfBirthPicker value={form.dateOfBirth} onChange={(v) => set('dateOfBirth', v)} />
           </div>
@@ -479,8 +494,8 @@ function PatientRegistrationForm({
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Contact Details</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Contact Details</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <label className={F.label}>Phone Number *</label>
             <input
@@ -512,8 +527,8 @@ function PatientRegistrationForm({
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Background</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Background</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <label className={F.label}>Occupation</label>
             <input
@@ -532,21 +547,21 @@ function PatientRegistrationForm({
           </div>
           <div>
             <label className={F.label}>Consent Given</label>
-            <div className="flex h-9.5 items-center gap-3 rounded-md border border-[#DDE3EA] bg-white px-3">
+            <div className="flex min-h-10 items-center gap-3 rounded-md border border-[#DDE3EA] bg-white px-3 py-2">
               <input
                 type="checkbox"
                 checked={form.consentGiven}
                 onChange={(e) => set('consentGiven', e.target.checked)}
                 className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
               />
-              <span className="text-sm text-[#4B5666]">Patient has consented to treatment</span>
+              <span className="text-sm leading-tight text-[#4B5666]">Patient has consented to treatment</span>
             </div>
           </div>
         </div>
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Notes</p>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Notes</p>
         <textarea
           value={form.notes ?? ''}
           onChange={(e) => set('notes', e.target.value)}

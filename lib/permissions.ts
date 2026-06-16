@@ -76,7 +76,7 @@ export function defaultPathForRole(role: string): string {
 }
 
 export function manageableRolesFor(role: string): Role[] {
-  if (role === 'Super Administrator') return ['Project Manager', 'Data Clerk', 'Screening Officer'];
+  if (role === 'Super Administrator') return ['Super Administrator', 'Project Manager', 'Data Clerk', 'Screening Officer'];
   if (role === 'Project Manager') return ['Data Clerk', 'Screening Officer'];
   return [];
 }
