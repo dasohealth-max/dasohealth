@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -46,14 +46,14 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
             className={cn(
               'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-all group',
               active
-                ? 'bg-white/10 text-white shadow-sm'
+                ? 'bg-[#2C9942] text-white shadow-sm'
                 : 'text-white/70 hover:bg-white/10 hover:text-white',
               collapsed && 'justify-center px-0',
             )}
             title={collapsed ? label : undefined}
           >
             {active && !collapsed && (
-              <span className="absolute left-[-10px] top-2 bottom-2 w-1 rounded-full bg-[#6FCFA0]" />
+              <span className="absolute left-[-10px] top-2 bottom-2 w-1 rounded-full bg-[#6FC587]" />
             )}
             <Icon
               size={18}
@@ -91,7 +91,7 @@ function Logo({ collapsed }: { collapsed: boolean }) {
 export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggleCollapse }: SidebarProps) {
   return (
     <>
-      {/* ── Mobile overlay backdrop ── */}
+      {/* â”€â”€ Mobile overlay backdrop â”€â”€ */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
@@ -99,9 +99,9 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
         />
       )}
 
-      {/* ── Mobile drawer ── */}
+      {/* â”€â”€ Mobile drawer â”€â”€ */}
       <aside className={cn(
-        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-[#0F4D2A] text-white transition-transform duration-300 lg:hidden',
+        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-[#002E63] text-white transition-transform duration-300 lg:hidden',
         mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
       )}>
         <div className="flex items-center justify-between gap-3 px-4 py-5 border-b border-white/10">
@@ -118,9 +118,9 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
         <NavLinks collapsed={false} onClose={onMobileClose} />
       </aside>
 
-      {/* ── Desktop sidebar (always visible, collapsible) ── */}
+      {/* â”€â”€ Desktop sidebar (always visible, collapsible) â”€â”€ */}
       <aside className={cn(
-        'hidden lg:relative lg:flex lg:flex-col bg-[#0F4D2A] text-white transition-all duration-300 shrink-0',
+        'hidden lg:relative lg:flex lg:flex-col bg-[#002E63] text-white transition-all duration-300 shrink-0',
         collapsed ? 'w-[72px]' : 'w-[264px]',
       )}>
         <Logo collapsed={collapsed} />
@@ -136,3 +136,4 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
     </>
   );
 }
+

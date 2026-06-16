@@ -1,4 +1,4 @@
-import type { FollowUp } from '@/types';
+import type { Campaign, FollowUp } from '@/types';
 
 export type RegionStatus = 'No campaign' | 'No activity' | 'Behind' | 'Active' | 'Strong';
 
@@ -43,4 +43,48 @@ export function followUpCounts(followUps: Pick<FollowUp, 'status' | 'doctorRevie
     doctorReviewPending: followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length,
     doctorReviewCompleted: followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length,
   };
+}
+
+export type CampaignLinkedRow = {
+  campaignId?: string | null;
+};
+
+export function registeredCampaignIds(campaigns: Pick<Campaign, 'id'>[]): Set<string> {
+  return new Set(campaigns.map((campaign) => campaign.id));
+}
+
+export function filterRowsByRegisteredCampaign<T extends CampaignLinkedRow>(
+  rows: T[],
+  campaignIds: Set<string>,
+): T[] {
+  if (campaignIds.size === 0) return [];
+  return rows.filter((row) => Boolean(row.campaignId && campaignIds.has(row.campaignId)));
+}
+
+export function campaignHasRegion(campaign: Campaign, region: string): boolean {
+  if (campaign.region === region) return true;
+  return campaign.regions?.some((plan) => plan.region === region) ?? false;
+}
+
+export function campaignsForRegion(campaigns: Campaign[], region: string): Campaign[] {
+  return campaigns.filter((campaign) => campaignHasRegion(campaign, region));
+}
+
+export function campaignTargetSurgeries(campaign: Campaign): number {
+  if (campaign.regions && campaign.regions.length > 0) {
+    return campaign.regions.reduce((sum, plan) => sum + plan.targetSurgeries, 0);
+  }
+
+  return campaign.targetSurgeries;
+}
+
+export function campaignTargetSurgeriesForRegion(campaigns: Campaign[], region: string): number {
+  return campaigns.reduce((sum, campaign) => {
+    const matchingPlans = campaign.regions?.filter((plan) => plan.region === region) ?? [];
+    if (matchingPlans.length > 0) {
+      return sum + matchingPlans.reduce((planSum, plan) => planSum + plan.targetSurgeries, 0);
+    }
+
+    return campaign.region === region ? sum + campaign.targetSurgeries : sum;
+  }, 0);
 }

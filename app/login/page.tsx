@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -50,10 +50,10 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#FAFAF8] px-5 py-8">
-      <div className="grid min-h-[680px] w-full max-w-6xl overflow-hidden rounded-2xl border border-[#D0E8DA] bg-white shadow-[var(--shadow-lg)] lg:grid-cols-[1.12fr_500px]">
-        <section className="hidden border-r border-[#D0E8DA] bg-[#0F4D2A] p-12 text-white lg:flex lg:flex-col lg:justify-between xl:p-14">
-          {/* Empty top spacer — pushes logo + tagline into center zone */}
+    <div className="flex min-h-screen items-center justify-center bg-[#F5F7FA] px-5 py-8">
+      <div className="grid min-h-[680px] w-full max-w-6xl overflow-hidden rounded-2xl border border-[#DDE3EA] bg-white shadow-[var(--shadow-lg)] lg:grid-cols-[1.12fr_500px]">
+        <section className="hidden border-r border-[#DDE3EA] bg-[#002E63] p-12 text-white lg:flex lg:flex-col lg:justify-between xl:p-14">
+          {/* Empty top spacer â€” pushes logo + tagline into center zone */}
           <div />
 
           {/* Logo + Tagline grouped in center zone */}
@@ -95,20 +95,20 @@ function LoginForm() {
           </div>
 
           <div className="mb-9">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#7A9A87]">Secure access</p>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight text-[#1C2B22]">Sign in to DAS Health</h2>
-            <p className="mt-2 text-base text-[#7A9A87]">Regional Eye Care Management</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#647184]">Secure access</p>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight text-[#141920]">Sign in to DAS Health</h2>
+            <p className="mt-2 text-base text-[#647184]">Regional Eye Care Management</p>
           </div>
 
           {error && (
-            <div className="mb-5 rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-3 text-sm text-[#8B1E1E]">
+            <div className="mb-5 rounded-xl border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#A32421]">
               {error}
             </div>
           )}
 
           <form onSubmit={submit} className="space-y-5">
             <div>
-              <Label className="mb-2 block text-sm font-semibold text-[#1C2B22]">Email address</Label>
+              <Label className="mb-2 block text-sm font-semibold text-[#141920]">Email address</Label>
               <Input
                 type="email"
                 autoComplete="username"
@@ -117,15 +117,15 @@ function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="h-12 rounded-md border-[#C0D8CC] bg-[#FAFAF8] px-4 text-base focus:border-[#1A7A46] focus:ring-[#1A7A46]/20"
+                className="h-12 rounded-md border-[#CDD5DF] bg-[#F5F7FA] px-4 text-base focus:border-[#2C9942] focus:ring-[#2C9942]/20"
               />
             </div>
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <Label className="text-sm font-semibold text-[#1C2B22]">Password</Label>
+                <Label className="text-sm font-semibold text-[#141920]">Password</Label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-[#7A9A87] transition-colors hover:text-[#1A7A46]"
+                  className="text-xs text-[#647184] transition-colors hover:text-[#2C9942]"
                 >
                   Forgot password?
                 </Link>
@@ -139,12 +139,12 @@ function LoginForm() {
                   value={pass}
                   onChange={(e) => setPass(e.target.value)}
                   required
-                  className="h-12 rounded-md border-[#C0D8CC] bg-[#FAFAF8] px-4 pr-11 text-base focus:border-[#1A7A46] focus:ring-[#1A7A46]/20"
+                  className="h-12 rounded-md border-[#CDD5DF] bg-[#F5F7FA] px-4 pr-11 text-base focus:border-[#2C9942] focus:ring-[#2C9942]/20"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass((v) => !v)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7A9A87] hover:text-[#1C2B22]"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#647184] hover:text-[#141920]"
                   aria-label={showPass ? 'Hide password' : 'Show password'}
                 >
                   {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -154,13 +154,13 @@ function LoginForm() {
             <Button
               type="submit"
               disabled={loading}
-              className="mt-2 h-12 w-full rounded-md bg-[#1A7A46] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#0F4D2A]"
+              className="mt-2 h-12 w-full rounded-md bg-[#2C9942] text-base font-semibold text-white shadow-[var(--shadow-brand)] hover:bg-[#002E63]"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
 
-          <p className="mt-10 text-center text-[11px] text-[#7A9A87]">
+          <p className="mt-10 text-center text-[11px] text-[#647184]">
             DAS Health
           </p>
         </section>
@@ -176,3 +176,4 @@ export default function LoginPage() {
     </Suspense>
   );
 }
+

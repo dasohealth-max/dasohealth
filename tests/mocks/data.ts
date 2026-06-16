@@ -17,7 +17,27 @@ export const galmudugCampaign: Campaign = {
   targetSurgeries: 400,
   targetFollowUps: 1200,
   description: '',
+  notes: '',
   createdAt: '2025-01-01T00:00:00.000Z',
+  updatedAt: '2025-01-01T00:00:00.000Z',
+  regions: [{
+    id: 'plan-galmudug-1',
+    campaignId: 'camp-galmudug-1',
+    type: 'Cataract Surgery Outreach',
+    region: 'Galmudug',
+    operationDistrict: 'Dhuusamareeb',
+    regionalManagerId: 'actor-pm-1',
+    regionalManagerName: 'PM Galmudug',
+    targetPatients: 600,
+    targetScreenings: 500,
+    targetSurgeries: 400,
+    startDate: '2025-01-01',
+    endDate: '2025-12-31',
+    status: 'On Track',
+    notes: '',
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-01-01T00:00:00.000Z',
+  }],
 };
 
 export const banadiCampaign: Campaign = {
@@ -37,7 +57,27 @@ export const banadiCampaign: Campaign = {
   targetSurgeries: 800,
   targetFollowUps: 2400,
   description: '',
+  notes: '',
   createdAt: '2025-01-01T00:00:00.000Z',
+  updatedAt: '2025-01-01T00:00:00.000Z',
+  regions: [{
+    id: 'plan-banadir-1',
+    campaignId: 'camp-banadir-1',
+    type: 'Cataract Surgery Outreach',
+    region: 'Banadir / Mogadishu',
+    operationDistrict: 'Mogadishu',
+    regionalManagerId: 'actor-pm-2',
+    regionalManagerName: 'PM Banadir',
+    targetPatients: 1000,
+    targetScreenings: 800,
+    targetSurgeries: 800,
+    startDate: '2025-01-01',
+    endDate: '2025-12-31',
+    status: 'On Track',
+    notes: '',
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-01-01T00:00:00.000Z',
+  }],
 };
 
 export const galmudugPatient: Patient = {
@@ -57,6 +97,7 @@ export const galmudugPatient: Patient = {
   consentGiven: true,
   consentDate: '2025-02-01',
   campaignId: 'camp-galmudug-1',
+  campaignRegionId: 'plan-galmudug-1',
   referralSource: 'Community',
   registeredById: 'actor-clerk-1',
   registeredByName: 'Clerk Galmudug',
@@ -109,7 +150,7 @@ export const galmudugFollowUp: FollowUp = {
 
 export const campaignInput = {
   name: 'Galmudug Cataract 2025',
-  type: 'Cataract' as const,
+  type: 'Cataract Surgery Outreach' as const,
   status: 'Active' as const,
   region: 'Galmudug',
   operationDistrict: 'Dhuusamareeb',
@@ -117,12 +158,8 @@ export const campaignInput = {
   projectManagerName: 'PM Galmudug',
   startDate: '2025-01-01',
   endDate: '2025-12-31',
-  budget: 50000,
-  donors: 'WHO',
-  targetScreenings: 500,
-  targetSurgeries: 400,
-  targetFollowUps: 1200,
   description: '',
+  notes: '',
 };
 
 export const patientInput = {
@@ -137,5 +174,6 @@ export const patientInput = {
   consentGiven: true,
   consentDate: '2025-02-01',
   campaignId: 'camp-galmudug-1',
+  campaignRegionId: 'plan-galmudug-1',
   referralSource: 'Community',
 };

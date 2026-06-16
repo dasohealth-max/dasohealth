@@ -8,7 +8,16 @@ import { fromPrisma as screeningFromPrisma } from '@/lib/api/screenings';
 import { fromPrisma as surgeryFromPrisma } from '@/lib/api/surgeries';
 import { fromPrisma as followUpFromPrisma, medFromPrisma } from '@/lib/api/follow_ups';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
-import { completionRate, regionStatus, STATUS_WEIGHT } from '@/lib/reporting';
+import {
+  campaignHasRegion,
+  campaignTargetSurgeries,
+  campaignTargetSurgeriesForRegion,
+  completionRate,
+  filterRowsByRegisteredCampaign,
+  regionStatus,
+  registeredCampaignIds,
+  STATUS_WEIGHT,
+} from '@/lib/reporting';
 import type { Campaign, Patient, Screening, Surgery, FollowUp, FollowUpMedication } from '@/types';
 
 type ActionResult<T = null> =
@@ -18,7 +27,7 @@ type ActionResult<T = null> =
 export async function actionAuditReportExport(input: {
   region: string;
   campaign: string;
-  format: 'xlsx';
+  format: 'xlsx' | 'pdf';
 }): Promise<ActionResult> {
   const actor = await requireActor('reports', 'export');
   if ('error' in actor) return { ok: false, error: actor.error };
@@ -140,12 +149,12 @@ function computeRegionPerf(
   surgeries: Surgery[],
   followUps: FollowUp[],
 ): RegionPerformanceItem {
-  const rc = scopedCampaigns.filter((c) => c.region === regionName);
+  const rc = scopedCampaigns.filter((c) => campaignHasRegion(c, regionName));
   const rp = patients.filter((p) => p.region === regionName);
   const rs = screenings.filter((s) => s.region === regionName);
   const rsu = surgeries.filter((s) => s.region === regionName);
   const rfu = followUps.filter((fu) => fu.region === regionName);
-  const target = rc.reduce((sum, c) => sum + c.targetSurgeries, 0);
+  const target = campaignTargetSurgeriesForRegion(rc, regionName);
   const done = rsu.filter((s) => s.status === 'Completed').length;
   const rate = completionRate(done, target);
   const status = regionStatus({
@@ -187,11 +196,22 @@ export async function getReportAggregation(params: {
   const regionScope = scopedRegionWhere(actor);
   const entityWhere = buildEntityWhere(regionScope, params.filterRegion, params.filterCampaignId);
 
-  const allCampaignRows = await prisma.campaign.findMany({ where: regionScope, orderBy: { createdAt: 'desc' } });
+  const allCampaignRows = await prisma.campaign.findMany({
+    where: regionScope,
+    include: { regions: { orderBy: { createdAt: 'asc' } } },
+    orderBy: { createdAt: 'desc' },
+  });
   const allCampaigns = allCampaignRows.map(campaignFromPrisma);
 
-  const regionSet = new Set(allCampaigns.map((c) => c.region));
+  const regionSet = new Set(allCampaigns.flatMap((c) => [c.region, ...(c.regions?.map((plan) => plan.region) ?? [])]));
   const availableRegions = REGIONAL_CAMPAIGN_AREAS.map((a) => a.region).filter((r) => regionSet.has(r));
+
+  const scopedCampaigns = allCampaigns.filter(
+    (c) =>
+      (params.filterRegion === 'all' || campaignHasRegion(c, params.filterRegion)) &&
+      (params.filterCampaignId === 'all' || c.id === params.filterCampaignId),
+  );
+  const scopedCampaignIds = registeredCampaignIds(scopedCampaigns);
 
   const [patientRows, screeningRows, surgeryRows, followUpRows, medRows] = await Promise.all([
     prisma.patient.findMany({ where: entityWhere }),
@@ -201,19 +221,19 @@ export async function getReportAggregation(params: {
     prisma.followUpMedication.findMany({ where: { followUp: entityWhere } }),
   ]);
 
-  const patients = patientRows.map(patientFromPrisma);
-  const screenings = screeningRows.map(screeningFromPrisma);
-  const surgeries = surgeryRows.map(surgeryFromPrisma);
-  const followUps = followUpRows.map(followUpFromPrisma);
-  const medications = medRows.map(medFromPrisma);
+  const patients = filterRowsByRegisteredCampaign(patientRows.map(patientFromPrisma), scopedCampaignIds);
+  const screenings = filterRowsByRegisteredCampaign(screeningRows.map(screeningFromPrisma), scopedCampaignIds);
+  const surgeries = filterRowsByRegisteredCampaign(surgeryRows.map(surgeryFromPrisma), scopedCampaignIds);
+  const followUps = filterRowsByRegisteredCampaign(followUpRows.map(followUpFromPrisma), scopedCampaignIds);
+  const followUpIds = new Set(followUps.map((followUp) => followUp.id));
+  const medications = medRows
+    .map(medFromPrisma)
+    .filter((medication) => followUpIds.has(medication.followUpId));
 
-  const scopedCampaigns = allCampaigns.filter(
-    (c) =>
-      (params.filterRegion === 'all' || c.region === params.filterRegion) &&
-      (params.filterCampaignId === 'all' || c.id === params.filterCampaignId),
+  const surgeryTarget = scopedCampaigns.reduce(
+    (sum, campaign) => sum + campaignTargetSurgeries(campaign),
+    0,
   );
-
-  const surgeryTarget = scopedCampaigns.reduce((sum, c) => sum + c.targetSurgeries, 0);
   const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
   const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
   const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
@@ -261,7 +281,7 @@ export async function getReportAggregation(params: {
       followUps: cFu.length,
       completedFollowUps: cFu.filter((fu) => fu.status === 'Completed').length,
       overdueFollowUps: cFu.filter((fu) => fu.status === 'Overdue').length,
-      completionRate: completionRate(done, c.targetSurgeries),
+      completionRate: completionRate(done, campaignTargetSurgeries(c)),
     };
   });
 
@@ -296,11 +316,11 @@ export async function getReportAggregation(params: {
       { step: 'Follow-up Done', count: completedFollowUps },
     ],
     surgeryStatusData: [
-      { name: 'Scheduled', value: surgeriesScheduled, fill: '#4A6455' },
-      { name: 'In-Theatre', value: surgeriesInTheatre, fill: '#6FCFA0' },
-      { name: 'Completed', value: surgeriesCompleted, fill: '#1A7A46' },
-      { name: 'Postponed', value: surgeriesPostponed, fill: '#C47D11' },
-      { name: 'Cancelled', value: surgeriesCancelled, fill: '#B52A2A' },
+      { name: 'Scheduled', value: surgeriesScheduled, fill: '#4B5666' },
+      { name: 'In-Theatre', value: surgeriesInTheatre, fill: '#6FC587' },
+      { name: 'Completed', value: surgeriesCompleted, fill: '#2C9942' },
+      { name: 'Postponed', value: surgeriesPostponed, fill: '#F59E0B' },
+      { name: 'Cancelled', value: surgeriesCancelled, fill: '#E53935' },
     ].filter((d) => d.value > 0),
     followUpByMilestone,
     regionPerformance,
@@ -321,7 +341,11 @@ export async function getReportRawData(params: {
   const regionScope = scopedRegionWhere(actor);
   const entityWhere = buildEntityWhere(regionScope, params.filterRegion, params.filterCampaignId);
 
-  const allCampaignRows = await prisma.campaign.findMany({ where: regionScope, orderBy: { createdAt: 'desc' } });
+  const allCampaignRows = await prisma.campaign.findMany({
+    where: regionScope,
+    include: { regions: { orderBy: { createdAt: 'asc' } } },
+    orderBy: { createdAt: 'desc' },
+  });
   const allCampaigns = allCampaignRows.map(campaignFromPrisma);
 
   const [patientRows, screeningRows, surgeryRows, followUpRows, medRows] = await Promise.all([
@@ -332,18 +356,22 @@ export async function getReportRawData(params: {
     prisma.followUpMedication.findMany({ where: { followUp: entityWhere } }),
   ]);
 
-  const patients = patientRows.map(patientFromPrisma);
-  const screenings = screeningRows.map(screeningFromPrisma);
-  const surgeries = surgeryRows.map(surgeryFromPrisma);
-  const followUps = followUpRows.map(followUpFromPrisma);
-  const medications = medRows.map(medFromPrisma);
   const campaigns = allCampaigns.filter(
     (c) =>
-      (params.filterRegion === 'all' || c.region === params.filterRegion) &&
+      (params.filterRegion === 'all' || campaignHasRegion(c, params.filterRegion)) &&
       (params.filterCampaignId === 'all' || c.id === params.filterCampaignId),
   );
+  const campaignIds = registeredCampaignIds(campaigns);
+  const patients = filterRowsByRegisteredCampaign(patientRows.map(patientFromPrisma), campaignIds);
+  const screenings = filterRowsByRegisteredCampaign(screeningRows.map(screeningFromPrisma), campaignIds);
+  const surgeries = filterRowsByRegisteredCampaign(surgeryRows.map(surgeryFromPrisma), campaignIds);
+  const followUps = filterRowsByRegisteredCampaign(followUpRows.map(followUpFromPrisma), campaignIds);
+  const followUpIds = new Set(followUps.map((followUp) => followUp.id));
+  const medications = medRows
+    .map(medFromPrisma)
+    .filter((medication) => followUpIds.has(medication.followUpId));
 
-  const regionSet = new Set(allCampaigns.map((c) => c.region));
+  const regionSet = new Set(allCampaigns.flatMap((c) => [c.region, ...(c.regions?.map((plan) => plan.region) ?? [])]));
   const availableRegions = REGIONAL_CAMPAIGN_AREAS.map((a) => a.region).filter((r) => regionSet.has(r));
   const regionsForPerf = params.filterRegion === 'all' ? availableRegions : [params.filterRegion];
   const regionPerformance = regionsForPerf
@@ -357,3 +385,4 @@ export async function getReportRawData(params: {
 
   return { campaigns, patients, screenings, surgeries, followUps, medications, regionPerformance };
 }
+

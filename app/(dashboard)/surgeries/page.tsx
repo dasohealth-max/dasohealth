@@ -22,17 +22,17 @@ const EYES: SurgeryEye[]        = ['Right', 'Left', 'Both'];
 const LENSES: LensType[]        = ['PMMA', 'Foldable Acrylic', 'Hydrophilic', 'Hydrophobic'];
 
 const STATUS_STYLE: Record<SurgeryStatus, string> = {
-  Scheduled:    'bg-[#E8F5EE] text-[#4A6455]',
-  'In-Theatre': 'bg-[#8FBFA4] text-[#0F4D2A]',
-  Completed:    'bg-[#E8F5EE] text-[#1A7A46]',
-  Cancelled:    'bg-[#FCE8E8] text-[#B52A2A]',
-  Postponed:    'bg-[#FEF3DC] text-[#C47D11]',
+  Scheduled:    'bg-[#EBF7EE] text-[#4B5666]',
+  'In-Theatre': 'bg-[#A6DCB5] text-[#002E63]',
+  Completed:    'bg-[#EBF7EE] text-[#2C9942]',
+  Cancelled:    'bg-[#FDECEB] text-[#E53935]',
+  Postponed:    'bg-[#FFF5E6] text-[#F59E0B]',
 };
 
 // Shared field styles
 const F = {
-  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
+  input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
   sel:   'rounded-md',
 };
 
@@ -200,7 +200,7 @@ export default function SurgeriesPage() {
           saveDisabled={formInvalid}
         >
           {saveError && (
-            <div className="mb-5 rounded-md border border-[#F0C0C0] bg-[#FCE8E8] px-3 py-2 text-sm text-[#B52A2A]">
+            <div className="mb-5 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
               {saveError}
             </div>
           )}
@@ -211,8 +211,8 @@ export default function SurgeriesPage() {
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#1C2B22]">Surgeries</h1>
-          <p className="text-sm text-[#4A6455]">
+          <h1 className="text-xl font-bold text-[#141920]">Surgeries</h1>
+          <p className="text-sm text-[#4B5666]">
             {isLoading ? 'Loading…' : `${total} ${total === 1 ? 'surgery' : 'surgeries'}`}
           </p>
         </div>
@@ -222,7 +222,7 @@ export default function SurgeriesPage() {
       <div className="flex flex-wrap items-center gap-3">
         {/* Search */}
         <div className="relative min-w-56 flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9A87]" size={13} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#647184]" size={13} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -258,13 +258,13 @@ export default function SurgeriesPage() {
         {hasFilters && (
           <button
             onClick={() => { setSearch(''); setStatusFilter(''); setRegionFilter(''); setPage(1); }}
-            className="flex items-center gap-1.5 rounded-md border border-[#D0E8DA] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+            className="flex items-center gap-1.5 rounded-md border border-[#DDE3EA] px-3 py-2 text-xs font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
           >
             <X size={12} /> Clear
           </button>
         )}
 
-        <span className="ml-auto shrink-0 text-sm text-[#7A9A87]">
+        <span className="ml-auto shrink-0 text-sm text-[#647184]">
           {total} {total === 1 ? 'surgery' : 'surgeries'}
         </span>
       </div>
@@ -274,45 +274,45 @@ export default function SurgeriesPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full min-w-200 text-sm">
-              <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+              <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
                   {['Patient', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87]">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={9} className="py-12 text-center text-sm text-[#7A9A87]">Loading surgeries...</td></tr>
+                  <tr><td colSpan={9} className="py-12 text-center text-sm text-[#647184]">Loading surgeries...</td></tr>
                 )}
                 {!isLoading && surgeries.length === 0 && (
-                  <tr><td colSpan={9} className="py-12 text-center text-sm text-[#7A9A87]">
+                  <tr><td colSpan={9} className="py-12 text-center text-sm text-[#647184]">
                     {hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}
                   </td></tr>
                 )}
                 {!isLoading && surgeries.map((surgery) => (
-                  <tr key={surgery.id} className="border-b border-[#F0EDE6] transition-colors hover:bg-[#FAFAF8]">
+                  <tr key={surgery.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
                     <td className="px-4 py-3.5">
-                      <p className="font-medium text-[#1C2B22]">{surgery.patientName}</p>
-                      {surgery.completedByName && <p className="text-xs text-[#7A9A87]">by {surgery.completedByName}</p>}
+                      <p className="font-medium text-[#141920]">{surgery.patientName}</p>
+                      {surgery.completedByName && <p className="text-xs text-[#647184]">by {surgery.completedByName}</p>}
                     </td>
                     <td className="px-4 py-3.5">
-                      <p className="text-[#1C2B22]">{surgery.region}</p>
-                      <p className="text-xs text-[#7A9A87]">{surgery.operationDistrict}</p>
+                      <p className="text-[#141920]">{surgery.region}</p>
+                      <p className="text-xs text-[#647184]">{surgery.operationDistrict}</p>
                     </td>
                     <td className="px-4 py-3.5">
                       <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[surgery.status]}`}>
                         {surgery.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-[#4A6455]">
+                    <td className="px-4 py-3.5 text-[#4B5666]">
                       <p>{surgery.eye}</p>
-                      <p className="text-xs text-[#7A9A87]">{surgery.lensType}</p>
+                      <p className="text-xs text-[#647184]">{surgery.lensType}</p>
                     </td>
-                    <td className="px-4 py-3.5 text-xs text-[#4A6455]">{formatDateTime(surgery.scheduledAt)}</td>
-                    <td className="px-4 py-3.5 text-xs text-[#4A6455]">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '—'}</td>
-                    <td className="px-4 py-3.5 text-[#4A6455]">{surgery.surgeonName || '—'}</td>
-                    <td className="max-w-48 truncate px-4 py-3.5 text-xs text-[#4A6455]" title={surgery.intraopNotes || surgery.complications || undefined}>
+                    <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(surgery.scheduledAt)}</td>
+                    <td className="px-4 py-3.5 text-xs text-[#4B5666]">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '—'}</td>
+                    <td className="px-4 py-3.5 text-[#4B5666]">{surgery.surgeonName || '—'}</td>
+                    <td className="max-w-48 truncate px-4 py-3.5 text-xs text-[#4B5666]" title={surgery.intraopNotes || surgery.complications || undefined}>
                       {surgery.intraopNotes || surgery.complications || '—'}
                     </td>
                     <td className="px-4 py-3.5">
@@ -320,7 +320,7 @@ export default function SurgeriesPage() {
                         {surgery.status !== 'Completed' && can('surgeries', 'edit') && (
                           <button
                             onClick={() => setCompleteTarget(surgery)}
-                            className="flex items-center gap-1 rounded-md bg-[#E8F5EE] px-2 py-1 text-xs font-medium text-[#1A7A46] transition hover:bg-[#8FBFA4]"
+                            className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
                           >
                             <CheckCircle size={11} /> Complete
                           </button>
@@ -328,7 +328,7 @@ export default function SurgeriesPage() {
                         {can('surgeries', 'edit') && (
                           <button
                             onClick={() => openEdit(surgery)}
-                            className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#E8F5EE] hover:text-[#1A7A46]"
+                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
                           >
                             <Pencil size={13} />
                           </button>
@@ -336,7 +336,7 @@ export default function SurgeriesPage() {
                         {can('surgeries', 'delete') && (
                           <button
                             onClick={() => setDeleteTarget(surgery)}
-                            className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#FCE8E8] hover:text-[#B52A2A]"
+                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -491,3 +491,4 @@ function SurgeryFormBody({
     </div>
   );
 }
+

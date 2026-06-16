@@ -19,7 +19,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
           <Topbar onMenuClick={() => setMobileOpen(true)} />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#FAFAF8]">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#F5F7FA]">
             {children}
           </main>
         </div>
@@ -27,3 +27,4 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     </AuthGuard>
   );
 }
+

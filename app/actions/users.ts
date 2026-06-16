@@ -6,6 +6,7 @@ import { auditLog, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import { isCampaignRegion } from '@/lib/regions';
 import { manageableRolesFor } from '@/lib/permissions';
 import type { Role, User } from '@/types';
+import type { UserRole } from '@/lib/generated/prisma/client';
 
 type ActionResult<T = null> =
   | { ok: true; data: T }
@@ -32,15 +33,97 @@ function toUser(u: {
   };
 }
 
+const ROLE_TO_PRISMA: Record<Role, UserRole> = {
+  'Super Administrator': 'SuperAdministrator',
+  'Project Manager': 'ProjectManager',
+  'Data Clerk': 'DataClerk',
+  'Screening Officer': 'ScreeningOfficer',
+};
+
+const ROLE_FROM_PRISMA: Record<string, Role> = {
+  SuperAdministrator: 'Super Administrator',
+  ProjectManager: 'Project Manager',
+  DataClerk: 'Data Clerk',
+  ScreeningOfficer: 'Screening Officer',
+};
+
+function toUserFromDb(u: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  assignedRegion: string | null;
+  initials: string;
+  color: string;
+  active: boolean;
+  createdAt: Date;
+}): User {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: ROLE_FROM_PRISMA[u.role] ?? 'Screening Officer',
+    assignedRegion: u.assignedRegion ?? undefined,
+    initials: u.initials,
+    color: u.color,
+    active: u.active,
+    createdAt: u.createdAt.toISOString(),
+  };
+}
+
+async function getDbUsers(): Promise<User[]> {
+  const rows = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+  return rows.map(toUserFromDb);
+}
+
+async function syncUserToDb(user: User) {
+  await prisma.user.upsert({
+    where: { id: user.id },
+    create: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: ROLE_TO_PRISMA[user.role] ?? 'ScreeningOfficer',
+      assignedRegion: user.assignedRegion ?? null,
+      initials: user.initials,
+      color: user.color,
+      active: user.active,
+      createdAt: new Date(user.createdAt),
+    },
+    update: {
+      name: user.name,
+      email: user.email,
+      role: ROLE_TO_PRISMA[user.role] ?? 'ScreeningOfficer',
+      assignedRegion: user.assignedRegion ?? null,
+      initials: user.initials,
+      color: user.color,
+      active: user.active,
+    },
+  });
+}
+
 export async function actionGetAllUsers(): Promise<ActionResult<User[]>> {
   const actor = await requireActor('settings', 'view');
   if ('error' in actor) return { ok: false, error: actor.error };
 
-  const db = createServerClient();
-  const { data, error } = await db.auth.admin.listUsers({ perPage: 1000 });
-  if (error) return { ok: false, error: error.message };
+  const dbUsers = await getDbUsers();
+  let users = dbUsers;
 
-  let users = data.users.map(toUser);
+  try {
+    const db = createServerClient();
+    const { data, error } = await db.auth.admin.listUsers({ perPage: 1000 });
+    if (!error) {
+      const authUsers = data.users.map(toUser);
+      const merged = new Map<string, User>();
+      dbUsers.forEach((user) => merged.set(user.id, user));
+      authUsers.forEach((user) => merged.set(user.id, user));
+      users = Array.from(merged.values());
+      await Promise.all(authUsers.map(syncUserToDb));
+    }
+  } catch {
+    users = dbUsers;
+  }
+
   if (actor.role !== 'Super Administrator') {
     users = users.filter((u) => u.assignedRegion === actor.assignedRegion);
   }
@@ -88,6 +171,17 @@ export async function actionCreateUser(input: {
   });
 
   if (error) return { ok: false, error: error.message };
+  await syncUserToDb({
+    id: data.user.id,
+    name: input.name,
+    email: input.email,
+    role: input.role as Role,
+    assignedRegion,
+    initials: input.initials,
+    color: input.color,
+    active: true,
+    createdAt: data.user.created_at,
+  });
   await auditLog({
     actor,
     action: 'create',
@@ -139,6 +233,16 @@ export async function actionUpdateUserMetadata(
   if (error && !error.message.toLowerCase().includes('not found')) {
     return { ok: false, error: error.message };
   }
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      name: metadata.name ?? before.name,
+      role: ROLE_TO_PRISMA[(metadata.role ?? before.role) as Role] ?? 'ScreeningOfficer',
+      assignedRegion: metadata.assignedRegion ?? before.assignedRegion ?? null,
+      initials: metadata.initials ?? before.initials,
+      color: metadata.color ?? before.color,
+    },
+  }).catch(() => undefined);
 
   await auditLog({
     actor,
@@ -209,6 +313,7 @@ export async function actionDeleteUser(userId: string): Promise<ActionResult> {
   if (error && !error.message.toLowerCase().includes('not found')) {
     return { ok: false, error: error.message };
   }
+  await prisma.user.update({ where: { id: userId }, data: { active: false } }).catch(() => undefined);
 
   await auditLog({
     actor,

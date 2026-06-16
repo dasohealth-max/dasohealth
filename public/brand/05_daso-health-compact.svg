@@ -1,26 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" width="360" height="80" role="img">
-  <title>DASO Health — Compact Lockup</title>
-  <desc>DASO Health compact horizontal logo for navigation bars and small spaces</desc>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" width="360" height="80" role="img">
+  <title>DAS Health â€” Compact Lockup</title>
+  <desc>DAS Health compact horizontal logo for navigation bars and small spaces</desc>
 
-  <!-- Icon — small, left -->
+  <!-- Icon â€” small, left -->
   <g transform="translate(38, 40)">
     <path d="M0,-22 C13,-22 35,-8 40,0 C35,8 13,22 0,22 C-13,22 -35,8 -40,0 C-35,-8 -13,-22 0,-22 Z"
-          fill="#E8F5EE"/>
+          fill="#EBF7EE"/>
     <path d="M0,-22 C13,-22 35,-8 40,0 C35,8 13,22 0,22 C-13,22 -35,8 -40,0 C-35,-8 -13,-22 0,-22 Z"
-          fill="none" stroke="#1A7A46" stroke-width="1.8"/>
-    <circle cx="0" cy="0" r="11" fill="#1A7A46"/>
+          fill="none" stroke="#2C9942" stroke-width="1.8"/>
+    <circle cx="0" cy="0" r="11" fill="#2C9942"/>
     <path d="M0,-6 C3.5,-6 6,-3 6,0 C6,3 3.5,6 0,6 C-3.5,6 -6,3 -6,0 C-6,-3 -3.5,-6 0,-6 Z"
           fill="#ffffff"/>
-    <line x1="0" y1="-5" x2="0" y2="5" stroke="#1A7A46" stroke-width="0.9" opacity="0.45"/>
+    <line x1="0" y1="-5" x2="0" y2="5" stroke="#2C9942" stroke-width="0.9" opacity="0.45"/>
     <!-- Tiny cross -->
-    <rect x="28" y="-6" width="10" height="10" rx="2" fill="#1A7A46"/>
-    <rect x="30.5" y="-8.5" width="5" height="15" rx="1" fill="#E8F5EE"/>
-    <rect x="27" y="-3.5" width="13" height="5" rx="1" fill="#E8F5EE"/>
+    <rect x="28" y="-6" width="10" height="10" rx="2" fill="#2C9942"/>
+    <rect x="30.5" y="-8.5" width="5" height="15" rx="1" fill="#EBF7EE"/>
+    <rect x="27" y="-3.5" width="13" height="5" rx="1" fill="#EBF7EE"/>
   </g>
 
   <!-- Text block -->
-  <text x="92" y="34" font-family="'Georgia','Times New Roman',serif"
-        font-size="30" font-weight="700" letter-spacing="3" fill="#0F4D2A">DASO</text>
-  <text x="94" y="55" font-family="'Arial','Helvetica',sans-serif"
-        font-size="12" font-weight="400" letter-spacing="7.5" fill="#4A6B57">HEALTH</text>
+  <text x="92" y="34" font-family="'Poppins'"
+        font-size="30" font-weight="700" letter-spacing="3" fill="#002E63">DAS</text>
+  <text x="94" y="55" font-family="'Poppins'"
+        font-size="12" font-weight="400" letter-spacing="7.5" fill="#647184">HEALTH</text>
 </svg>
+
+
+

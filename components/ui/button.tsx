@@ -1,4 +1,4 @@
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
+﻿import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -8,16 +8,16 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-[#0F4D2A] active:bg-[#091F10]",
+        default: "bg-primary text-primary-foreground hover:bg-[#002E63] active:bg-[#091F10]",
         outline:
           "border-border bg-card text-foreground shadow-none hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
-          "bg-[#0F4D2A] text-white hover:bg-[#0D3D20] active:bg-[#091F10] aria-expanded:bg-[#0F4D2A] aria-expanded:text-white",
+          "bg-[#002E63] text-white hover:bg-[#0D3D20] active:bg-[#091F10] aria-expanded:bg-[#002E63] aria-expanded:text-white",
         ghost:
-          "bg-transparent text-primary shadow-none hover:bg-accent hover:text-[#0F4D2A] aria-expanded:bg-accent aria-expanded:text-[#0F4D2A] dark:hover:bg-muted/50",
+          "bg-transparent text-primary shadow-none hover:bg-accent hover:text-[#002E63] aria-expanded:bg-accent aria-expanded:text-[#002E63] dark:hover:bg-muted/50",
         destructive:
-          "bg-destructive text-white hover:bg-[#9E2424] focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive dark:hover:bg-[#9E2424] dark:focus-visible:ring-destructive/40",
-        link: "h-auto rounded-none border-0 bg-transparent p-0 text-primary shadow-none underline-offset-4 hover:text-[#0F4D2A] hover:underline",
+          "bg-destructive text-white hover:bg-[#C92E2A] focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive dark:hover:bg-[#C92E2A] dark:focus-visible:ring-destructive/40",
+        link: "h-auto rounded-none border-0 bg-transparent p-0 text-primary shadow-none underline-offset-4 hover:text-[#002E63] hover:underline",
       },
       size: {
         default:
@@ -56,3 +56,4 @@ function Button({
 }
 
 export { Button, buttonVariants }
+

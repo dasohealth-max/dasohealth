@@ -1,4 +1,4 @@
-import { mergeProps } from "@base-ui/react/merge-props"
+﻿import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -9,11 +9,11 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-[#8FBFA4] bg-[#E8F5EE] text-[#0F4D2A] [a]:hover:bg-[#C5E0CE]",
+        default: "border-[#A6DCB5] bg-[#EBF7EE] text-[#002E63] [a]:hover:bg-[#CFECD7]",
         secondary:
-          "border-[#8FBFA4] bg-[#E8F5EE] text-[#0F4D2A] [a]:hover:bg-[#C5E0CE]",
+          "border-[#A6DCB5] bg-[#EBF7EE] text-[#002E63] [a]:hover:bg-[#CFECD7]",
         destructive:
-          "border-[#F0C0C0] bg-[#FCE8E8] text-[#8B1E1E] focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-[#F0C0C0]",
+          "border-[#FACDCB] bg-[#FDECEB] text-[#A32421] focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-[#FACDCB]",
         outline:
           "border-border bg-card text-foreground before:bg-muted-foreground [a]:hover:bg-muted [a]:hover:text-foreground",
         ghost:
@@ -50,3 +50,4 @@ function Badge({
 }
 
 export { Badge, badgeVariants }
+

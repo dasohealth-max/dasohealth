@@ -203,36 +203,36 @@ export default function SettingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-[#1C2B22]">Settings</h1>
-        <p className="text-sm text-[#4A6455]">Manage regional users and review accountability logs</p>
+        <h1 className="text-xl font-bold text-[#141920]">Settings</h1>
+        <p className="text-sm text-[#4B5666]">Manage regional users and review accountability logs</p>
       </div>
 
       <Tabs defaultValue="users">
-        <TabsList className="rounded-xl bg-[#F0EDE6] p-1">
+        <TabsList className="rounded-xl bg-[#EAEEF3] p-1">
           <TabsTrigger value="users" className="rounded-lg">Users</TabsTrigger>
           <TabsTrigger value="audit" className="rounded-lg" onClick={loadAudit}>Audit Log</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4 space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-[#4A6455]">
+            <p className="text-sm text-[#4B5666]">
               {visibleUsers.length} of {users.length} users shown
             </p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { void loadUsers(); }} className="h-9 rounded-xl px-3">
                 <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
               </Button>
-              {can('settings', 'create') && !showForm && <Button onClick={openAdd} className="gap-2 rounded-xl bg-[#1A7A46] text-white hover:bg-[#0F4D2A]"><Plus size={15} />Add User</Button>}
+              {can('settings', 'create') && !showForm && <Button onClick={openAdd} className="gap-2 rounded-xl bg-[#2C9942] text-white hover:bg-[#002E63]"><Plus size={15} />Add User</Button>}
               {(showForm || resetTarget) && <Button variant="outline" onClick={() => { setShowForm(false); setResetTarget(null); }} className="gap-2 rounded-xl"><X size={14} />Cancel</Button>}
             </div>
           </div>
 
           {role === 'Super Administrator' && (
-            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#D0E8DA] bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[#DDE3EA] bg-white px-4 py-3 shadow-sm">
               <div className="min-w-72">
-                <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Filter by State</Label>
+                <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Filter by State</Label>
                 <Select value={selectedRegion} onValueChange={(value) => { if (value) setSelectedRegion(value); }}>
-                  <SelectTrigger className="rounded-xl border-[#D0E8DA]">
+                  <SelectTrigger className="rounded-xl border-[#DDE3EA]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -243,14 +243,14 @@ export default function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <p className="pb-2 text-xs text-[#7A9A87]">
+              <p className="pb-2 text-xs text-[#647184]">
                 Showing users by assigned state/region.
               </p>
             </div>
           )}
 
           {saveError && (
-            <div className="flex items-start gap-2 rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-2.5 text-sm font-medium text-[#B52A2A]">
+            <div className="flex items-start gap-2 rounded-xl border border-[#FACDCB] bg-[#FDECEB] px-4 py-2.5 text-sm font-medium text-[#E53935]">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {saveError}
             </div>
           )}
@@ -295,14 +295,14 @@ export default function SettingsPage() {
               saveDisabled={resetPassword.length < 6 || isPending}
             >
               {resetError && (
-                <div className="mb-4 rounded-md border border-[#F0C0C0] bg-[#FCE8E8] px-3 py-2 text-sm text-[#B52A2A]">
+                <div className="mb-4 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
                   {resetError}
                 </div>
               )}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <Label className="mb-1 block text-xs">User</Label>
-                  <Input value={`${resetTarget.name} (${resetTarget.email})`} disabled className="rounded-xl bg-[#F0EDE6]" />
+                  <Input value={`${resetTarget.name} (${resetTarget.email})`} disabled className="rounded-xl bg-[#EAEEF3]" />
                 </div>
                 <div>
                   <Label className="mb-1 block text-xs">New Password *</Label>
@@ -315,7 +315,7 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
-              <p className="mt-3 text-xs text-[#7A9A87]">
+              <p className="mt-3 text-xs text-[#647184]">
                 The password is updated immediately. Share it with the user through your approved secure channel.
               </p>
             </InlineForm>
@@ -325,29 +325,29 @@ export default function SettingsPage() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
-                    <tr>{['User', 'Email', 'Role', 'Region', 'Status', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">{heading}</th>)}</tr>
+                  <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
+                    <tr>{['User', 'Email', 'Role', 'Region', 'Status', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>)}</tr>
                   </thead>
                   <tbody>
                     {visibleUsers.map((user) => (
-                      <tr key={user.id} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
-                        <td className="px-4 py-3 font-medium text-[#1C2B22]">{user.name}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{user.email}</td>
-                        <td className="px-4 py-3"><span className="rounded-full bg-[#E8F5EE] px-2 py-1 text-xs font-medium text-[#1A7A46]">{user.role}</span></td>
-                        <td className="px-4 py-3 text-[#4A6455]">{user.assignedRegion ?? 'All regions'}</td>
+                      <tr key={user.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
+                        <td className="px-4 py-3 font-medium text-[#141920]">{user.name}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{user.email}</td>
+                        <td className="px-4 py-3"><span className="rounded-full bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942]">{user.role}</span></td>
+                        <td className="px-4 py-3 text-[#4B5666]">{user.assignedRegion ?? 'All regions'}</td>
                         <td className="px-4 py-3"><span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">{user.active ? 'Active' : 'Inactive'}</span></td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1">
-                            {can('settings', 'edit') && <button onClick={() => openEdit(user)} className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#E8F5EE] hover:text-[#1A7A46]"><Pencil size={14} /></button>}
-                            {canResetPassword(user) && <button onClick={() => openResetPassword(user)} title="Reset password" className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#FEF3DC] hover:text-[#C47D11]"><KeyRound size={14} /></button>}
-                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => remove(user)} className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#FCE8E8] hover:text-[#B52A2A]"><Trash2 size={14} /></button>}
+                            {can('settings', 'edit') && <button onClick={() => openEdit(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]"><Pencil size={14} /></button>}
+                            {canResetPassword(user) && <button onClick={() => openResetPassword(user)} title="Reset password" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FFF5E6] hover:text-[#F59E0B]"><KeyRound size={14} /></button>}
+                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => remove(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={14} /></button>}
                           </div>
                         </td>
                       </tr>
                     ))}
                     {visibleUsers.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-10 text-center text-sm text-[#7A9A87]">
+                        <td colSpan={6} className="py-10 text-center text-sm text-[#647184]">
                           No users found for this state.
                         </td>
                       </tr>
@@ -360,11 +360,11 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="audit" className="mt-4">
-          <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#D0E8DA] bg-white p-4 shadow-sm md:grid-cols-3">
+          <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm md:grid-cols-3">
             <div>
-              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Region</Label>
+              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Region</Label>
               <Select value={auditRegion} onValueChange={(value) => { if (value) setAuditRegion(value); }}>
-                <SelectTrigger className="rounded-xl border-[#D0E8DA]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl border-[#DDE3EA]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All regions</SelectItem>
                   {REGIONAL_CAMPAIGN_AREAS.map((area) => (
@@ -374,9 +374,9 @@ export default function SettingsPage() {
               </Select>
             </div>
             <div>
-              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Action</Label>
+              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Action</Label>
               <Select value={auditAction} onValueChange={(value) => { if (value) setAuditAction(value); }}>
-                <SelectTrigger className="rounded-xl border-[#D0E8DA]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="rounded-xl border-[#DDE3EA]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All actions</SelectItem>
                   {auditActions.map((action) => (
@@ -386,30 +386,30 @@ export default function SettingsPage() {
               </Select>
             </div>
             <div>
-              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">Date</Label>
-              <Input type="date" value={auditDate} onChange={(event) => setAuditDate(event.target.value)} className="rounded-xl border-[#D0E8DA]" />
+              <Label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Date</Label>
+              <Input type="date" value={auditDate} onChange={(event) => setAuditDate(event.target.value)} className="rounded-xl border-[#DDE3EA]" />
             </div>
           </div>
           <Card className="overflow-hidden border-0 shadow-sm">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
-                    <tr>{['When', 'Actor', 'Role', 'Action', 'Entity', 'Region', 'Details'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">{heading}</th>)}</tr>
+                  <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
+                    <tr>{['When', 'Actor', 'Role', 'Action', 'Entity', 'Region', 'Details'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>)}</tr>
                   </thead>
                   <tbody>
                     {visibleAuditRows.map((row) => (
-                      <tr key={row.id} className="border-b border-[#F0EDE6]">
-                        <td className="whitespace-nowrap px-4 py-3 text-xs text-[#4A6455]">{formatDateTime(row.createdAt)}</td>
-                        <td className="px-4 py-3 font-medium text-[#1C2B22]">{row.actorName}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{row.actorRole}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{row.action}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{row.entity}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{row.region ?? '-'}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{row.details}</td>
+                      <tr key={row.id} className="border-b border-[#EAEEF3]">
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-[#4B5666]">{formatDateTime(row.createdAt)}</td>
+                        <td className="px-4 py-3 font-medium text-[#141920]">{row.actorName}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{row.actorRole}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{row.action}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{row.entity}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{row.region ?? '-'}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{row.details}</td>
                       </tr>
                     ))}
-                    {visibleAuditRows.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-sm text-[#7A9A87]">No audit logs match the current filters.</td></tr>}
+                    {visibleAuditRows.length === 0 && <tr><td colSpan={7} className="py-10 text-center text-sm text-[#647184]">No audit logs match the current filters.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -420,3 +420,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

@@ -55,26 +55,26 @@ const BLANK_MED: Omit<FollowUpMedication, 'id' | 'createdAt' | 'followUpId'> = {
 
 function statusBadge(status: FollowUpStatus) {
   const styles: Record<FollowUpStatus, string> = {
-    Pending: 'bg-[#F0EDE6] text-[#1C2B22]',
-    Due: 'bg-[#FEF3DC] text-[#C47D11]',
-    Overdue: 'bg-[#FCE8E8] text-[#B52A2A]',
-    Completed: 'bg-[#E8F5EE] text-[#1A7A46]',
-    Missed: 'bg-[#FCE8E8] text-[#B52A2A]',
+    Pending: 'bg-[#EAEEF3] text-[#141920]',
+    Due: 'bg-[#FFF5E6] text-[#F59E0B]',
+    Overdue: 'bg-[#FDECEB] text-[#E53935]',
+    Completed: 'bg-[#EBF7EE] text-[#2C9942]',
+    Missed: 'bg-[#FDECEB] text-[#E53935]',
   };
-  return `rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#F0EDE6] text-[#1C2B22]'}`;
+  return `rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#EAEEF3] text-[#141920]'}`;
 }
 
 function drBadge(status: DoctorReviewStatus) {
   const styles: Record<DoctorReviewStatus, string> = {
-    'Not Needed': 'bg-[#F0EDE6] text-[#4A6455]',
-    Pending: 'bg-[#FEF3DC] text-[#C47D11]',
-    Completed: 'bg-[#E8F5EE] text-[#1A7A46]',
+    'Not Needed': 'bg-[#EAEEF3] text-[#4B5666]',
+    Pending: 'bg-[#FFF5E6] text-[#F59E0B]',
+    Completed: 'bg-[#EBF7EE] text-[#2C9942]',
   };
-  return `rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#F0EDE6] text-[#4A6455]'}`;
+  return `rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#EAEEF3] text-[#4B5666]'}`;
 }
 
 function milestoneBadge(m: string) {
-  const c = m === 'Day 1' ? 'bg-[#E8F5EE] text-[#0F4D2A]' : m === 'Week 1' ? 'bg-[#8FBFA4] text-[#1A7A46]' : 'bg-[#FEF3DC] text-[#C47D11]';
+  const c = m === 'Day 1' ? 'bg-[#EBF7EE] text-[#002E63]' : m === 'Week 1' ? 'bg-[#A6DCB5] text-[#2C9942]' : 'bg-[#FFF5E6] text-[#F59E0B]';
   return `rounded-full px-2 py-1 text-xs font-medium ${c}`;
 }
 
@@ -243,8 +243,8 @@ export default function FollowUpsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#1C2B22]">Follow-ups</h1>
-          <p className="text-sm text-[#4A6455]">Day 1, Week 1 and Month 1 follow-ups after completed surgery</p>
+          <h1 className="text-xl font-bold text-[#141920]">Follow-ups</h1>
+          <p className="text-sm text-[#4B5666]">Day 1, Week 1 and Month 1 follow-ups after completed surgery</p>
         </div>
         {showForm && (
           <Button variant="outline" onClick={closeForm} className="gap-2 rounded-xl">
@@ -262,17 +262,17 @@ export default function FollowUpsPage() {
           saveLabel="Save Follow-up"
           saveDisabled={!editing}
         >
-          {saveError && <p className="mb-3 text-xs text-[#B52A2A]">{saveError}</p>}
+          {saveError && <p className="mb-3 text-xs text-[#E53935]">{saveError}</p>}
 
           {/* Clinical section */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <div className="md:col-span-2">
               <Label className="mb-1 block text-xs">Patient</Label>
-              <Input value={form.patientName} disabled className="rounded-xl bg-[#FAFAF8]" />
+              <Input value={form.patientName} disabled className="rounded-xl bg-[#F5F7FA]" />
             </div>
             <div>
               <Label className="mb-1 block text-xs">Milestone</Label>
-              <Input value={form.milestone} disabled className="rounded-xl bg-[#FAFAF8]" />
+              <Input value={form.milestone} disabled className="rounded-xl bg-[#F5F7FA]" />
             </div>
             <div>
               <Label className="mb-1 block text-xs">Status</Label>
@@ -298,7 +298,7 @@ export default function FollowUpsPage() {
                 type="checkbox"
                 checked={form.needsDoctorReview}
                 onChange={(e) => set('needsDoctorReview', e.target.checked)}
-                className="accent-[#1A7A46]"
+                className="accent-[#2C9942]"
               />
               Patient has a problem — needs doctor review
             </label>
@@ -307,15 +307,15 @@ export default function FollowUpsPage() {
               <textarea
                 value={form.notes}
                 onChange={(e) => set('notes', e.target.value)}
-                className="h-20 w-full resize-none rounded-xl border border-[#D0E8DA] px-3 py-2 text-sm outline-none focus:border-[#1A7A46]"
+                className="h-20 w-full resize-none rounded-xl border border-[#DDE3EA] px-3 py-2 text-sm outline-none focus:border-[#2C9942]"
               />
             </div>
           </div>
 
           {/* Doctor review section */}
           {showDoctorSection && (
-            <div className="mt-4 rounded-xl border border-[#FFE3B3] bg-[#FEF3DC]/60 p-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#C47D11]">Doctor Review</p>
+            <div className="mt-4 rounded-xl border border-[#FFE3B3] bg-[#FFF5E6]/60 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#F59E0B]">Doctor Review</p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div>
                   <Label className="mb-1 block text-xs">Review Status</Label>
@@ -362,7 +362,7 @@ export default function FollowUpsPage() {
                   <textarea
                     value={form.doctorNotes}
                     onChange={(e) => set('doctorNotes', e.target.value)}
-                    className="h-16 w-full resize-none rounded-xl border border-[#D0E8DA] bg-white px-3 py-2 text-sm outline-none focus:border-[#1A7A46]"
+                    className="h-16 w-full resize-none rounded-xl border border-[#DDE3EA] bg-white px-3 py-2 text-sm outline-none focus:border-[#2C9942]"
                   />
                 </div>
               </div>
@@ -372,12 +372,12 @@ export default function FollowUpsPage() {
           {/* Medications section */}
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#4A6455]">Medications</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#4B5666]">Medications</p>
               {can('followups', 'edit') && (
                 <button
                   type="button"
                   onClick={openAddMed}
-                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-[#1A7A46] hover:bg-[#E8F5EE]"
+                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-[#2C9942] hover:bg-[#EBF7EE]"
                 >
                   <Plus size={12} />Add medication
                 </button>
@@ -385,8 +385,8 @@ export default function FollowUpsPage() {
             </div>
 
             {showMedForm && (
-              <div className="mb-3 rounded-xl border border-[#D0E8DA] bg-[#FAFAF8] p-3">
-                {medError && <p className="mb-2 text-xs text-[#B52A2A]">{medError}</p>}
+              <div className="mb-3 rounded-xl border border-[#DDE3EA] bg-[#F5F7FA] p-3">
+                {medError && <p className="mb-2 text-xs text-[#E53935]">{medError}</p>}
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                   <div className="md:col-span-2">
                     <Label className="mb-1 block text-xs">Drug Name *</Label>
@@ -417,7 +417,7 @@ export default function FollowUpsPage() {
                   </div>
                 </div>
                 <div className="mt-2 flex gap-2">
-                  <Button size="sm" className="rounded-xl bg-[#1A7A46] text-white hover:bg-[#0F4D2A]" onClick={saveMed}>
+                  <Button size="sm" className="rounded-xl bg-[#2C9942] text-white hover:bg-[#002E63]" onClick={saveMed}>
                     {editingMed ? 'Update' : 'Add'}
                   </Button>
                   <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setShowMedForm(false)}>Cancel</Button>
@@ -426,37 +426,37 @@ export default function FollowUpsPage() {
             )}
 
             {medications.length === 0 ? (
-              <p className="text-xs text-[#7A9A87]">No medications recorded.</p>
+              <p className="text-xs text-[#647184]">No medications recorded.</p>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-[#D0E8DA]">
+              <div className="overflow-hidden rounded-xl border border-[#DDE3EA]">
                 <table className="w-full text-xs">
-                  <thead className="bg-[#FAFAF8]">
+                  <thead className="bg-[#F5F7FA]">
                     <tr>
                       {['Drug', 'Dosage', 'Frequency', 'Duration', 'Status', ''].map((h) => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[#7A9A87]">{h}</th>
+                        <th key={h} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {medications.map((med) => (
-                      <tr key={med.id} className="border-t border-[#F0EDE6] hover:bg-[#FAFAF8]">
-                        <td className="px-3 py-2 font-medium text-[#1C2B22]">{med.drugName}</td>
-                        <td className="px-3 py-2 text-[#4A6455]">{med.dosage || '-'}</td>
-                        <td className="px-3 py-2 text-[#4A6455]">{med.frequency || '-'}</td>
-                        <td className="px-3 py-2 text-[#4A6455]">{med.duration || '-'}</td>
+                      <tr key={med.id} className="border-t border-[#EAEEF3] hover:bg-[#F5F7FA]">
+                        <td className="px-3 py-2 font-medium text-[#141920]">{med.drugName}</td>
+                        <td className="px-3 py-2 text-[#4B5666]">{med.dosage || '-'}</td>
+                        <td className="px-3 py-2 text-[#4B5666]">{med.frequency || '-'}</td>
+                        <td className="px-3 py-2 text-[#4B5666]">{med.duration || '-'}</td>
                         <td className="px-3 py-2">
                           <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                            med.status === 'Prescribed' ? 'bg-[#FEF3DC] text-[#C47D11]' :
-                            med.status === 'Taking' ? 'bg-[#E8F5EE] text-[#1A7A46]' :
-                            med.status === 'Completed' ? 'bg-[#F0EDE6] text-[#4A6455]' :
-                            'bg-[#FCE8E8] text-[#B52A2A]'
+                            med.status === 'Prescribed' ? 'bg-[#FFF5E6] text-[#F59E0B]' :
+                            med.status === 'Taking' ? 'bg-[#EBF7EE] text-[#2C9942]' :
+                            med.status === 'Completed' ? 'bg-[#EAEEF3] text-[#4B5666]' :
+                            'bg-[#FDECEB] text-[#E53935]'
                           }`}>{med.status}</span>
                         </td>
                         <td className="px-3 py-2">
                           {can('followups', 'edit') && (
                             <div className="flex gap-1">
-                              <button onClick={() => openEditMed(med)} className="rounded p-1 text-[#7A9A87] hover:bg-[#E8F5EE] hover:text-[#1A7A46]"><Pencil size={11} /></button>
-                              <button onClick={() => deleteMed(med)} className="rounded p-1 text-[#7A9A87] hover:bg-[#FCE8E8] hover:text-[#B52A2A]"><Trash2 size={11} /></button>
+                              <button onClick={() => openEditMed(med)} className="rounded p-1 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]"><Pencil size={11} /></button>
+                              <button onClick={() => deleteMed(med)} className="rounded p-1 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={11} /></button>
                             </div>
                           )}
                         </td>
@@ -471,21 +471,21 @@ export default function FollowUpsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-[#D0E8DA] pb-0">
+      <div className="flex flex-wrap gap-1 border-b border-[#DDE3EA] pb-0">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => { setTab(t.id); setPage(1); }}
             className={`flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-semibold transition-colors ${
               tab === t.id
-                ? 'border-b-2 border-[#1A7A46] text-[#0F4D2A]'
-                : 'text-[#4A6455] hover:text-[#1C2B22]'
+                ? 'border-b-2 border-[#2C9942] text-[#002E63]'
+                : 'text-[#4B5666] hover:text-[#141920]'
             }`}
           >
             {t.label}
             {counts[t.id] > 0 && (
               <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                tab === t.id ? 'bg-[#E8F5EE] text-[#0F4D2A]' : 'bg-[#F0EDE6] text-[#4A6455]'
+                tab === t.id ? 'bg-[#EBF7EE] text-[#002E63]' : 'bg-[#EAEEF3] text-[#4B5666]'
               }`}>{counts[t.id]}</span>
             )}
           </button>
@@ -501,11 +501,11 @@ export default function FollowUpsPage() {
           className="max-w-sm rounded-xl"
         />
         {search && (
-          <button onClick={() => setSearch('')} className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#F0EDE6]">
+          <button onClick={() => setSearch('')} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EAEEF3]">
             <X size={14} />
           </button>
         )}
-        <span className="text-xs text-[#7A9A87]">{total} record{total !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-[#647184]">{total} record{total !== 1 ? 's' : ''}</span>
       </div>
 
       {/* Table */}
@@ -513,43 +513,43 @@ export default function FollowUpsPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+              <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
                   {['Patient', 'Region', 'Milestone', 'Due', 'Days', 'Status', 'Dr. Review', 'Completed By', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={9} className="py-10 text-center text-sm text-[#7A9A87]">Loading follow-ups…</td></tr>
+                  <tr><td colSpan={9} className="py-10 text-center text-sm text-[#647184]">Loading follow-ups…</td></tr>
                 )}
                 {!isLoading && followUps.length === 0 && (
-                  <tr><td colSpan={9} className="py-10 text-center text-sm text-[#7A9A87]">No follow-ups found.</td></tr>
+                  <tr><td colSpan={9} className="py-10 text-center text-sm text-[#647184]">No follow-ups found.</td></tr>
                 )}
                 {!isLoading && followUps.map((fu) => {
                   const days = daysUntil(fu.dueDate);
                   return (
-                    <tr key={fu.id} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
-                      <td className="px-4 py-3 font-medium text-[#1C2B22]">{fu.patientName}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{fu.region}</td>
+                    <tr key={fu.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
+                      <td className="px-4 py-3 font-medium text-[#141920]">{fu.patientName}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{fu.region}</td>
                       <td className="px-4 py-3"><span className={milestoneBadge(fu.milestone)}>{fu.milestone}</span></td>
-                      <td className="px-4 py-3 text-[#4A6455]">{formatDate(fu.dueDate)}</td>
-                      <td className="px-4 py-3 text-xs text-[#4A6455]">
+                      <td className="px-4 py-3 text-[#4B5666]">{formatDate(fu.dueDate)}</td>
+                      <td className="px-4 py-3 text-xs text-[#4B5666]">
                         {fu.status === 'Completed' ? '-' : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
                       </td>
                       <td className="px-4 py-3"><span className={statusBadge(fu.status)}>{fu.status}</span></td>
                       <td className="px-4 py-3"><span className={drBadge(fu.doctorReviewStatus)}>{fu.doctorReviewStatus}</span></td>
-                      <td className="px-4 py-3 text-[#4A6455]">{fu.completedByName || '-'}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{fu.completedByName || '-'}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
                           {fu.status !== 'Completed' && can('followups', 'edit') && (
-                            <button onClick={() => complete(fu)} title="Mark complete" className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#E8F5EE] hover:text-[#1A7A46]">
+                            <button onClick={() => complete(fu)} title="Mark complete" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
                               <CheckCircle size={14} />
                             </button>
                           )}
                           {can('followups', 'edit') && (
-                            <button onClick={() => openEdit(fu)} title="Edit" className="rounded-lg p-1.5 text-[#7A9A87] hover:bg-[#E8F5EE] hover:text-[#1A7A46]">
+                            <button onClick={() => openEdit(fu)} title="Edit" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
                               <Pencil size={14} />
                             </button>
                           )}
@@ -567,3 +567,4 @@ export default function FollowUpsPage() {
     </div>
   );
 }
+

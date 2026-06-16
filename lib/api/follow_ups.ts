@@ -14,6 +14,7 @@ export function fromPrisma(row: Row): FollowUp {
     patientName: row.patientName,
     surgeryId: row.surgeryId,
     campaignId: row.campaignId,
+    campaignRegionId: row.campaignRegionId ?? undefined,
     region: row.region,
     milestone: followUpMilestoneToApp(row.milestone) as FollowUp['milestone'],
     dueDate: (row.dueDate as Date).toISOString().split('T')[0],

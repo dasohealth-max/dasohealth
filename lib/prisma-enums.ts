@@ -4,6 +4,10 @@
 const CT_TO_APP: Record<string, string> = {
   Cataract: 'Cataract', SchoolEyeHealth: 'School Eye Health',
   DiabeticRetinopathy: 'Diabetic Retinopathy', Glaucoma: 'Glaucoma', General: 'General',
+  CataractSurgeryOutreach: 'Cataract Surgery Outreach',
+  EyeVisionOutreach: 'Eye Vision Outreach',
+  GeneralEyeScreening: 'General Eye Screening',
+  MixedOutreach: 'Mixed Outreach',
 };
 const CT_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(CT_TO_APP).map(([k, v]) => [v, k]));
 export const campaignTypeToApp = (k: string) => CT_TO_APP[k] ?? k;

@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { completionRate, regionStatus, followUpCounts, STATUS_WEIGHT } from '@/lib/reporting';
-import type { FollowUp } from '@/types';
+import {
+  campaignTargetSurgeries,
+  campaignTargetSurgeriesForRegion,
+  completionRate,
+  filterRowsByRegisteredCampaign,
+  followUpCounts,
+  registeredCampaignIds,
+  regionStatus,
+  STATUS_WEIGHT,
+} from '@/lib/reporting';
+import type { Campaign, FollowUp } from '@/types';
 
 describe('completionRate', () => {
   it('returns 0 when target is 0', () => {
@@ -103,5 +112,105 @@ describe('followUpCounts', () => {
     const counts = followUpCounts(fus);
     expect(counts.doctorReviewPending).toBe(1);
     expect(counts.doctorReviewCompleted).toBe(2);
+  });
+});
+
+describe('campaign data consistency helpers', () => {
+  const makeCampaign = (overrides: Partial<Campaign>): Campaign => ({
+    id: 'campaign-1',
+    name: 'Galmudug Cataract Campaign',
+    type: 'Cataract Surgery Outreach',
+    status: 'Active',
+    region: 'Galmudug',
+    operationDistrict: 'Dhuusamareeb',
+    projectManagerId: 'pm-1',
+    projectManagerName: 'Asha',
+    startDate: '2026-06-01',
+    endDate: '2026-06-30',
+    budget: 0,
+    donors: '',
+    targetScreenings: 100,
+    targetSurgeries: 50,
+    targetFollowUps: 0,
+    description: '',
+    notes: '',
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('keeps only rows linked to registered campaign ids', () => {
+    const campaigns = [makeCampaign({ id: 'campaign-1' })];
+    const campaignIds = registeredCampaignIds(campaigns);
+    const rows = [
+      { id: 'patient-1', campaignId: 'campaign-1' },
+      { id: 'patient-2', campaignId: 'missing-campaign' },
+      { id: 'patient-3', campaignId: null },
+      { id: 'patient-4' },
+    ];
+
+    expect(filterRowsByRegisteredCampaign(rows, campaignIds)).toEqual([
+      { id: 'patient-1', campaignId: 'campaign-1' },
+    ]);
+  });
+
+  it('returns no rows when there are no scoped registered campaigns', () => {
+    const rows = [{ id: 'patient-1', campaignId: 'campaign-1' }];
+    expect(filterRowsByRegisteredCampaign(rows, new Set())).toEqual([]);
+  });
+
+  it('uses sub-contract surgery targets when a campaign has regional plans', () => {
+    const campaign = makeCampaign({
+      targetSurgeries: 999,
+      regions: [
+        {
+          id: 'plan-1',
+          campaignId: 'campaign-1',
+          type: 'Cataract Surgery Outreach',
+          region: 'Galmudug',
+          operationDistrict: 'Dhuusamareeb',
+          regionalManagerId: 'rm-1',
+          regionalManagerName: 'Asha',
+          targetPatients: 100,
+          targetScreenings: 90,
+          targetSurgeries: 40,
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+          status: 'On Track',
+          notes: '',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+        {
+          id: 'plan-2',
+          campaignId: 'campaign-1',
+          type: 'Eye Vision Outreach',
+          region: 'Galmudug',
+          operationDistrict: 'Dhuusamareeb',
+          regionalManagerId: 'rm-1',
+          regionalManagerName: 'Asha',
+          targetPatients: 80,
+          targetScreenings: 70,
+          targetSurgeries: 15,
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+          status: 'On Track',
+          notes: '',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(campaignTargetSurgeries(campaign)).toBe(55);
+    expect(campaignTargetSurgeriesForRegion([campaign], 'Galmudug')).toBe(55);
+  });
+
+  it('uses campaign-level surgery targets for legacy campaigns without plans', () => {
+    const campaign = makeCampaign({ targetSurgeries: 50, regions: [] });
+
+    expect(campaignTargetSurgeries(campaign)).toBe(50);
+    expect(campaignTargetSurgeriesForRegion([campaign], 'Galmudug')).toBe(50);
+    expect(campaignTargetSurgeriesForRegion([campaign], 'Puntland')).toBe(0);
   });
 });

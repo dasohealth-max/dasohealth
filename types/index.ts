@@ -16,8 +16,37 @@ export interface User {
   createdAt: string;
 }
 
-export type CampaignType = 'Cataract' | 'School Eye Health' | 'Diabetic Retinopathy' | 'Glaucoma' | 'General';
+export type CampaignType =
+  | 'Cataract Surgery Outreach'
+  | 'Eye Vision Outreach'
+  | 'General Eye Screening'
+  | 'Mixed Outreach'
+  | 'Cataract'
+  | 'School Eye Health'
+  | 'Diabetic Retinopathy'
+  | 'Glaucoma'
+  | 'General';
 export type CampaignStatus = 'Planned' | 'Active' | 'Completed' | 'Suspended';
+export type RegionalPlanStatus = 'On Track' | 'Behind' | 'Completed' | 'Suspended';
+
+export interface CampaignRegion {
+  id: string;
+  campaignId: string;
+  type: CampaignType;
+  region: string;
+  operationDistrict: string;
+  regionalManagerId: string;
+  regionalManagerName: string;
+  targetPatients: number;
+  targetScreenings: number;
+  targetSurgeries: number;
+  startDate: string;
+  endDate: string;
+  status: RegionalPlanStatus;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Campaign {
   id: string;
@@ -36,7 +65,10 @@ export interface Campaign {
   targetSurgeries: number;
   targetFollowUps: number;
   description: string;
+  notes: string;
   createdAt: string;
+  updatedAt: string;
+  regions?: CampaignRegion[];
 }
 
 export type Sex = 'Male' | 'Female' | 'Other';
@@ -62,6 +94,7 @@ export interface Patient {
   consentGiven: boolean;
   consentDate: string;
   campaignId?: string;
+  campaignRegionId?: string;
   referralSource: string;
   notes?: string;
   registeredById: string;
@@ -77,6 +110,7 @@ export interface Screening {
   patientId: string;
   patientName: string;
   campaignId: string;
+  campaignRegionId?: string;
   region: string;
   operationDistrict: string;
   screenedBy: string;
@@ -109,6 +143,7 @@ export interface Surgery {
   patientId: string;
   patientName: string;
   campaignId: string;
+  campaignRegionId?: string;
   region: string;
   operationDistrict: string;
   createdFromScreeningId?: string;
@@ -138,6 +173,7 @@ export interface FollowUp {
   patientName: string;
   surgeryId: string;
   campaignId: string;
+  campaignRegionId?: string;
   region: string;
   milestone: FollowUpMilestone;
   dueDate: string;

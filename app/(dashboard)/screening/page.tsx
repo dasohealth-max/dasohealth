@@ -8,37 +8,35 @@ import Pagination from '@/components/ui/Pagination';
 
 const PAGE_SIZE = 50;
 import { getAllCampaigns } from '@/app/actions/campaigns';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, Plus, Search, Stethoscope, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, Search, Stethoscope, Trash2 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const VA_GRADES: VAGrade[] = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'HM', 'PL', 'NPL'];
 
-// Only 3 active recommendations — legacy values kept in type for existing records
+// Only active recommendations shown in new/edit screening forms; legacy values stay displayable for existing records.
 const ACTIVE_RECOMMENDATIONS: Screening['recommendation'][] = [
   'Refer for Surgery',
   'No Surgery - Release',
-  'Positive',
 ];
 
 // Recommendation badge styles
 const REC_STYLE: Record<string, string> = {
-  'Refer for Surgery':   'bg-[#FCE8E8] text-[#B52A2A]',
-  'No Surgery - Release':'bg-[#F0EDE6] text-[#4A6455]',
-  'Positive':            'bg-[#E8F5EE] text-[#1A7A46]',
+  'Refer for Surgery':   'bg-[#FDECEB] text-[#E53935]',
+  'No Surgery - Release':'bg-[#EAEEF3] text-[#4B5666]',
+  'Positive':            'bg-[#EBF7EE] text-[#2C9942]',
 };
 
 // Shared field styles
 const F = {
-  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
+  input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
   sel:   'rounded-md',
 };
 
@@ -239,7 +237,7 @@ export default function ScreeningPage() {
           saveDisabled={formInvalid}
         >
           {saveError && (
-            <div className="mb-5 rounded-md border border-[#F0C0C0] bg-[#FCE8E8] px-3 py-2 text-sm text-[#B52A2A]">
+            <div className="mb-5 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
               {saveError}
             </div>
           )}
@@ -257,16 +255,11 @@ export default function ScreeningPage() {
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#1C2B22]">Screening</h1>
-          <p className="text-sm text-[#4A6455]">
+          <h1 className="text-xl font-bold text-[#141920]">Screening</h1>
+          <p className="text-sm text-[#4B5666]">
             {isLoading ? 'Loading…' : `${queuedPatients.length} patient${queuedPatients.length === 1 ? '' : 's'} waiting for screening`}
           </p>
         </div>
-        {can('screening', 'create') && (
-          <Button onClick={() => openAdd()} className="gap-2 rounded-md bg-[#1A7A46] text-white hover:bg-[#0F4D2A]">
-            <Plus size={15} /> New Screening
-          </Button>
-        )}
       </div>
 
       {/* ── Waiting Queue ── */}
@@ -274,15 +267,15 @@ export default function ScreeningPage() {
         <CardContent className="p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-bold text-[#1C2B22]">Waiting Queue</p>
-              <p className="text-xs text-[#4A6455]">
+              <p className="text-sm font-bold text-[#141920]">Waiting Queue</p>
+              <p className="text-xs text-[#4B5666]">
                 {filteredQueue.length !== queuedPatients.length
                   ? `${filteredQueue.length} of ${queuedPatients.length}`
                   : queuedPatients.length} patient{queuedPatients.length === 1 ? '' : 's'} awaiting screening
               </p>
             </div>
             <div className="relative min-w-56">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9A87]" size={13} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#647184]" size={13} />
               <input
                 value={queueSearch}
                 onChange={(e) => setQueueSearch(e.target.value)}
@@ -294,40 +287,40 @@ export default function ScreeningPage() {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-170 text-sm">
-              <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+              <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
                   {['Code', 'Patient', 'Phone', 'Region / City', 'Registered By', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87]">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={6} className="py-10 text-center text-sm text-[#7A9A87]">Loading...</td></tr>
+                  <tr><td colSpan={6} className="py-10 text-center text-sm text-[#647184]">Loading...</td></tr>
                 )}
                 {!isLoading && filteredQueue.length === 0 && (
-                  <tr><td colSpan={6} className="py-10 text-center text-sm text-[#7A9A87]">
+                  <tr><td colSpan={6} className="py-10 text-center text-sm text-[#647184]">
                     {queueSearch ? 'No patients match the search.' : 'No patients waiting — the queue is clear.'}
                   </td></tr>
                 )}
                 {!isLoading && filteredQueue.map((patient) => (
-                  <tr key={patient.id} className="border-b border-[#F0EDE6] transition-colors hover:bg-[#FAFAF8]">
-                    <td className="px-4 py-3.5 font-mono text-xs text-[#4A6455]">{patient.patientCode}</td>
+                  <tr key={patient.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                    <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
-                      <p className="font-medium text-[#1C2B22]">{patient.fullName}</p>
-                      <p className="text-xs text-[#7A9A87]">{patient.sex}</p>
+                      <p className="font-medium text-[#141920]">{patient.fullName}</p>
+                      <p className="text-xs text-[#647184]">{patient.sex}</p>
                     </td>
-                    <td className="px-4 py-3.5 text-[#4A6455]">{patient.phone}</td>
+                    <td className="px-4 py-3.5 text-[#4B5666]">{patient.phone}</td>
                     <td className="px-4 py-3.5">
-                      <p className="text-[#1C2B22]">{patient.region}</p>
-                      <p className="text-xs text-[#7A9A87]">{patient.operationDistrict}</p>
+                      <p className="text-[#141920]">{patient.region}</p>
+                      <p className="text-xs text-[#647184]">{patient.operationDistrict}</p>
                     </td>
-                    <td className="px-4 py-3.5 text-[#4A6455]">{patient.registeredByName || '—'}</td>
+                    <td className="px-4 py-3.5 text-[#4B5666]">{patient.registeredByName || '—'}</td>
                     <td className="px-4 py-3.5 text-right">
                       {can('screening', 'create') && (
                         <button
                           onClick={() => openAdd(patient)}
-                          className="flex items-center gap-1.5 rounded-md bg-[#1A7A46] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#0F4D2A]"
+                          className="flex items-center gap-1.5 rounded-md bg-[#2C9942] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#002E63]"
                         >
                           <Stethoscope size={12} /> Screen
                         </button>
@@ -347,28 +340,28 @@ export default function ScreeningPage() {
           {/* Toggle header */}
           <button
             onClick={() => setHistoryOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-5 py-4 transition hover:bg-[#FAFAF8]"
+            className="flex w-full items-center justify-between px-5 py-4 transition hover:bg-[#F5F7FA]"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#F0EDE6]">
-                <Stethoscope size={14} className="text-[#4A6455]" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#EAEEF3]">
+                <Stethoscope size={14} className="text-[#4B5666]" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-[#1C2B22]">Completed Screenings</p>
-                <p className="text-xs text-[#4A6455]">{screeningsTotal} screening{screeningsTotal === 1 ? '' : 's'} recorded — click to {historyOpen ? 'collapse' : 'expand'}</p>
+                <p className="text-sm font-bold text-[#141920]">Completed Screenings</p>
+                <p className="text-xs text-[#4B5666]">{screeningsTotal} screening{screeningsTotal === 1 ? '' : 's'} recorded — click to {historyOpen ? 'collapse' : 'expand'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {historyOpen ? <ChevronDown size={16} className="text-[#7A9A87]" /> : <ChevronRight size={16} className="text-[#7A9A87]" />}
+              {historyOpen ? <ChevronDown size={16} className="text-[#647184]" /> : <ChevronRight size={16} className="text-[#647184]" />}
             </div>
           </button>
 
           {/* Expanded content */}
           {historyOpen && (
-            <div className="border-t border-[#F0EDE6]">
+            <div className="border-t border-[#EAEEF3]">
               <div className="flex items-center justify-between gap-3 px-5 py-3">
                 <div className="relative min-w-56 flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9A87]" size={13} />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#647184]" size={13} />
                   <input
                     value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
@@ -376,50 +369,50 @@ export default function ScreeningPage() {
                     className={`${F.input} pl-9`}
                   />
                 </div>
-                <span className="shrink-0 text-xs text-[#7A9A87]">
+                <span className="shrink-0 text-xs text-[#647184]">
                   {screeningsTotal} records
                 </span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+                  <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                     <tr>
                       {['Patient', 'Region', 'VA R / L', 'Finding', 'Recommendation', 'Screened By', 'Date', ''].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87]">{h}</th>
+                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {histLoading && (
-                      <tr><td colSpan={8} className="py-8 text-center text-sm text-[#7A9A87]">Loading…</td></tr>
+                      <tr><td colSpan={8} className="py-8 text-center text-sm text-[#647184]">Loading…</td></tr>
                     )}
                     {!histLoading && screenings.length === 0 && (
-                      <tr><td colSpan={8} className="py-8 text-center text-sm text-[#7A9A87]">No screenings found.</td></tr>
+                      <tr><td colSpan={8} className="py-8 text-center text-sm text-[#647184]">No screenings found.</td></tr>
                     )}
                     {!histLoading && screenings.map((screening) => (
-                      <tr key={screening.id} className="border-b border-[#F0EDE6] transition-colors hover:bg-[#FAFAF8]">
-                        <td className="px-4 py-3.5 font-medium text-[#1C2B22]">{screening.patientName}</td>
-                        <td className="px-4 py-3.5 text-[#4A6455]">{screening.region}</td>
+                      <tr key={screening.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                        <td className="px-4 py-3.5 font-medium text-[#141920]">{screening.patientName}</td>
+                        <td className="px-4 py-3.5 text-[#4B5666]">{screening.region}</td>
                         <td className="px-4 py-3.5 font-mono text-xs">{screening.vaRightUnaided} / {screening.vaLeftUnaided}</td>
                         <td className="px-4 py-3.5">
                           {screening.cataractSuspected
-                            ? <span className="flex items-center gap-1 text-xs font-medium text-[#B52A2A]"><AlertTriangle size={11} />Cataract</span>
-                            : <span className="text-xs text-[#7A9A87]">Clear</span>}
+                            ? <span className="flex items-center gap-1 text-xs font-medium text-[#E53935]"><AlertTriangle size={11} />Cataract</span>
+                            : <span className="text-xs text-[#647184]">Clear</span>}
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className={`rounded px-2 py-1 text-xs font-medium ${REC_STYLE[screening.recommendation] ?? 'bg-[#F0EDE6] text-[#4A6455]'}`}>
+                          <span className={`rounded px-2 py-1 text-xs font-medium ${REC_STYLE[screening.recommendation] ?? 'bg-[#EAEEF3] text-[#4B5666]'}`}>
                             {screening.recommendation}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-[#4A6455]">{screening.screenedByName || screening.screenedBy}</td>
-                        <td className="px-4 py-3.5 text-xs text-[#4A6455]">{formatDateTime(screening.screenedAt)}</td>
+                        <td className="px-4 py-3.5 text-[#4B5666]">{screening.screenedByName || screening.screenedBy}</td>
+                        <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(screening.screenedAt)}</td>
                         <td className="px-4 py-3.5">
                           <div className="flex gap-1">
                             {can('screening', 'edit') && (
                               <button
                                 onClick={() => openEdit(screening)}
-                                className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#E8F5EE] hover:text-[#1A7A46]"
+                                className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
                               >
                                 <Pencil size={13} />
                               </button>
@@ -427,7 +420,7 @@ export default function ScreeningPage() {
                             {can('screening', 'delete') && (
                               <button
                                 onClick={() => setDeleteTarget(screening)}
-                                className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#FCE8E8] hover:text-[#B52A2A]"
+                                className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
                               >
                                 <Trash2 size={13} />
                               </button>
@@ -496,10 +489,10 @@ function ScreeningFormBody({
           </div>
           <div>
             <label className={F.label}>Screening Time</label>
-            <div className="flex items-center gap-2.5 rounded-md border border-[#D0E8DA] bg-[#FAFAF8] px-3 py-2">
-              <Clock size={13} className="shrink-0 text-[#7A9A87]" />
-              <span className="text-sm text-[#4A6455]">{form.screenedAt.replace('T', ' ')}</span>
-              <span className="ml-auto shrink-0 rounded bg-[#E8F5EE] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1A7A46]">
+            <div className="flex items-center gap-2.5 rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2">
+              <Clock size={13} className="shrink-0 text-[#647184]" />
+              <span className="text-sm text-[#4B5666]">{form.screenedAt.replace('T', ' ')}</span>
+              <span className="ml-auto shrink-0 rounded bg-[#EBF7EE] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#2C9942]">
                 {isEditing ? 'Original time' : 'Auto'}
               </span>
             </div>
@@ -557,14 +550,14 @@ function ScreeningFormBody({
             { key: 'glaucomaSuspected' as const,    label: 'Glaucoma Suspected' },
             { key: 'diabeticRetinopathy' as const,  label: 'Diabetic Retinopathy' },
           ].map(({ key, label }) => (
-            <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-md border border-[#D0E8DA] px-3 py-2.5 transition hover:bg-[#FAFAF8]">
+            <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-md border border-[#DDE3EA] px-3 py-2.5 transition hover:bg-[#F5F7FA]">
               <input
                 type="checkbox"
                 checked={form[key]}
                 onChange={(e) => set(key, e.target.checked)}
-                className="h-4 w-4 rounded border-[#8FBFA4] accent-[#1A7A46]"
+                className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
               />
-              <span className="text-sm text-[#1C2B22]">{label}</span>
+              <span className="text-sm text-[#141920]">{label}</span>
             </label>
           ))}
         </div>
@@ -636,3 +629,4 @@ function ScreeningFormBody({
     </div>
   );
 }
+

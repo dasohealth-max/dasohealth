@@ -1,183 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" width="720" height="900" role="img">
-  <title>DASO Health — Brand Color Palette</title>
-  <desc>Official DASO Health brand colors: primary greens, clinical neutrals, accent amber, alert red, and background tones</desc>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" width="720" height="900" role="img">
+  <title>DAS Health - Brand Color Palette</title>
+  <desc>Official DAS Health brand colors from tokens/colors.css: green, navy, red, mist, white, slate neutrals, and status accents.</desc>
 
-  <!-- Page background -->
-  <rect width="720" height="900" fill="#F7F7F5"/>
+  <rect width="720" height="900" fill="#F5F7FA"/>
+  <rect width="720" height="74" fill="#002E63"/>
+  <text x="36" y="31" font-family="'Poppins'" font-size="18" font-weight="700" letter-spacing="1.5" fill="#FFFFFF">DAS HEALTH</text>
+  <text x="36" y="55" font-family="'Poppins'" font-size="11" fill="#C2D2E6">Official brand color system - Direct Aid Somalia</text>
 
-  <!-- Header -->
-  <rect width="720" height="72" fill="#0F4D2A"/>
-  <text x="36" y="30" font-family="'Georgia','Times New Roman',serif"
-        font-size="18" font-weight="700" letter-spacing="2" fill="#ffffff">DASO HEALTH</text>
-  <text x="36" y="54" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" letter-spacing="1" fill="#8FBFA4">Brand Color System — Direct Aid Somalia</text>
+  <text x="36" y="108" font-family="'Poppins'" font-size="10" font-weight="700" letter-spacing="2.2" fill="#647184">CORE BRAND COLORS</text>
 
-  <!-- ─── SECTION 1: PRIMARY GREENS ─── -->
-  <text x="36" y="108" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" font-weight="700" letter-spacing="2.5" fill="#888">PRIMARY PALETTE</text>
+  <rect x="36" y="122" width="132" height="96" rx="8" fill="#2C9942"/>
+  <rect x="48" y="134" width="56" height="17" rx="8.5" fill="#FFFFFF" opacity="0.2"/>
+  <text x="76" y="146" text-anchor="middle" font-family="'Poppins'" font-size="8.5" font-weight="700" fill="#FFFFFF">PRIMARY</text>
+  <text x="52" y="181" font-family="'Poppins'" font-size="12" font-weight="700" fill="#FFFFFF">Brand Green</text>
+  <text x="52" y="200" font-family="'Poppins'" font-size="10" fill="#EBF7EE">#2C9942</text>
 
-  <!-- Swatch 1: Forest Anchor -->
-  <rect x="36" y="120" width="130" height="90" rx="8" fill="#0F4D2A"/>
-  <text x="51" y="178" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#8FBFA4">Forest Anchor</text>
-  <text x="51" y="196" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#ffffff" opacity="0.7">#0F4D2A</text>
+  <rect x="184" y="122" width="132" height="96" rx="8" fill="#002E63"/>
+  <rect x="196" y="134" width="48" height="17" rx="8.5" fill="#FFFFFF" opacity="0.2"/>
+  <text x="220" y="146" text-anchor="middle" font-family="'Poppins'" font-size="8.5" font-weight="700" fill="#FFFFFF">NAVY</text>
+  <text x="200" y="181" font-family="'Poppins'" font-size="12" font-weight="700" fill="#FFFFFF">Brand Navy</text>
+  <text x="200" y="200" font-family="'Poppins'" font-size="10" fill="#C2D2E6">#002E63</text>
 
-  <!-- Swatch 2: Nile Green (Primary Brand) -->
-  <rect x="178" y="120" width="130" height="90" rx="8" fill="#1A7A46"/>
-  <rect x="178" y="120" width="130" height="10" rx="8" fill="#2B9E5C"/>
-  <rect x="178" y="127" width="130" height="3" rx="0" fill="#2B9E5C"/>
-  <!-- "Primary" pill -->
-  <rect x="190" y="130" width="52" height="16" rx="8" fill="#ffffff" opacity="0.2"/>
-  <text x="216" y="142" text-anchor="middle" font-family="'Arial','Helvetica',sans-serif"
-        font-size="9" font-weight="700" letter-spacing="0.5" fill="#ffffff">PRIMARY</text>
-  <text x="193" y="178" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#8FBFA4">Nile Green</text>
-  <text x="193" y="196" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#ffffff" opacity="0.7">#1A7A46</text>
+  <rect x="332" y="122" width="132" height="96" rx="8" fill="#E53935"/>
+  <rect x="344" y="134" width="54" height="17" rx="8.5" fill="#FFFFFF" opacity="0.2"/>
+  <text x="371" y="146" text-anchor="middle" font-family="'Poppins'" font-size="8.5" font-weight="700" fill="#FFFFFF">CRITICAL</text>
+  <text x="348" y="181" font-family="'Poppins'" font-size="12" font-weight="700" fill="#FFFFFF">Brand Red</text>
+  <text x="348" y="200" font-family="'Poppins'" font-size="10" fill="#FDECEB">#E53935</text>
 
-  <!-- Swatch 3: Vitality -->
-  <rect x="320" y="120" width="130" height="90" rx="8" fill="#2B9E5C"/>
-  <text x="335" y="178" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#0F4D2A">Vitality</text>
-  <text x="335" y="196" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#0F4D2A" opacity="0.7">#2B9E5C</text>
+  <rect x="480" y="122" width="92" height="96" rx="8" fill="#F5F7FA" stroke="#DDE3EA"/>
+  <text x="496" y="181" font-family="'Poppins'" font-size="12" font-weight="700" fill="#353E4B">Mist</text>
+  <text x="496" y="200" font-family="'Poppins'" font-size="10" fill="#647184">#F5F7FA</text>
 
-  <!-- Swatch 4: Mint -->
-  <rect x="462" y="120" width="130" height="90" rx="8" fill="#6FCFA0"/>
-  <text x="477" y="178" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#0F4D2A">Mint</text>
-  <text x="477" y="196" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#0F4D2A" opacity="0.6">#6FCFA0</text>
+  <rect x="588" y="122" width="96" height="96" rx="8" fill="#FFFFFF" stroke="#DDE3EA"/>
+  <text x="604" y="181" font-family="'Poppins'" font-size="12" font-weight="700" fill="#353E4B">White</text>
+  <text x="604" y="200" font-family="'Poppins'" font-size="10" fill="#647184">#FFFFFF</text>
 
-  <!-- Swatch 5: Foam -->
-  <rect x="604" y="120" width="80" height="90" rx="8" fill="#E8F5EE" stroke="#D0E8DA" stroke-width="0.8"/>
-  <text x="619" y="178" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#1A7A46">Foam</text>
-  <text x="619" y="196" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#1A7A46" opacity="0.7">#E8F5EE</text>
+  <text x="36" y="260" font-family="'Poppins'" font-size="10" font-weight="700" letter-spacing="2.2" fill="#647184">GREEN RAMP</text>
+  <g transform="translate(36 276)">
+    <rect width="648" height="70" rx="8" fill="#FFFFFF" stroke="#DDE3EA"/>
+    <rect x="0" y="0" width="72" height="70" rx="8" fill="#EBF7EE"/><text x="12" y="46" font-size="10" fill="#353E4B" font-family="'Poppins'">50</text><text x="12" y="60" font-size="8" fill="#647184" font-family="'Poppins'">#EBF7EE</text>
+    <rect x="72" y="0" width="72" height="70" fill="#CFECD7"/><text x="84" y="46" font-size="10" fill="#353E4B" font-family="'Poppins'">100</text><text x="84" y="60" font-size="8" fill="#647184" font-family="'Poppins'">#CFECD7</text>
+    <rect x="144" y="0" width="72" height="70" fill="#A6DCB5"/><text x="156" y="46" font-size="10" fill="#353E4B" font-family="'Poppins'">200</text><text x="156" y="60" font-size="8" fill="#353E4B" font-family="'Poppins'">#A6DCB5</text>
+    <rect x="216" y="0" width="72" height="70" fill="#6FC587"/><text x="228" y="46" font-size="10" fill="#141920" font-family="'Poppins'">300</text><text x="228" y="60" font-size="8" fill="#141920" font-family="'Poppins'">#6FC587</text>
+    <rect x="288" y="0" width="72" height="70" fill="#45B066"/><text x="300" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">400</text><text x="300" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#45B066</text>
+    <rect x="360" y="0" width="72" height="70" fill="#2C9942"/><text x="372" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">500</text><text x="372" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#2C9942</text>
+    <rect x="432" y="0" width="72" height="70" fill="#238038"/><text x="444" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">600</text><text x="444" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#238038</text>
+    <rect x="504" y="0" width="72" height="70" fill="#1C662D"/><text x="516" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">700</text><text x="516" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#1C662D</text>
+    <rect x="576" y="0" width="72" height="70" rx="8" fill="#0F3A1A"/><text x="588" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">900</text><text x="588" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#0F3A1A</text>
+  </g>
 
-  <!-- ─── SECTION 2: CLINICAL NEUTRALS ─── -->
-  <text x="36" y="252" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" font-weight="700" letter-spacing="2.5" fill="#888">CLINICAL NEUTRALS</text>
+  <text x="36" y="388" font-family="'Poppins'" font-size="10" font-weight="700" letter-spacing="2.2" fill="#647184">NAVY RAMP</text>
+  <g transform="translate(36 404)">
+    <rect width="648" height="70" rx="8" fill="#FFFFFF" stroke="#DDE3EA"/>
+    <rect x="0" y="0" width="72" height="70" rx="8" fill="#E7EDF5"/><text x="12" y="46" font-size="10" fill="#353E4B" font-family="'Poppins'">50</text><text x="12" y="60" font-size="8" fill="#647184" font-family="'Poppins'">#E7EDF5</text>
+    <rect x="72" y="0" width="72" height="70" fill="#C2D2E6"/><text x="84" y="46" font-size="10" fill="#353E4B" font-family="'Poppins'">100</text><text x="84" y="60" font-size="8" fill="#647184" font-family="'Poppins'">#C2D2E6</text>
+    <rect x="144" y="0" width="72" height="70" fill="#8AA6CB"/><text x="156" y="46" font-size="10" fill="#141920" font-family="'Poppins'">200</text><text x="156" y="60" font-size="8" fill="#141920" font-family="'Poppins'">#8AA6CB</text>
+    <rect x="216" y="0" width="72" height="70" fill="#4F74A6"/><text x="228" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">300</text><text x="228" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#4F74A6</text>
+    <rect x="288" y="0" width="72" height="70" fill="#234A80"/><text x="300" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">400</text><text x="300" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#234A80</text>
+    <rect x="360" y="0" width="72" height="70" fill="#002E63"/><text x="372" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">500</text><text x="372" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#002E63</text>
+    <rect x="432" y="0" width="72" height="70" fill="#002654"/><text x="444" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">600</text><text x="444" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#002654</text>
+    <rect x="504" y="0" width="72" height="70" fill="#001D41"/><text x="516" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">700</text><text x="516" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#001D41</text>
+    <rect x="576" y="0" width="72" height="70" rx="8" fill="#000D1D"/><text x="588" y="46" font-size="10" fill="#FFFFFF" font-family="'Poppins'">900</text><text x="588" y="60" font-size="8" fill="#FFFFFF" font-family="'Poppins'">#000D1D</text>
+  </g>
 
-  <!-- Swatch: Slate Night -->
-  <rect x="36" y="264" width="130" height="90" rx="8" fill="#1C2B22"/>
-  <text x="51" y="322" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#8FBFA4">Slate Night</text>
-  <text x="51" y="340" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#ffffff" opacity="0.6">#1C2B22</text>
+  <text x="36" y="516" font-family="'Poppins'" font-size="10" font-weight="700" letter-spacing="2.2" fill="#647184">NEUTRALS AND STATUS</text>
+  <rect x="36" y="532" width="648" height="128" rx="8" fill="#FFFFFF" stroke="#DDE3EA"/>
+  <rect x="56" y="554" width="84" height="58" rx="7" fill="#F5F7FA" stroke="#DDE3EA"/><text x="68" y="589" font-size="11" font-weight="700" fill="#353E4B" font-family="'Poppins'">Mist</text><text x="68" y="604" font-size="9" fill="#647184" font-family="'Poppins'">#F5F7FA</text>
+  <rect x="152" y="554" width="84" height="58" rx="7" fill="#FFFFFF" stroke="#DDE3EA"/><text x="164" y="589" font-size="11" font-weight="700" fill="#353E4B" font-family="'Poppins'">Card</text><text x="164" y="604" font-size="9" fill="#647184" font-family="'Poppins'">#FFFFFF</text>
+  <rect x="248" y="554" width="84" height="58" rx="7" fill="#141920"/><text x="260" y="589" font-size="11" font-weight="700" fill="#FFFFFF" font-family="'Poppins'">Text</text><text x="260" y="604" font-size="9" fill="#FFFFFF" font-family="'Poppins'">#141920</text>
+  <rect x="344" y="554" width="84" height="58" rx="7" fill="#F59E0B"/><text x="356" y="589" font-size="11" font-weight="700" fill="#FFFFFF" font-family="'Poppins'">Warning</text><text x="356" y="604" font-size="9" fill="#FFFFFF" font-family="'Poppins'">#F59E0B</text>
+  <rect x="440" y="554" width="84" height="58" rx="7" fill="#0E9384"/><text x="452" y="589" font-size="11" font-weight="700" fill="#FFFFFF" font-family="'Poppins'">Teal</text><text x="452" y="604" font-size="9" fill="#FFFFFF" font-family="'Poppins'">#0E9384</text>
+  <rect x="536" y="554" width="84" height="58" rx="7" fill="#6D4BC4"/><text x="548" y="589" font-size="11" font-weight="700" fill="#FFFFFF" font-family="'Poppins'">Violet</text><text x="548" y="604" font-size="9" fill="#FFFFFF" font-family="'Poppins'">#6D4BC4</text>
 
-  <!-- Swatch: Linen -->
-  <rect x="178" y="264" width="130" height="90" rx="8" fill="#4A6455"/>
-  <text x="193" y="322" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#E8F5EE">Sage</text>
-  <text x="193" y="340" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#E8F5EE" opacity="0.6">#4A6455</text>
+  <text x="36" y="704" font-family="'Poppins'" font-size="10" font-weight="700" letter-spacing="2.2" fill="#647184">USAGE RULES</text>
+  <rect x="36" y="720" width="648" height="116" rx="8" fill="#FFFFFF" stroke="#DDE3EA"/>
+  <circle cx="60" cy="748" r="5" fill="#2C9942"/><text x="76" y="753" font-family="'Poppins'" font-size="12" fill="#141920">Primary actions, brand fills, success, selected states, and focus borders use Brand Green #2C9942.</text>
+  <circle cx="60" cy="776" r="5" fill="#002E63"/><text x="76" y="781" font-family="'Poppins'" font-size="12" fill="#141920">Sidebar, dark chrome, secondary actions, depth, and info states use Brand Navy #002E63.</text>
+  <circle cx="60" cy="804" r="5" fill="#E53935"/><text x="76" y="809" font-family="'Poppins'" font-size="12" fill="#141920">Destructive actions, flagged patients, critical alerts, and danger states use Brand Red #E53935.</text>
+  <circle cx="60" cy="832" r="5" fill="#F5F7FA" stroke="#AFBBC9"/><text x="76" y="837" font-family="'Poppins'" font-size="12" fill="#141920">App backgrounds use Brand Mist #F5F7FA; cards and raised panels use #FFFFFF.</text>
 
-  <!-- Swatch: Warm Gray -->
-  <rect x="320" y="264" width="130" height="90" rx="8" fill="#7A9A87"/>
-  <text x="335" y="322" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#1C2B22">Herb Gray</text>
-  <text x="335" y="340" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#1C2B22" opacity="0.7">#7A9A87</text>
-
-  <!-- Swatch: Bone -->
-  <rect x="462" y="264" width="130" height="90" rx="8" fill="#F0EDE6" stroke="#E2DDD5" stroke-width="0.8"/>
-  <text x="477" y="322" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#4A6455">Bone White</text>
-  <text x="477" y="340" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#4A6455" opacity="0.8">#F0EDE6</text>
-
-  <!-- Swatch: Paper -->
-  <rect x="604" y="264" width="80" height="90" rx="8" fill="#FAFAF8" stroke="#E8E8E3" stroke-width="0.8"/>
-  <text x="619" y="322" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#4A6455">Paper</text>
-  <text x="619" y="340" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#4A6455" opacity="0.8">#FAFAF8</text>
-
-  <!-- ─── SECTION 3: ACCENT & SYSTEM ─── -->
-  <text x="36" y="396" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" font-weight="700" letter-spacing="2.5" fill="#888">ACCENT &amp; SYSTEM COLORS</text>
-
-  <!-- Swatch: Amber (Caution / pending) -->
-  <rect x="36" y="408" width="195" height="90" rx="8" fill="#C47D11"/>
-  <rect x="48" y="420" width="62" height="16" rx="8" fill="#ffffff" opacity="0.2"/>
-  <text x="79" y="432" text-anchor="middle" font-family="'Arial','Helvetica',sans-serif"
-        font-size="9" font-weight="700" letter-spacing="0.5" fill="#ffffff">CAUTION</text>
-  <text x="51" y="466" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#FEF3DC">Desert Amber</text>
-  <text x="51" y="484" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#ffffff" opacity="0.7">#C47D11 · Pending, warnings, follow-up</text>
-
-  <!-- Swatch: Amber Light -->
-  <rect x="243" y="408" width="85" height="90" rx="8" fill="#FEF3DC" stroke="#F0D898" stroke-width="0.8"/>
-  <text x="258" y="466" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#C47D11">Amber tint</text>
-  <text x="258" y="484" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#C47D11" opacity="0.8">#FEF3DC</text>
-
-  <!-- Swatch: Clinical Red -->
-  <rect x="340" y="408" width="195" height="90" rx="8" fill="#B52A2A"/>
-  <rect x="352" y="420" width="52" height="16" rx="8" fill="#ffffff" opacity="0.2"/>
-  <text x="378" y="432" text-anchor="middle" font-family="'Arial','Helvetica',sans-serif"
-        font-size="9" font-weight="700" letter-spacing="0.5" fill="#ffffff">ALERT</text>
-  <text x="355" y="466" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#FCE8E8">Clinical Red</text>
-  <text x="355" y="484" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#ffffff" opacity="0.7">#B52A2A · Urgent, critical, errors</text>
-
-  <!-- Swatch: Red Light -->
-  <rect x="547" y="408" width="137" height="90" rx="8" fill="#FCE8E8" stroke="#F0C0C0" stroke-width="0.8"/>
-  <text x="562" y="466" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="700" fill="#B52A2A">Red tint</text>
-  <text x="562" y="484" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#B52A2A" opacity="0.8">#FCE8E8</text>
-
-  <!-- ─── SECTION 4: TYPOGRAPHY SCALE ─── -->
-  <text x="36" y="540" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" font-weight="700" letter-spacing="2.5" fill="#888">TYPOGRAPHY PAIRINGS</text>
-
-  <rect x="36" y="552" width="648" height="130" rx="8" fill="#ffffff" stroke="#E2DDD5" stroke-width="0.8"/>
-  <!-- Heading example -->
-  <text x="56" y="590" font-family="'Georgia','Times New Roman',serif"
-        font-size="28" font-weight="700" fill="#0F4D2A">DASO Health</text>
-  <text x="56" y="608" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" letter-spacing="1" fill="#7A9A87">DISPLAY / WORDMARK — Georgia Bold</text>
-  <!-- Body example -->
-  <text x="56" y="638" font-family="'Arial','Helvetica',sans-serif"
-        font-size="14" fill="#1C2B22">Patient journey management across outreach, screening, surgery &amp; follow-up.</text>
-  <text x="56" y="656" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" letter-spacing="1" fill="#7A9A87">BODY — Inter / Arial Regular 14px · #1C2B22</text>
-  <!-- UI label example -->
-  <text x="56" y="672" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" letter-spacing="2" font-weight="700" fill="#7A9A87">SCREENING COMPLETE</text>
-  <text x="296" y="672" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" letter-spacing="1" fill="#aaa">UI LABEL — Arial Bold Uppercase · #7A9A87</text>
-
-  <!-- ─── SECTION 5: USAGE RULES ─── -->
-  <text x="36" y="726" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" font-weight="700" letter-spacing="2.5" fill="#888">USAGE RULES</text>
-
-  <rect x="36" y="738" width="648" height="124" rx="8" fill="#ffffff" stroke="#E2DDD5" stroke-width="0.8"/>
-
-  <!-- Rule items -->
-  <circle cx="60" cy="762" r="5" fill="#1A7A46"/>
-  <text x="76" y="767" font-family="'Arial','Helvetica',sans-serif" font-size="12" fill="#1C2B22">Primary actions, logo, key UI elements → Nile Green #1A7A46</text>
-
-  <circle cx="60" cy="790" r="5" fill="#C47D11"/>
-  <text x="76" y="795" font-family="'Arial','Helvetica',sans-serif" font-size="12" fill="#1C2B22">Pending appointments, follow-up due, caution states → Desert Amber</text>
-
-  <circle cx="60" cy="818" r="5" fill="#B52A2A"/>
-  <text x="76" y="823" font-family="'Arial','Helvetica',sans-serif" font-size="12" fill="#1C2B22">Urgent surgical cases, errors, overdue flags → Clinical Red</text>
-
-  <circle cx="60" cy="846" r="5" fill="#F0EDE6" stroke="#C0B89A" stroke-width="1"/>
-  <text x="76" y="851" font-family="'Arial','Helvetica',sans-serif" font-size="12" fill="#1C2B22">Page backgrounds and card surfaces → Bone White / Paper</text>
-
-  <!-- Footer bar -->
-  <rect y="868" width="720" height="32" fill="#0F4D2A"/>
-  <text x="36" y="888" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" letter-spacing="1" fill="#8FBFA4">DASO Health · Direct Aid Somalia · Confidential Brand Asset</text>
-  <text x="684" y="888" text-anchor="end" font-family="'Arial','Helvetica',sans-serif"
-        font-size="10" fill="#8FBFA4">v1.0</text>
+  <rect y="868" width="720" height="32" fill="#002E63"/>
+  <text x="36" y="888" font-family="'Poppins'" font-size="10" fill="#C2D2E6">DAS Health - Direct Aid Somalia - Brand colors from tokens/colors.css</text>
 </svg>
+

@@ -13,7 +13,7 @@ vi.mock('@/lib/auth-server', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    campaign: { findUnique: vi.fn() },
+    campaignRegion: { findFirst: vi.fn() },
     patient: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -37,7 +37,7 @@ import * as patientApi from '@/lib/api/patients';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const campaignScope = { region: 'Galmudug', operationDistrict: 'Dhuusamareeb' };
+const campaignScope = { id: 'plan-galmudug-1', region: 'Galmudug', operationDistrict: 'Dhuusamareeb' };
 
 const rawPatientRow = {
   id: 'patient-1',
@@ -59,6 +59,7 @@ const rawPatientRow = {
   consentGiven: true,
   consentDate: new Date('2025-02-01'),
   campaignId: 'camp-galmudug-1',
+  campaignRegionId: 'plan-galmudug-1',
   referralSource: 'Community',
   notes: null,
   registeredById: 'actor-clerk-1',
@@ -74,7 +75,7 @@ describe('actionCreatePatient', () => {
     vi.clearAllMocks();
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
-    vi.mocked(prisma.campaign.findUnique).mockResolvedValue(campaignScope as never);
+    vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue(campaignScope as never);
     vi.mocked(prisma.patient.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.patient.create).mockResolvedValue(rawPatientRow as never);
     vi.mocked(patientApi.fromPrisma).mockReturnValue(galmudugPatient);
@@ -108,10 +109,10 @@ describe('actionCreatePatient', () => {
 
   it('rejects when campaign is not found', async () => {
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
-    vi.mocked(prisma.campaign.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue(null);
     const result = await actionCreatePatient(patientInput);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/Campaign not found/);
+    if (!result.ok) expect(result.error).toMatch(/Regional plan not found/);
   });
 
   it('Banadir PM cannot register patient into Galmudug campaign', async () => {

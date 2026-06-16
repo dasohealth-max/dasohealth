@@ -20,6 +20,7 @@ export default function ReportsPage() {
   const [agg, setAgg] = useState<ReportAggregation | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [exportError, setExportError] = useState('');
   const [campaignId, setCampaignId] = useState('all');
   const [region, setRegion] = useState('all');
@@ -321,11 +322,166 @@ export default function ReportsPage() {
     }
   }
 
+  async function exportPdf() {
+    setExportingPdf(true);
+    setExportError('');
+    try {
+      const auditResult = await actionAuditReportExport({
+        region: effectiveRegion,
+        campaign: selectedCampaignName,
+        format: 'pdf',
+      });
+      if (!auditResult.ok) throw new Error(auditResult.error);
+
+      const rawData = await getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId });
+      const { campaigns, patients, screenings, surgeries, followUps, regionPerformance: rp } = rawData;
+      const { default: jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const surgeryTarget = campaigns.reduce((sum, c) => sum + c.targetSurgeries, 0);
+      const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
+      const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
+      const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
+      const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
+      const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
+      const completedFollowUps = followUps.filter((fu) => fu.status === 'Completed').length;
+      const overdueFollowUps = followUps.filter((fu) => fu.status === 'Overdue').length;
+      const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
+      const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
+      const registered = patients.length;
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 36;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(0, 46, 99);
+      doc.text('DAS Health Eye Care Report', margin, 42);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(75, 86, 102);
+      doc.text(`Region: ${effectiveRegion === 'all' ? 'All regions' : effectiveRegion}`, margin, 60);
+      doc.text(`Campaign: ${selectedCampaignName}`, margin, 74);
+      doc.text(`Prepared by: ${user?.name ?? ''} (${role ?? ''})`, margin, 88);
+      doc.text(`Report date: ${today}`, pageWidth - margin, 60, { align: 'right' });
+
+      autoTable(doc, {
+        startY: 112,
+        head: [['Metric', 'Value', 'Metric', 'Value']],
+        body: [
+          ['Campaigns', campaigns.length, 'Patients Registered', registered],
+          ['Screenings', screenings.length, 'Surgery Target', surgeryTarget],
+          ['Surgeries Scheduled', surgeriesScheduled, 'Surgeries In-Theatre', surgeriesInTheatre],
+          ['Surgeries Completed', surgeriesCompleted, 'Completion Rate', `${completionRate(surgeriesCompleted, surgeryTarget)}%`],
+          ['Surgeries Postponed', surgeriesPostponed, 'Surgeries Cancelled', surgeriesCancelled],
+          ['Follow-ups Completed', completedFollowUps, 'Follow-ups Overdue', overdueFollowUps],
+          ['Dr. Review Pending', doctorReviewPending, 'Dr. Review Completed', doctorReviewCompleted],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [0, 46, 99], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 5 },
+        columnStyles: { 0: { fontStyle: 'bold' }, 2: { fontStyle: 'bold' } },
+        margin: { left: margin, right: margin },
+      });
+
+      autoTable(doc, {
+        startY: (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+          ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 20
+          : 220,
+        head: [['Region', 'Status', 'Campaigns', 'Patients', 'Screenings', 'Target', 'Completed', 'Rate %', 'FU Done', 'FU Overdue']],
+        body: rp.map((r) => [
+          r.region,
+          r.status,
+          r.campaigns,
+          r.patients,
+          r.screenings,
+          r.targetSurgeries,
+          r.completed,
+          r.completionRate,
+          r.completedFollowUps,
+          r.overdueFollowUps,
+        ]),
+        theme: 'striped',
+        headStyles: { fillColor: [44, 153, 66], textColor: 255 },
+        styles: { fontSize: 7, cellPadding: 4 },
+        margin: { left: margin, right: margin },
+      });
+
+      doc.addPage();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(0, 46, 99);
+      doc.text('Campaign Performance', margin, 42);
+
+      autoTable(doc, {
+        startY: 58,
+        head: [['Campaign', 'Type', 'Region', 'Manager', 'Patients', 'Screenings', 'Target', 'Completed', 'Rate %', 'FU Done', 'FU Overdue']],
+        body: campaigns.map((c) => {
+          const cSurgeries = surgeries.filter((s) => s.campaignId === c.id);
+          const cFollowUps = followUps.filter((fu) => fu.campaignId === c.id);
+          const cDone = cSurgeries.filter((s) => s.status === 'Completed').length;
+          return [
+            c.name,
+            c.type,
+            c.region,
+            c.projectManagerName,
+            patients.filter((p) => p.campaignId === c.id).length,
+            screenings.filter((s) => s.campaignId === c.id).length,
+            c.targetSurgeries,
+            cDone,
+            completionRate(cDone, c.targetSurgeries),
+            cFollowUps.filter((fu) => fu.status === 'Completed').length,
+            cFollowUps.filter((fu) => fu.status === 'Overdue').length,
+          ];
+        }),
+        theme: 'grid',
+        headStyles: { fillColor: [0, 46, 99], textColor: 255 },
+        styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak' },
+        columnStyles: { 0: { cellWidth: 120 }, 1: { cellWidth: 80 }, 3: { cellWidth: 70 } },
+        margin: { left: margin, right: margin },
+      });
+
+      autoTable(doc, {
+        startY: (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+          ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 20
+          : 300,
+        head: [['Workflow Step', 'Count', '% of Registered']],
+        body: [
+          ['Registered', registered, registered ? '100%' : '0%'],
+          ['Screened', screenings.length, registered ? `${Math.round((screenings.length / registered) * 100)}%` : '0%'],
+          ['Surgery Booked', surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted, registered ? `${Math.round(((surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted) / registered) * 100)}%` : '0%'],
+          ['Surgery Completed', surgeriesCompleted, registered ? `${Math.round((surgeriesCompleted / registered) * 100)}%` : '0%'],
+          ['Follow-up Done', completedFollowUps, registered ? `${Math.round((completedFollowUps / registered) * 100)}%` : '0%'],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [44, 153, 66], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 5 },
+        margin: { left: margin, right: margin },
+      });
+
+      const pageCount = doc.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+        doc.setFontSize(8);
+        doc.setTextColor(100, 113, 132);
+        doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, doc.internal.pageSize.getHeight() - 20, { align: 'right' });
+      }
+
+      const slug = effectiveRegion === 'all' ? 'all-regions' : effectiveRegion.toLowerCase().replace(/\s+/g, '-');
+      doc.save(`eyecare-report-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Could not export PDF report');
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <p className="text-sm text-[#7A9A87]">Loading report data...</p>
+        <p className="text-sm text-[#647184]">Loading report data...</p>
       </div>
     );
   }
@@ -335,8 +491,8 @@ export default function ReportsPage() {
       {/* Report header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#1C2B22]">Reports</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#4A6455]">
+          <h1 className="text-xl font-bold text-[#141920]">Reports</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#4B5666]">
             <span className="flex items-center gap-1">
               <MapPin size={11} />
               {effectiveRegion === 'all' ? 'All regions' : effectiveRegion}
@@ -355,18 +511,29 @@ export default function ReportsPage() {
             </span>
           </div>
         </div>
-        <Button
-          onClick={exportWorkbook}
-          disabled={exporting}
-          className="gap-2 rounded-xl bg-[#1A7A46] text-white hover:bg-[#0F4D2A]"
-        >
-          <Download size={15} />
-          {exporting ? 'Preparing...' : 'Export Workbook'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={exportPdf}
+            disabled={exportingPdf}
+            variant="outline"
+            className="gap-2 rounded-xl"
+          >
+            <Download size={15} />
+            {exportingPdf ? 'Preparing...' : 'Download PDF'}
+          </Button>
+          <Button
+            onClick={exportWorkbook}
+            disabled={exporting}
+            className="gap-2 rounded-xl bg-[#2C9942] text-white hover:bg-[#002E63]"
+          >
+            <Download size={15} />
+            {exporting ? 'Preparing...' : 'Export Workbook'}
+          </Button>
+        </div>
       </div>
 
       {exportError && (
-        <div className="rounded-xl border border-[#F0C0C0] bg-[#FCE8E8] px-4 py-2.5 text-sm text-[#B52A2A]">
+        <div className="rounded-xl border border-[#FACDCB] bg-[#FDECEB] px-4 py-2.5 text-sm text-[#E53935]">
           {exportError}
         </div>
       )}
@@ -374,9 +541,9 @@ export default function ReportsPage() {
       {/* Filters */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {regionLocked ? (
-          <div className="rounded-xl border border-[#D0E8DA] bg-[#FAFAF8] px-3 py-2.5">
-            <p className="text-xs font-medium text-[#7A9A87]">Assigned region (locked)</p>
-            <p className="text-sm font-semibold text-[#1C2B22]">{assignedRegion}</p>
+          <div className="rounded-xl border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2.5">
+            <p className="text-xs font-medium text-[#647184]">Assigned region (locked)</p>
+            <p className="text-sm font-semibold text-[#141920]">{assignedRegion}</p>
           </div>
         ) : (
           <Select
@@ -463,7 +630,7 @@ export default function ReportsPage() {
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
           <Card className="border-0 shadow-sm xl:col-span-3">
             <CardHeader>
-              <CardTitle className="text-sm text-[#1C2B22]">
+              <CardTitle className="text-sm text-[#141920]">
                 Target vs Completed Surgeries by Region
               </CardTitle>
             </CardHeader>
@@ -495,8 +662,8 @@ export default function ReportsPage() {
                       formatter={(v) => (v === 'targetSurgeries' ? 'Target' : 'Completed')}
                       iconType="square"
                     />
-                    <Bar dataKey="targetSurgeries" fill="#8FBFA4" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="completed" fill="#1A7A46" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="targetSurgeries" fill="#A6DCB5" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="completed" fill="#2C9942" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -507,7 +674,7 @@ export default function ReportsPage() {
 
           <Card className="border-0 shadow-sm xl:col-span-2">
             <CardHeader>
-              <CardTitle className="text-sm text-[#1C2B22]">Surgery Status</CardTitle>
+              <CardTitle className="text-sm text-[#141920]">Surgery Status</CardTitle>
             </CardHeader>
             <CardContent className="h-72">
               {(agg?.surgeryStatusData ?? []).length ? (
@@ -541,7 +708,7 @@ export default function ReportsPage() {
       <Section title="Patient Workflow Funnel">
         <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm text-[#1C2B22]">
+            <CardTitle className="text-sm text-[#141920]">
               Registered → Screened → Surgery → Follow-up
             </CardTitle>
           </CardHeader>
@@ -556,7 +723,7 @@ export default function ReportsPage() {
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="step" tick={{ fontSize: 11 }} width={116} />
                 <Tooltip formatter={(v) => [Number(v).toLocaleString(), 'Patients']} />
-                <Bar dataKey="count" fill="#1A7A46" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="count" fill="#2C9942" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -567,7 +734,7 @@ export default function ReportsPage() {
       <Section title="Follow-up and Doctor Review">
         <Card className="border-0 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm text-[#1C2B22]">Outcomes by Milestone</CardTitle>
+            <CardTitle className="text-sm text-[#141920]">Outcomes by Milestone</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             {(scoped?.followUpCount ?? 0) > 0 ? (
@@ -581,10 +748,10 @@ export default function ReportsPage() {
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
                   <Legend iconType="square" />
-                  <Bar dataKey="Completed" fill="#1A7A46" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Overdue" fill="#B52A2A" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Dr. Pending" fill="#C47D11" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Dr. Completed" fill="#2B9E5C" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Completed" fill="#2C9942" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Overdue" fill="#E53935" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Dr. Pending" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Dr. Completed" fill="#45B066" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -600,14 +767,14 @@ export default function ReportsPage() {
           <CardContent className="pt-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b border-[#D0E8DA] bg-[#FAFAF8]">
+                <thead className="border-b border-[#DDE3EA] bg-[#F5F7FA]">
                   <tr>
                     {[
                       'Region', 'Status', 'Campaigns', 'Target', 'Patients', 'Screened',
                       'Scheduled', 'In-Theatre', 'Completed', 'Rate',
                       'FU Done', 'FU Overdue', 'Dr. Pending', 'Dr. Done',
                     ].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">
                         {h}
                       </th>
                     ))}
@@ -615,39 +782,39 @@ export default function ReportsPage() {
                 </thead>
                 <tbody>
                   {regionPerformance.map((row) => (
-                    <tr key={row.region} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
-                      <td className="px-4 py-3 font-medium text-[#1C2B22]">{row.region}</td>
+                    <tr key={row.region} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
+                      <td className="px-4 py-3 font-medium text-[#141920]">{row.region}</td>
                       <td className="px-4 py-3"><StatusBadge status={row.status as RegionStatus} /></td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.campaigns}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.targetSurgeries}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.patients}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.screenings}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.scheduled}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.inTheatre}</td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.completed}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.campaigns}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.targetSurgeries}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.patients}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.screenings}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.scheduled}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.inTheatre}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.completed}</td>
                       <td className="px-4 py-3">
                         <span className={`font-semibold ${
-                          row.completionRate >= 75 ? 'text-[#1A7A46]' :
-                          row.completionRate >= 25 ? 'text-[#C47D11]' : 'text-[#B52A2A]'
+                          row.completionRate >= 75 ? 'text-[#2C9942]' :
+                          row.completionRate >= 25 ? 'text-[#F59E0B]' : 'text-[#E53935]'
                         }`}>{row.completionRate}%</span>
                       </td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.completedFollowUps}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.completedFollowUps}</td>
                       <td className="px-4 py-3">
-                        <span className={row.overdueFollowUps > 0 ? 'font-semibold text-[#B52A2A]' : 'text-[#4A6455]'}>
+                        <span className={row.overdueFollowUps > 0 ? 'font-semibold text-[#E53935]' : 'text-[#4B5666]'}>
                           {row.overdueFollowUps}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={row.doctorReviewPending > 0 ? 'font-semibold text-[#C47D11]' : 'text-[#4A6455]'}>
+                        <span className={row.doctorReviewPending > 0 ? 'font-semibold text-[#F59E0B]' : 'text-[#4B5666]'}>
                           {row.doctorReviewPending}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[#4A6455]">{row.doctorReviewCompleted}</td>
+                      <td className="px-4 py-3 text-[#4B5666]">{row.doctorReviewCompleted}</td>
                     </tr>
                   ))}
                   {regionPerformance.length === 0 && (
                     <tr>
-                      <td colSpan={14} className="px-4 py-8 text-center text-sm text-[#7A9A87]">No region data</td>
+                      <td colSpan={14} className="px-4 py-8 text-center text-sm text-[#647184]">No region data</td>
                     </tr>
                   )}
                 </tbody>
@@ -663,13 +830,13 @@ export default function ReportsPage() {
           <CardContent className="pt-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="border-b border-[#D0E8DA] bg-[#FAFAF8]">
+                <thead className="border-b border-[#DDE3EA] bg-[#F5F7FA]">
                   <tr>
                     {[
                       'Campaign', 'Type', 'Region', 'District', 'Manager', 'Status',
                       'Patients', 'Screened', 'Scheduled', 'Completed', 'Target', 'Rate',
                     ].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#7A9A87]">
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">
                         {h}
                       </th>
                     ))}
@@ -680,21 +847,21 @@ export default function ReportsPage() {
                     const stats = agg?.campaignStats.find((cs) => cs.id === c.id);
                     const cRate = completionRate(stats?.completed ?? 0, c.targetSurgeries);
                     return (
-                      <tr key={c.id} className="border-b border-[#F0EDE6] hover:bg-[#FAFAF8]">
-                        <td className="px-4 py-3 font-medium text-[#1C2B22]">{c.name}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{c.type}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{c.region}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{c.operationDistrict}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{c.projectManagerName}</td>
+                      <tr key={c.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
+                        <td className="px-4 py-3 font-medium text-[#141920]">{c.name}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{c.type}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{c.region}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{c.operationDistrict}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{c.projectManagerName}</td>
                         <td className="px-4 py-3"><CampaignStatusBadge status={c.status} /></td>
-                        <td className="px-4 py-3 text-[#4A6455]">{stats?.patients ?? 0}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{stats?.screenings ?? 0}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{stats?.scheduled ?? 0}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{stats?.completed ?? 0}</td>
-                        <td className="px-4 py-3 text-[#4A6455]">{c.targetSurgeries}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{stats?.patients ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{stats?.screenings ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{stats?.scheduled ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{stats?.completed ?? 0}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{c.targetSurgeries}</td>
                         <td className="px-4 py-3">
                           <span className={`font-semibold ${
-                            cRate >= 75 ? 'text-[#1A7A46]' : cRate >= 25 ? 'text-[#C47D11]' : 'text-[#B52A2A]'
+                            cRate >= 75 ? 'text-[#2C9942]' : cRate >= 25 ? 'text-[#F59E0B]' : 'text-[#E53935]'
                           }`}>{cRate}%</span>
                         </td>
                       </tr>
@@ -702,7 +869,7 @@ export default function ReportsPage() {
                   })}
                   {(scoped?.campaigns ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-sm text-[#7A9A87]">No campaigns</td>
+                      <td colSpan={12} className="px-4 py-8 text-center text-sm text-[#647184]">No campaigns</td>
                     </tr>
                   )}
                 </tbody>
@@ -720,7 +887,7 @@ export default function ReportsPage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#7A9A87]">{title}</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[#647184]">{title}</p>
       {children}
     </div>
   );
@@ -730,16 +897,16 @@ type KPIColor = 'default' | 'green' | 'red' | 'amber' | 'sage';
 
 function KPI({ title, value, color = 'default' }: { title: string; value: number | string; color?: KPIColor }) {
   const valueColor: Record<KPIColor, string> = {
-    default: 'text-[#1C2B22]',
-    green: 'text-[#1A7A46]',
-    red: 'text-[#B52A2A]',
-    amber: 'text-[#C47D11]',
-    sage: 'text-[#4A6455]',
+    default: 'text-[#141920]',
+    green: 'text-[#2C9942]',
+    red: 'text-[#E53935]',
+    amber: 'text-[#F59E0B]',
+    sage: 'text-[#4B5666]',
   };
   return (
     <Card className="border-0 shadow-sm">
       <CardContent className="p-4">
-        <p className="text-xs font-medium text-[#4A6455]">{title}</p>
+        <p className="text-xs font-medium text-[#4B5666]">{title}</p>
         <p className={`mt-1 text-2xl font-bold ${valueColor[color]}`}>{value}</p>
       </CardContent>
     </Card>
@@ -748,7 +915,7 @@ function KPI({ title, value, color = 'default' }: { title: string; value: number
 
 function EmptyChart({ message }: { message: string }) {
   return (
-    <div className="flex h-full items-center justify-center rounded-xl bg-[#FAFAF8] text-sm text-[#7A9A87]">
+    <div className="flex h-full items-center justify-center rounded-xl bg-[#F5F7FA] text-sm text-[#647184]">
       {message}
     </div>
   );
@@ -756,11 +923,11 @@ function EmptyChart({ message }: { message: string }) {
 
 function StatusBadge({ status }: { status: RegionStatus }) {
   const styles: Record<RegionStatus, string> = {
-    'No campaign': 'bg-[#F0EDE6] text-[#4A6455]',
-    'No activity': 'bg-[#FEF3DC] text-[#C47D11]',
-    Behind: 'bg-[#FCE8E8] text-[#B52A2A]',
-    Active: 'bg-[#E8F5EE] text-[#0F4D2A]',
-    Strong: 'bg-[#E8F5EE] text-[#1A7A46]',
+    'No campaign': 'bg-[#EAEEF3] text-[#4B5666]',
+    'No activity': 'bg-[#FFF5E6] text-[#F59E0B]',
+    Behind: 'bg-[#FDECEB] text-[#E53935]',
+    Active: 'bg-[#EBF7EE] text-[#002E63]',
+    Strong: 'bg-[#EBF7EE] text-[#2C9942]',
   };
   return (
     <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status]}`}>
@@ -771,13 +938,13 @@ function StatusBadge({ status }: { status: RegionStatus }) {
 
 function CampaignStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    Planned: 'bg-[#F0EDE6] text-[#4A6455]',
-    Active: 'bg-[#E8F5EE] text-[#1A7A46]',
-    Completed: 'bg-[#8FBFA4] text-[#0F4D2A]',
-    Suspended: 'bg-[#FCE8E8] text-[#B52A2A]',
+    Planned: 'bg-[#EAEEF3] text-[#4B5666]',
+    Active: 'bg-[#EBF7EE] text-[#2C9942]',
+    Completed: 'bg-[#A6DCB5] text-[#002E63]',
+    Suspended: 'bg-[#FDECEB] text-[#E53935]',
   };
   return (
-    <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#F0EDE6] text-[#4A6455]'}`}>
+    <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#EAEEF3] text-[#4B5666]'}`}>
       {status}
     </span>
   );
@@ -786,3 +953,4 @@ function CampaignStatusBadge({ status }: { status: string }) {
 function shortRegion(region: string) {
   return region.replace(' / Mogadishu', '').replace(' Somalia', '').replace(' State', '');
 }
+

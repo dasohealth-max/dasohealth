@@ -38,6 +38,10 @@ enum CampaignType {
   DiabeticRetinopathy @map("Diabetic Retinopathy")
   Glaucoma
   General
+  CataractSurgeryOutreach @map("Cataract Surgery Outreach")
+  EyeVisionOutreach       @map("Eye Vision Outreach")
+  GeneralEyeScreening     @map("General Eye Screening")
+  MixedOutreach           @map("Mixed Outreach")
 
   @@map("campaign_type")
 }
@@ -49,6 +53,15 @@ enum CampaignStatus {
   Suspended
 
   @@map("campaign_status")
+}
+
+enum RegionalPlanStatus {
+  OnTrack @map("On Track")
+  Behind
+  Completed
+  Suspended
+
+  @@map("regional_plan_status")
 }
 
 enum Sex {
@@ -196,8 +209,11 @@ model Campaign {
   targetSurgeries   Int            @default(0) @map("target_surgeries")
   targetFollowUps   Int            @default(0) @map("target_follow_ups")
   description       String         @default("")
+  notes             String         @default("")
   createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  regions    CampaignRegion[]
   patients   Patient[]
   screenings Screening[]
   surgeries  Surgery[]
@@ -208,6 +224,38 @@ model Campaign {
   @@index([projectManagerId], map: "idx_campaigns_project_manager_id")
   @@index([createdAt(sort: Desc)], map: "idx_campaigns_created_at")
   @@map("campaigns")
+}
+
+model CampaignRegion {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaignId          String             @map("campaign_id") @db.Uuid
+  type                CampaignType       @default(MixedOutreach)
+  region              String
+  operationDistrict   String             @map("operation_district")
+  regionalManagerId   String             @default("") @map("regional_manager_id")
+  regionalManagerName String             @default("") @map("regional_manager_name")
+  targetPatients      Int                @default(0) @map("target_patients")
+  targetScreenings    Int                @default(0) @map("target_screenings")
+  targetSurgeries     Int                @default(0) @map("target_surgeries")
+  startDate           DateTime           @map("start_date") @db.Date
+  endDate             DateTime           @map("end_date") @db.Date
+  status              RegionalPlanStatus @default(OnTrack)
+  notes               String             @default("")
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  campaign   Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  patients   Patient[]
+  screenings Screening[]
+  surgeries  Surgery[]
+  followUps  FollowUp[]
+
+  @@unique([campaignId, region, type], map: "campaign_regions_campaign_id_region_type_key")
+  @@index([campaignId], map: "idx_campaign_regions_campaign_id")
+  @@index([region], map: "idx_campaign_regions_region")
+  @@index([type], map: "idx_campaign_regions_type")
+  @@index([status], map: "idx_campaign_regions_status")
+  @@map("campaign_regions")
 }
 
 model Patient {
@@ -230,6 +278,7 @@ model Patient {
   consentGiven      Boolean          @default(false) @map("consent_given")
   consentDate       DateTime?        @map("consent_date") @db.Date
   campaignId        String?          @map("campaign_id") @db.Uuid
+  campaignRegionId  String?          @map("campaign_region_id") @db.Uuid
   referralSource    String           @default("") @map("referral_source")
   notes             String?
   registeredById    String           @default("") @map("registered_by_id")
@@ -237,12 +286,14 @@ model Patient {
   screeningStatus   String           @default("Awaiting Screening") @map("screening_status")
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  campaign   Campaign?   @relation(fields: [campaignId], references: [id])
-  screenings Screening[]
-  surgeries  Surgery[]
-  followUps  FollowUp[]
+  campaign       Campaign?       @relation(fields: [campaignId], references: [id])
+  campaignRegion CampaignRegion? @relation(fields: [campaignRegionId], references: [id])
+  screenings     Screening[]
+  surgeries      Surgery[]
+  followUps      FollowUp[]
 
   @@index([campaignId], map: "idx_patients_campaign_id")
+  @@index([campaignRegionId], map: "idx_patients_campaign_region_id")
   @@index([patientCode], map: "idx_patients_patient_code")
   @@index([region], map: "idx_patients_region")
   @@index([screeningStatus], map: "idx_patients_screening_status")
@@ -257,6 +308,7 @@ model Screening {
   patientId           String                  @map("patient_id") @db.Uuid
   patientName         String                  @map("patient_name")
   campaignId          String                  @map("campaign_id") @db.Uuid
+  campaignRegionId    String?                 @map("campaign_region_id") @db.Uuid
   region              String                  @default("Banadir / Mogadishu")
   operationDistrict   String                  @default("Mogadishu") @map("operation_district")
   screenedBy          String                  @map("screened_by")
@@ -279,11 +331,13 @@ model Screening {
   notes               String                  @default("")
   createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient  Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  campaign Campaign @relation(fields: [campaignId], references: [id])
+  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  campaign       Campaign        @relation(fields: [campaignId], references: [id])
+  campaignRegion CampaignRegion? @relation(fields: [campaignRegionId], references: [id])
 
   @@index([patientId], map: "idx_screenings_patient_id")
   @@index([campaignId], map: "idx_screenings_campaign_id")
+  @@index([campaignRegionId], map: "idx_screenings_campaign_region_id")
   @@index([region], map: "idx_screenings_region")
   @@index([region, campaignId], map: "idx_screenings_region_campaign_id")
   @@index([screenedAt(sort: Desc)], map: "idx_screenings_screened_at")
@@ -296,6 +350,7 @@ model Surgery {
   patientId              String        @map("patient_id") @db.Uuid
   patientName            String        @map("patient_name")
   campaignId             String        @map("campaign_id") @db.Uuid
+  campaignRegionId       String?       @map("campaign_region_id") @db.Uuid
   region                 String        @default("Banadir / Mogadishu")
   operationDistrict      String        @default("Mogadishu") @map("operation_district")
   createdFromScreeningId String?       @map("created_from_screening_id") @db.Uuid
@@ -313,12 +368,14 @@ model Surgery {
   completedByName        String        @default("") @map("completed_by_name")
   createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  campaign  Campaign   @relation(fields: [campaignId], references: [id])
-  followUps FollowUp[]
+  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  campaign       Campaign        @relation(fields: [campaignId], references: [id])
+  campaignRegion CampaignRegion? @relation(fields: [campaignRegionId], references: [id])
+  followUps      FollowUp[]
 
   @@index([patientId], map: "idx_surgeries_patient_id")
   @@index([campaignId], map: "idx_surgeries_campaign_id")
+  @@index([campaignRegionId], map: "idx_surgeries_campaign_region_id")
   @@index([region], map: "idx_surgeries_region")
   @@index([status], map: "idx_surgeries_status")
   @@index([region, status], map: "idx_surgeries_region_status")
@@ -334,6 +391,7 @@ model FollowUp {
   patientName          String             @map("patient_name")
   surgeryId            String             @map("surgery_id") @db.Uuid
   campaignId           String             @map("campaign_id") @db.Uuid
+  campaignRegionId     String?            @map("campaign_region_id") @db.Uuid
   region               String             @default("Banadir / Mogadishu")
   milestone            FollowUpMilestone
   dueDate              DateTime           @map("due_date") @db.Date
@@ -355,15 +413,17 @@ model FollowUp {
   completedByName      String             @default("") @map("completed_by_name")
   createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient     Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  surgery     Surgery              @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
-  campaign    Campaign             @relation(fields: [campaignId], references: [id])
-  medications FollowUpMedication[]
+  patient        Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  surgery        Surgery          @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
+  campaign       Campaign         @relation(fields: [campaignId], references: [id])
+  campaignRegion CampaignRegion?  @relation(fields: [campaignRegionId], references: [id])
+  medications    FollowUpMedication[]
 
   @@index([patientId], map: "idx_follow_ups_patient_id")
   @@index([surgeryId], map: "idx_follow_ups_surgery_id")
   @@index([surgeryId, milestone], map: "idx_follow_ups_surgery_milestone")
   @@index([campaignId], map: "idx_follow_ups_campaign_id")
+  @@index([campaignRegionId], map: "idx_follow_ups_campaign_region_id")
   @@index([region], map: "idx_follow_ups_region")
   @@index([region, status], map: "idx_follow_ups_region_status")
   @@index([region, dueDate], map: "idx_follow_ups_region_due_date")

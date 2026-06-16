@@ -77,6 +77,7 @@ const PatientSchema = z.object({
   consentGiven: z.boolean(),
   consentDate: z.string().optional(),
   campaignId: z.string().min(1, 'Campaign is required'),
+  campaignRegionId: z.string().min(1, 'Regional plan is required'),
   referralSource: z.string(),
   notes: z.string().optional(),
 });
@@ -98,10 +99,10 @@ function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
 }
 
-async function getCampaignScope(campaignId: string) {
-  return prisma.campaign.findUnique({
-    where: { id: campaignId },
-    select: { region: true, operationDistrict: true },
+async function getCampaignScope(campaignId: string, campaignRegionId: string) {
+  return prisma.campaignRegion.findFirst({
+    where: { id: campaignRegionId, campaignId },
+    select: { id: true, region: true, operationDistrict: true },
   });
 }
 
@@ -139,14 +140,15 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
   if (!isValidPhone(phone)) return { ok: false, error: 'Phone must be 7-15 digits and may start with +' };
 
   try {
-    const campaign = await getCampaignScope(d.campaignId);
-    if (!campaign) return { ok: false, error: 'Campaign not found' };
+    const campaign = await getCampaignScope(d.campaignId, d.campaignRegionId);
+    if (!campaign) return { ok: false, error: 'Regional plan not found for selected campaign' };
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
     const duplicate = await prisma.patient.findFirst({
       where: {
         campaignId: d.campaignId,
+        campaignRegionId: d.campaignRegionId,
         phone,
         fullName: { equals: fullName, mode: 'insensitive' },
       },
@@ -174,6 +176,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
       consentGiven: d.consentGiven,
       consentDate: d.consentDate ? new Date(d.consentDate) : null,
       campaignId: d.campaignId,
+      campaignRegionId: d.campaignRegionId,
       referralSource: d.referralSource,
       notes: d.notes || null,
       registeredById: actor.id,
@@ -214,8 +217,8 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
     const beforeDenied = ensureRegionAccess(actor, before.region);
     if (beforeDenied) return beforeDenied;
 
-    const campaign = await getCampaignScope(d.campaignId);
-    if (!campaign) return { ok: false, error: 'Campaign not found' };
+    const campaign = await getCampaignScope(d.campaignId, d.campaignRegionId);
+    if (!campaign) return { ok: false, error: 'Regional plan not found for selected campaign' };
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
@@ -223,6 +226,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
       where: {
         id: { not: id },
         campaignId: d.campaignId,
+        campaignRegionId: d.campaignRegionId,
         phone,
         fullName: { equals: fullName, mode: 'insensitive' },
       },
@@ -252,6 +256,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
         consentGiven: d.consentGiven,
         consentDate: d.consentDate ? new Date(d.consentDate) : null,
         campaignId: d.campaignId,
+        campaignRegionId: d.campaignRegionId,
         referralSource: d.referralSource,
         notes: d.notes || null,
       },

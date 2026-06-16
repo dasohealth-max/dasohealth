@@ -25,14 +25,14 @@ const REFERRAL_SOURCES = ['Campaign walk-in', 'Community health worker', 'Self-r
 const SCREENING_STATUSES = ['Awaiting Screening', 'Screened'] as const;
 
 const F = {
-  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87] mb-1.5',
-  input: 'w-full rounded-md border border-[#D0E8DA] bg-white px-3 py-2 text-sm text-[#1C2B22] placeholder:text-[#7A9A87] outline-none transition focus:border-[#1A7A46] focus:ring-2 focus:ring-[#1A7A46]/10 disabled:bg-[#F0EDE6] disabled:text-[#7A9A87]',
+  label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
+  input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
   sel:   'rounded-md',
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  'Awaiting Screening': 'bg-[#FEF3DC] text-[#C47D11]',
-  'Screened':           'bg-[#E8F5EE] text-[#1A7A46]',
+  'Awaiting Screening': 'bg-[#FFF5E6] text-[#F59E0B]',
+  'Screened':           'bg-[#EBF7EE] text-[#2C9942]',
 };
 
 // ─── Form shape ───────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ const BLANK = {
   consentGiven:     true,
   consentDate:      new Date().toISOString().split('T')[0],
   campaignId:       '',
+  campaignRegionId: '',
   referralSource:   'Campaign walk-in',
   notes:            '',
   registeredById:   '',
@@ -115,7 +116,23 @@ export default function PatientsPage() {
 
   function chooseCampaign(campaignId: string) {
     const campaign = campaigns.find((c) => c.id === campaignId);
-    if (campaign) setForm((prev) => applyCampaignContext(prev, campaign));
+    if (campaign) {
+      const firstPlan = campaign.regions?.[0];
+      setForm((prev) => firstPlan ? applyRegionalPlanContext(prev, campaign, firstPlan) : {
+        ...prev,
+        campaignId: campaign.id,
+        campaignRegionId: '',
+        region: '',
+        operationDistrict: '',
+        district: '',
+      });
+    }
+  }
+
+  function chooseRegionalPlan(campaignRegionId: string) {
+    const campaign = campaigns.find((c) => c.id === form.campaignId);
+    const plan = campaign?.regions?.find((r) => r.id === campaignRegionId);
+    if (campaign && plan) setForm((prev) => applyRegionalPlanContext(prev, campaign, plan));
   }
 
   const selectedCampaign = campaigns.find((c) => c.id === form.campaignId);
@@ -126,7 +143,8 @@ export default function PatientsPage() {
     let base = BLANK;
     if (!isSuperAdmin) {
       const active = campaigns.find((c) => c.status === 'Active') ?? campaigns[0];
-      if (active) base = applyCampaignContext(BLANK, active);
+      const firstPlan = active?.regions?.[0];
+      if (active && firstPlan) base = applyRegionalPlanContext(BLANK, active, firstPlan);
     }
     setForm(base);
     setSaveError('');
@@ -177,7 +195,7 @@ export default function PatientsPage() {
   }
 
   const hasFilters = !!search || !!regionFilter || !!statusFilter;
-  const formInvalid = !form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId;
+  const formInvalid = !form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId || !form.campaignRegionId;
 
   return (
     <div className="space-y-5">
@@ -195,11 +213,11 @@ export default function PatientsPage() {
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-[#1C2B22]">Patients</h1>
-          <p className="text-sm text-[#4A6455]">Register and manage patients in regional screening campaigns</p>
+          <h1 className="text-xl font-bold text-[#141920]">Patients</h1>
+          <p className="text-sm text-[#4B5666]">Register and manage patients in regional screening campaigns</p>
         </div>
         {can('patients', 'create') && !showForm && (
-          <Button onClick={openAdd} className="gap-2 rounded-md bg-[#1A7A46] text-white hover:bg-[#0F4D2A]">
+          <Button onClick={openAdd} className="gap-2 rounded-md bg-[#2C9942] text-white hover:bg-[#002E63]">
             <Plus size={15} /> Register Patient
           </Button>
         )}
@@ -221,7 +239,7 @@ export default function PatientsPage() {
           saveDisabled={formInvalid}
         >
           {saveError && (
-            <div className="mb-4 rounded-md border border-[#F0C0C0] bg-[#FCE8E8] px-3 py-2 text-sm text-[#B52A2A]">
+            <div className="mb-4 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
               {saveError}
             </div>
           )}
@@ -232,6 +250,7 @@ export default function PatientsPage() {
             campaignLocked={campaignLocked}
             set={set}
             chooseCampaign={chooseCampaign}
+            chooseRegionalPlan={chooseRegionalPlan}
           />
         </ModalForm>
       )}
@@ -239,7 +258,7 @@ export default function PatientsPage() {
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-56 flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9A87]" size={14} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#647184]" size={14} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -275,13 +294,13 @@ export default function PatientsPage() {
         {hasFilters && (
           <button
             onClick={() => { setSearch(''); setRegionFilter(''); setStatusFilter(''); setPage(1); }}
-            className="flex items-center gap-1.5 rounded-md border border-[#D0E8DA] px-3 py-2 text-xs font-medium text-[#4A6455] transition hover:bg-[#FAFAF8]"
+            className="flex items-center gap-1.5 rounded-md border border-[#DDE3EA] px-3 py-2 text-xs font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
           >
             <X size={12} /> Clear
           </button>
         )}
 
-        <span className="ml-auto text-sm text-[#7A9A87]">
+        <span className="ml-auto text-sm text-[#647184]">
           {total} {total === 1 ? 'patient' : 'patients'}
         </span>
       </div>
@@ -291,10 +310,10 @@ export default function PatientsPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-[#F0EDE6] bg-[#FAFAF8]">
+              <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
                   {['Code', 'Patient', 'Phone', 'Region / City', 'Status', 'Registered By', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#7A9A87]">
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">
                       {h}
                     </th>
                   ))}
@@ -303,40 +322,40 @@ export default function PatientsPage() {
               <tbody>
                 {isLoading && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-sm text-[#7A9A87]">Loading patients...</td>
+                    <td colSpan={7} className="py-12 text-center text-sm text-[#647184]">Loading patients...</td>
                   </tr>
                 )}
                 {!isLoading && patients.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-sm text-[#7A9A87]">
+                    <td colSpan={7} className="py-12 text-center text-sm text-[#647184]">
                       {hasFilters ? 'No patients match the current filters.' : 'No patients registered yet.'}
                     </td>
                   </tr>
                 )}
                 {!isLoading && patients.map((patient) => (
-                  <tr key={patient.id} className="border-b border-[#F0EDE6] transition-colors hover:bg-[#FAFAF8]">
-                    <td className="px-4 py-3.5 font-mono text-xs text-[#4A6455]">{patient.patientCode}</td>
+                  <tr key={patient.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                    <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
-                      <p className="font-medium text-[#1C2B22]">{patient.fullName}</p>
-                      <p className="text-xs text-[#7A9A87]">{formatDate(patient.dateOfBirth)} · {patient.sex}</p>
+                      <p className="font-medium text-[#141920]">{patient.fullName}</p>
+                      <p className="text-xs text-[#647184]">{formatDate(patient.dateOfBirth)} · {patient.sex}</p>
                     </td>
-                    <td className="px-4 py-3.5 text-[#4A6455]">{patient.phone}</td>
+                    <td className="px-4 py-3.5 text-[#4B5666]">{patient.phone}</td>
                     <td className="px-4 py-3.5">
-                      <p className="text-[#1C2B22]">{patient.region}</p>
-                      <p className="text-xs text-[#7A9A87]">{patient.operationDistrict}</p>
+                      <p className="text-[#141920]">{patient.region}</p>
+                      <p className="text-xs text-[#647184]">{patient.operationDistrict}</p>
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[patient.screeningStatus] ?? 'bg-[#FAFAF8] text-[#4A6455]'}`}>
+                      <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[patient.screeningStatus] ?? 'bg-[#F5F7FA] text-[#4B5666]'}`}>
                         {patient.screeningStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-[#4A6455]">{patient.registeredByName || '—'}</td>
+                    <td className="px-4 py-3.5 text-[#4B5666]">{patient.registeredByName || '—'}</td>
                     <td className="px-4 py-3.5">
                       <div className="flex gap-1">
                         {can('patients', 'edit') && (
                           <button
                             onClick={() => openEdit(patient)}
-                            className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#E8F5EE] hover:text-[#1A7A46]"
+                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
                           >
                             <Pencil size={13} />
                           </button>
@@ -344,7 +363,7 @@ export default function PatientsPage() {
                         {can('patients', 'delete') && (
                           <button
                             onClick={() => setDeleteTarget(patient)}
-                            className="rounded-md p-1.5 text-[#7A9A87] transition hover:bg-[#FCE8E8] hover:text-[#B52A2A]"
+                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -366,7 +385,7 @@ export default function PatientsPage() {
 // ─── Patient registration form ────────────────────────────────────────────────
 
 function PatientRegistrationForm({
-  form, campaigns, selectedCampaign, campaignLocked, set, chooseCampaign,
+  form, campaigns, selectedCampaign, campaignLocked, set, chooseCampaign, chooseRegionalPlan,
 }: {
   form: PatientForm;
   campaigns: Campaign[];
@@ -374,18 +393,20 @@ function PatientRegistrationForm({
   campaignLocked: boolean;
   set: <K extends keyof PatientForm>(key: K, value: PatientForm[K]) => void;
   chooseCampaign: (id: string) => void;
+  chooseRegionalPlan: (id: string) => void;
 }) {
+  const selectedPlan = selectedCampaign?.regions?.find((plan) => plan.id === form.campaignRegionId);
   return (
     <div className="space-y-6">
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Campaign & Location</p>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Campaign & Location</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="sm:col-span-3">
             <label className={F.label}>Campaign *</label>
             {campaignLocked && selectedCampaign ? (
-              <div className="rounded-md border border-[#D0E8DA] bg-[#FAFAF8] px-3 py-2 text-sm text-[#4A6455]">
+              <div className="rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2 text-sm text-[#4B5666]">
                 {selectedCampaign.name}
-                <span className="ml-2 text-[#7A9A87]">— {selectedCampaign.region}</span>
+                <span className="ml-2 text-[#647184]">- {selectedPlan?.region ?? 'Select regional plan'}</span>
               </div>
             ) : (
               <Select value={form.campaignId} onValueChange={(v) => { if (v) chooseCampaign(v); }}>
@@ -394,11 +415,24 @@ function PatientRegistrationForm({
                 </SelectTrigger>
                 <SelectContent>
                   {campaigns.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name} — {c.region}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>{c.name} - {c.regions?.length ?? 0} regional plans</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             )}
+          </div>
+          <div className="sm:col-span-3">
+            <label className={F.label}>Regional Plan *</label>
+            <Select value={form.campaignRegionId} disabled={!selectedCampaign} onValueChange={(v) => { if (v) chooseRegionalPlan(v); }}>
+              <SelectTrigger className={F.sel}>
+                <SelectValue placeholder={selectedCampaign ? 'Select regional plan' : 'Select campaign first'} />
+              </SelectTrigger>
+              <SelectContent>
+                {(selectedCampaign?.regions ?? []).map((plan) => (
+                  <SelectItem key={plan.id} value={plan.id}>{plan.region} - {plan.operationDistrict}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className={F.label}>State / Region</label>
@@ -412,7 +446,7 @@ function PatientRegistrationForm({
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Patient Identity</p>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Patient Identity</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <div className="sm:col-span-2">
             <label className={F.label}>Full Name *</label>
@@ -445,7 +479,7 @@ function PatientRegistrationForm({
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Contact Details</p>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Contact Details</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className={F.label}>Phone Number *</label>
@@ -478,7 +512,7 @@ function PatientRegistrationForm({
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Background</p>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Background</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className={F.label}>Occupation</label>
@@ -498,21 +532,21 @@ function PatientRegistrationForm({
           </div>
           <div>
             <label className={F.label}>Consent Given</label>
-            <div className="flex h-9.5 items-center gap-3 rounded-md border border-[#D0E8DA] bg-white px-3">
+            <div className="flex h-9.5 items-center gap-3 rounded-md border border-[#DDE3EA] bg-white px-3">
               <input
                 type="checkbox"
                 checked={form.consentGiven}
                 onChange={(e) => set('consentGiven', e.target.checked)}
-                className="h-4 w-4 rounded border-[#8FBFA4] accent-[#1A7A46]"
+                className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
               />
-              <span className="text-sm text-[#4A6455]">Patient has consented to treatment</span>
+              <span className="text-sm text-[#4B5666]">Patient has consented to treatment</span>
             </div>
           </div>
         </div>
       </section>
 
       <section>
-        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#7A9A87]">Notes</p>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Notes</p>
         <textarea
           value={form.notes ?? ''}
           onChange={(e) => set('notes', e.target.value)}
@@ -527,12 +561,14 @@ function PatientRegistrationForm({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function applyCampaignContext(form: PatientForm, campaign: Campaign): PatientForm {
+function applyRegionalPlanContext(form: PatientForm, campaign: Campaign, plan: NonNullable<Campaign['regions']>[number]): PatientForm {
   return {
     ...form,
     campaignId:        campaign.id,
-    region:            campaign.region,
-    operationDistrict: campaign.operationDistrict,
-    district:          campaign.operationDistrict,
+    campaignRegionId:  plan.id,
+    region:            plan.region,
+    operationDistrict: plan.operationDistrict,
+    district:          plan.operationDistrict,
   };
 }
+

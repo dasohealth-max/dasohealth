@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160" width="520" height="160" role="img">
-  <title>DASO Health — Reversed Logo (white on dark)</title>
-  <desc>DASO Health full horizontal lockup reversed for dark backgrounds</desc>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160" width="520" height="160" role="img">
+  <title>DAS Health â€” Reversed Logo (white on dark)</title>
+  <desc>DAS Health full horizontal lockup reversed for dark backgrounds</desc>
 
   <!-- Dark background -->
-  <rect width="520" height="160" rx="12" fill="#0F4D2A"/>
+  <rect width="520" height="160" rx="12" fill="#002E63"/>
 
   <!-- Icon group -->
   <g transform="translate(78, 80)">
@@ -13,28 +13,31 @@
           fill="none" stroke="#ffffff" stroke-width="2.5"/>
     <circle cx="0" cy="0" r="18" fill="#ffffff"/>
     <path d="M0,-10 C6,-10 10,-5 10,0 C10,5 6,10 0,10 C-6,10 -10,5 -10,0 C-10,-5 -6,-10 0,-10 Z"
-          fill="#1A7A46"/>
+          fill="#2C9942"/>
     <line x1="0" y1="-8" x2="0" y2="8" stroke="#ffffff" stroke-width="1.2" opacity="0.4"/>
     <line x1="-24" y1="-29" x2="-21" y2="-22" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
     <line x1="0" y1="-34" x2="0" y2="-26" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
     <line x1="24" y1="-29" x2="21" y2="-22" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
     <rect x="48" y="-9" width="16" height="16" rx="3" fill="#ffffff" opacity="0.9"/>
-    <rect x="51.5" y="-12" width="9" height="22" rx="1.5" fill="#0F4D2A"/>
-    <rect x="45" y="-4.5" width="22" height="9" rx="1.5" fill="#0F4D2A"/>
+    <rect x="51.5" y="-12" width="9" height="22" rx="1.5" fill="#002E63"/>
+    <rect x="45" y="-4.5" width="22" height="9" rx="1.5" fill="#002E63"/>
   </g>
 
-  <!-- DASO wordmark -->
-  <text x="168" y="68" font-family="'Georgia','Times New Roman',serif"
-        font-size="54" font-weight="700" letter-spacing="5" fill="#ffffff">DASO</text>
+  <!-- DAS wordmark -->
+  <text x="168" y="68" font-family="'Poppins'"
+        font-size="54" font-weight="700" letter-spacing="5" fill="#ffffff">DAS</text>
 
   <!-- HEALTH -->
-  <text x="170" y="100" font-family="'Arial','Helvetica',sans-serif"
-        font-size="15" font-weight="400" letter-spacing="11" fill="#8FBFA4">HEALTH</text>
+  <text x="170" y="100" font-family="'Poppins'"
+        font-size="15" font-weight="400" letter-spacing="11" fill="#A6DCB5">HEALTH</text>
 
   <!-- Divider -->
   <line x1="168" y1="116" x2="488" y2="116" stroke="#ffffff" stroke-width="0.8" opacity="0.2"/>
 
   <!-- Tagline -->
-  <text x="170" y="138" font-family="'Arial','Helvetica',sans-serif"
-        font-size="11" font-weight="400" letter-spacing="0.8" fill="#8FBFA4">Direct Aid Somalia · Eye Health Management Platform</text>
+  <text x="170" y="138" font-family="'Poppins'"
+        font-size="11" font-weight="400" letter-spacing="0.8" fill="#A6DCB5">Direct Aid Somalia Â· Eye Health Management Platform</text>
 </svg>
+
+
+
