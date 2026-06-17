@@ -35,7 +35,7 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
   const { canAccess } = usePermissions();
   const visibleNav = NAV.filter(({ module }) => canAccess(module));
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {visibleNav.map(({ label, href, icon: Icon }) => {
         const active = path === href || path.startsWith(href + '/');
         return (
@@ -44,22 +44,22 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
             href={href}
             onClick={onClose}
             className={cn(
-              'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-all group',
+              'group relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-all',
               active
-                ? 'bg-[#2C9942] text-white shadow-sm'
-                : 'text-white/70 hover:bg-white/10 hover:text-white',
+                ? 'bg-[var(--sidebar-primary)] text-[var(--sidebar-primary-foreground)] shadow-[var(--shadow-sm)]'
+                : 'text-[var(--sidebar-muted)] hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]',
               collapsed && 'justify-center px-0',
             )}
             title={collapsed ? label : undefined}
           >
             {active && !collapsed && (
-              <span className="absolute left-[-10px] top-2 bottom-2 w-1 rounded-full bg-[#6FC587]" />
+              <span className="absolute bottom-2 left-[-10px] top-2 w-1 rounded-full bg-[var(--sidebar-ring)]" />
             )}
             <Icon
               size={18}
               className={cn(
                 'shrink-0',
-                active ? 'text-white' : 'text-white/60 group-hover:text-white',
+                active ? 'text-[var(--sidebar-primary-foreground)]' : 'text-[var(--sidebar-icon)] group-hover:text-[var(--sidebar-accent-foreground)]',
               )}
             />
             {!collapsed && <span className="truncate">{label}</span>}
@@ -73,7 +73,7 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
 function Logo({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={cn(
-      'flex items-center px-4 py-5 border-b border-white/10 shrink-0',
+      'flex shrink-0 items-center border-b border-[var(--sidebar-border)] px-4 py-5',
       collapsed && 'justify-center px-0',
     )}>
       <Image
@@ -101,16 +101,16 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
 
       {/* â”€â”€ Mobile drawer â”€â”€ */}
       <aside className={cn(
-        'fixed top-0 left-0 z-50 h-full w-64 flex flex-col bg-[#002E63] text-white transition-transform duration-300 lg:hidden',
+        'fixed left-0 top-0 z-50 flex h-full w-64 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] transition-transform duration-300 lg:hidden',
         mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
       )}>
-        <div className="flex items-center justify-between gap-3 px-4 py-5 border-b border-white/10">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--sidebar-border)] px-4 py-5">
           <div className="flex items-center gap-3">
             <Image src="/brand/das-health-logo-white.png" alt="DAS Health" width={208} height={62} className="h-auto w-48 max-w-full object-contain" priority />
           </div>
           <button
             onClick={onMobileClose}
-            className="p-1.5 rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            className="rounded-md p-1.5 text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]"
           >
             <X size={18} />
           </button>
@@ -120,14 +120,14 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
 
       {/* â”€â”€ Desktop sidebar (always visible, collapsible) â”€â”€ */}
       <aside className={cn(
-        'hidden lg:relative lg:flex lg:flex-col bg-[#002E63] text-white transition-all duration-300 shrink-0',
+        'hidden shrink-0 border-r border-[var(--sidebar-border)] bg-[var(--sidebar)] text-[var(--sidebar-foreground)] shadow-[var(--sidebar-shadow)] transition-all duration-300 lg:relative lg:flex lg:flex-col',
         collapsed ? 'w-[72px]' : 'w-[264px]',
       )}>
         <Logo collapsed={collapsed} />
         <NavLinks collapsed={collapsed} />
         <button
           onClick={onToggleCollapse}
-          className="flex items-center justify-center h-12 border-t border-white/10 text-white/65 transition-colors hover:bg-white/10 hover:text-white shrink-0"
+          className="flex h-12 shrink-0 items-center justify-center border-t border-[var(--sidebar-border)] text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}

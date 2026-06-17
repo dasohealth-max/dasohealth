@@ -17,9 +17,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((v) => !v)}
         />
-        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0 bg-[var(--surface-app)]">
           <Topbar onMenuClick={() => setMobileOpen(true)} />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#F5F7FA]">
+          <main className="flex-1 overflow-y-auto bg-[var(--surface-app)] p-4 sm:p-6">
             {children}
           </main>
         </div>

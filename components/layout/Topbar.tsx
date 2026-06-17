@@ -87,18 +87,18 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const notifCount = followUps.filter((f) => f.status === 'Overdue').length;
 
   return (
-    <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-[#DDE3EA] bg-white px-5 shadow-[var(--shadow-xs)]">
+    <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 shadow-[var(--shadow-xs)]">
       <button
         onClick={onMenuClick}
-        className="rounded-md p-2 text-[#647184] transition-colors hover:bg-[#EBF7EE] lg:hidden"
+        className="rounded-md p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-strong)] lg:hidden"
         aria-label="Open menu"
       >
         <Menu size={20} />
       </button>
 
       <div ref={searchRef} className="relative max-w-sm flex-1">
-        <div className="flex h-10 items-center gap-2 rounded-md border border-[#CDD5DF] bg-[#F5F7FA] px-3 shadow-[var(--shadow-xs)] transition-colors focus-within:border-[#2C9942] focus-within:ring-3 focus-within:ring-[#2C9942]/20">
-          <Search className="h-4 w-4 shrink-0 text-[#647184]" />
+        <div className="flex h-10 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-sunken)] px-3 shadow-[var(--shadow-xs)] transition-colors focus-within:border-[var(--border-focus)] focus-within:ring-3 focus-within:ring-[var(--ring-soft)]">
+          <Search className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
           <input
             value={search}
             onChange={(e) => {
@@ -107,7 +107,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             }}
             onFocus={() => search.length >= 2 && setShowResults(true)}
             placeholder="Search patients, campaigns..."
-            className="w-full bg-transparent text-sm text-[#141920] outline-none placeholder:text-[#647184]"
+            className="w-full bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-subtle)]"
           />
           {search && (
             <button
@@ -115,7 +115,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                 setSearch('');
                 setShowResults(false);
               }}
-              className="shrink-0 text-xs font-bold text-[#647184] hover:text-[#141920]"
+              className="shrink-0 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-strong)]"
               aria-label="Clear search"
             >
               x
@@ -124,10 +124,10 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         </div>
 
         {showResults && hasResults && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-[#DDE3EA] bg-white shadow-[var(--shadow-lg)]">
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)]">
             {patientResults.length > 0 && (
               <div>
-                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#647184]">Patients</p>
+                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Patients</p>
                 {patientResults.map((p) => (
                   <Link
                     key={p.id}
@@ -136,14 +136,14 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                       setShowResults(false);
                       setSearch('');
                     }}
-                    className="flex items-center gap-3 px-3 py-2 text-[#141920] transition-colors hover:bg-[#F5F7FA]"
+                    className="flex items-center gap-3 px-3 py-2 text-[var(--text-strong)] transition-colors hover:bg-[var(--surface-hover)]"
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#EBF7EE] text-[10px] font-bold text-[#002E63]">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-brand-soft)] text-[10px] font-bold text-[var(--text-brand)]">
                       {p.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                     </div>
                     <div>
-                      <p className="text-sm font-semibold leading-tight text-[#141920]">{p.fullName}</p>
-                      <p className="text-[10px] text-[#647184]">{p.patientCode} - {p.phone}</p>
+                      <p className="text-sm font-semibold leading-tight text-[var(--text-strong)]">{p.fullName}</p>
+                      <p className="text-[10px] text-[var(--text-muted)]">{p.patientCode} - {p.phone}</p>
                     </div>
                   </Link>
                 ))}
@@ -151,8 +151,8 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             )}
 
             {campaignResults.length > 0 && (
-              <div className="border-t border-[#DDE3EA]">
-                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#647184]">Campaigns</p>
+              <div className="border-t border-[var(--border-subtle)]">
+                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Campaigns</p>
                 {campaignResults.map((c) => (
                   <Link
                     key={c.id}
@@ -161,34 +161,34 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                       setShowResults(false);
                       setSearch('');
                     }}
-                    className="flex items-center gap-3 px-3 py-2 text-[#141920] transition-colors hover:bg-[#F5F7FA]"
+                    className="flex items-center gap-3 px-3 py-2 text-[var(--text-strong)] transition-colors hover:bg-[var(--surface-hover)]"
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#EBF7EE]">
-                      <span className="text-[10px] font-bold text-[#002E63]">C</span>
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-brand-soft)]">
+                      <span className="text-[10px] font-bold text-[var(--text-brand)]">C</span>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold leading-tight text-[#141920]">{c.name}</p>
-                      <p className="text-[10px] text-[#647184]">{c.type} - {c.status}</p>
+                      <p className="text-sm font-semibold leading-tight text-[var(--text-strong)]">{c.name}</p>
+                      <p className="text-[10px] text-[var(--text-muted)]">{c.type} - {c.status}</p>
                     </div>
                   </Link>
                 ))}
               </div>
             )}
 
-            <div className="border-t border-[#DDE3EA] px-3 py-2">
-              <p className="text-[10px] text-[#647184]">Showing top results - go to module for full list</p>
+            <div className="border-t border-[var(--border-subtle)] px-3 py-2">
+              <p className="text-[10px] text-[var(--text-muted)]">Showing top results - go to module for full list</p>
             </div>
           </div>
         )}
 
         {showResults && q.length >= 2 && !hasResults && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-[#DDE3EA] bg-white px-3 py-3 shadow-[var(--shadow-lg)]">
-            <p className="text-center text-sm text-[#647184]">No results for &quot;{q}&quot;</p>
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] px-3 py-3 shadow-[var(--shadow-lg)]">
+            <p className="text-center text-sm text-[var(--text-muted)]">No results for &quot;{q}&quot;</p>
           </div>
         )}
       </div>
 
-      <div className="hidden shrink-0 items-center gap-2 rounded-full border border-[#A6DCB5] bg-[#EBF7EE] px-3 py-1.5 text-xs font-semibold text-[#002E63] sm:flex">
+      <div className="hidden shrink-0 items-center gap-2 rounded-full border border-[var(--border-brand-soft)] bg-[var(--surface-brand-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--text-brand)] sm:flex">
         <span className="h-2 w-2 rounded-full bg-[#2C9942]" />
         Direct Aid Somalia
       </div>
@@ -198,7 +198,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       <button
         type="button"
         onClick={toggleTheme}
-        className="flex size-10 items-center justify-center rounded-md border border-transparent text-[#647184] transition-colors hover:border-[#DDE3EA] hover:bg-[#F5F7FA] hover:text-[#141920]"
+        className="flex size-10 items-center justify-center rounded-md border border-transparent text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-strong)]"
         aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
       >
@@ -208,7 +208,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       <Link
         href="/followups"
         title="View overdue follow-ups"
-        className="relative flex size-10 items-center justify-center rounded-md border border-transparent text-[#647184] transition-colors hover:border-[#DDE3EA] hover:bg-[#F5F7FA] hover:text-[#141920]"
+        className="relative flex size-10 items-center justify-center rounded-md border border-transparent text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-strong)]"
       >
         <Bell size={18} />
         {notifCount > 0 && (
@@ -220,18 +220,18 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
       {user && (
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-[#F5F7FA] focus-visible:ring-3 focus-visible:ring-[#2C9942]/25">
+          <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-[var(--surface-hover)] focus-visible:ring-3 focus-visible:ring-[#2C9942]/25">
             <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ring-2 ring-[#EBF7EE]"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ring-2 ring-[var(--surface-brand-soft)]"
               style={{ background: user.color }}
             >
               {user.initials}
             </div>
             <div className="hidden text-left sm:block">
-              <p className="text-xs font-semibold leading-tight text-[#141920]">{user.name}</p>
-              <p className="text-[10px] text-[#647184]">{user.role}</p>
+              <p className="text-xs font-semibold leading-tight text-[var(--text-strong)]">{user.name}</p>
+              <p className="text-[10px] text-[var(--text-muted)]">{user.role}</p>
             </div>
-            <ChevronDown size={14} className="hidden text-[#647184] sm:block" />
+            <ChevronDown size={14} className="hidden text-[var(--text-muted)] sm:block" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuGroup>
