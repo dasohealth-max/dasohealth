@@ -20,22 +20,21 @@ import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { defaultOperationDistrict, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
-import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2, UserRound } from 'lucide-react';
+import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2 } from 'lucide-react';
 
-const TYPES: CampaignType[] = ['Cataract Surgery Outreach', 'Eye Vision Outreach', 'General Eye Screening', 'Mixed Outreach'];
-const SUB_CONTRACT_TYPES: CampaignType[] = ['Cataract Surgery Outreach', 'Eye Vision Outreach'];
+const TYPES: CampaignType[] = ['Cataract Surgery Outreach', 'Eye Vision Outreach'];
 const CAMPAIGN_STATUSES: CampaignStatus[] = ['Planned', 'Active', 'Completed', 'Suspended'];
 const PLAN_STATUSES: RegionalPlanStatus[] = ['On Track', 'Behind', 'Completed', 'Suspended'];
 
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
   input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
-  select: 'rounded-md',
+  select: 'w-full min-w-0 rounded-md',
 };
 
 const BLANK_CAMPAIGN = {
   name: '',
-  type: 'Mixed Outreach' as CampaignType,
+  type: 'Cataract Surgery Outreach' as CampaignType,
   status: 'Planned' as CampaignStatus,
   region: '',
   operationDistrict: '',
@@ -110,10 +109,6 @@ export default function CampaignsPage() {
     () => users.filter((user) => user.active && user.role === 'Project Manager'),
     [users],
   );
-  const campaignManagers = useMemo(
-    () => managers.filter((user) => campaignForm.region && user.assignedRegion === campaignForm.region),
-    [campaignForm.region, managers],
-  );
   const regionalManagers = useMemo(
     () => managers.filter((user) => planForm.region && user.assignedRegion === planForm.region),
     [managers, planForm.region],
@@ -149,30 +144,25 @@ export default function CampaignsPage() {
     return result;
   }
 
-  function chooseManager(id: string) {
-    const manager = users.find((user) => user.id === id);
-    setCampaignForm((prev) => ({ ...prev, projectManagerId: id, projectManagerName: manager?.name ?? '' }));
-  }
-
   function onlyProjectManagerForRegion(region: string, source = managers) {
     const matchingManagers = source.filter((user) => user.active && user.role === 'Project Manager' && user.assignedRegion === region);
     return matchingManagers.length === 1 ? matchingManagers[0] : null;
   }
 
-  function chooseCampaignRegion(region: string) {
-    const manager = onlyProjectManagerForRegion(region);
-    setCampaignForm((prev) => ({
-      ...prev,
-      region,
-      operationDistrict: defaultOperationDistrict(region),
-      projectManagerId: manager?.id ?? '',
-      projectManagerName: manager?.name ?? '',
-    }));
-  }
-
   function chooseRegionalManager(id: string) {
     const manager = users.find((user) => user.id === id);
     setPlanForm((prev) => ({ ...prev, regionalManagerId: id, regionalManagerName: manager?.name ?? '' }));
+  }
+
+  function choosePlanRegion(region: string) {
+    const manager = onlyProjectManagerForRegion(region);
+    setPlanForm((prev) => ({
+      ...prev,
+      region,
+      operationDistrict: defaultOperationDistrict(region),
+      regionalManagerId: manager?.id ?? '',
+      regionalManagerName: manager?.name ?? '',
+    }));
   }
 
   async function openNewCampaign() {
@@ -207,17 +197,11 @@ export default function CampaignsPage() {
     if (!selected) return;
     setEditingPlan(null);
     setSaveError('');
-    const userResult = await reloadUsers();
-    const freshUsers = userResult.ok ? userResult.data : users;
-    const regionManagers = freshUsers.filter((user) => user.active && user.role === 'Project Manager');
-    const manager = onlyProjectManagerForRegion(selected.region, regionManagers);
+    await reloadUsers();
     setPlanForm({
       ...BLANK_PLAN,
       campaignId: selected.id,
-      region: selected.region,
-      operationDistrict: selected.operationDistrict || defaultOperationDistrict(selected.region),
-      regionalManagerId: manager?.id ?? '',
-      regionalManagerName: manager?.name ?? '',
+      type: selected.type,
       startDate: selected.startDate,
       endDate: selected.endDate,
     });
@@ -278,24 +262,24 @@ export default function CampaignsPage() {
     setDeletePlanTarget(null);
   }
 
-  const campaignInvalid = !campaignForm.name || !campaignForm.type || !campaignForm.status || !campaignForm.region || !campaignForm.operationDistrict || !campaignForm.projectManagerId || !campaignForm.startDate || !campaignForm.endDate;
-  const planInvalid = !planForm.campaignId || !planForm.region || !planForm.operationDistrict || !planForm.startDate || !planForm.endDate;
+  const campaignInvalid = !campaignForm.name || !campaignForm.type || !campaignForm.status || !campaignForm.startDate || !campaignForm.endDate;
+  const planInvalid = !planForm.campaignId || !planForm.region || !planForm.operationDistrict || !planForm.regionalManagerId || !planForm.startDate || !planForm.endDate;
 
   return (
     <div className="space-y-5">
       <ConfirmDialog
         open={!!deleteCampaignTarget}
         title="Delete Campaign"
-        description={deleteCampaignTarget ? `This will delete "${deleteCampaignTarget.name}" and its regional plans.` : ''}
+        description={deleteCampaignTarget ? `This will delete "${deleteCampaignTarget.name}" and its sub-regions.` : ''}
         confirmLabel="Delete Campaign"
         onConfirm={confirmDeleteCampaign}
         onCancel={() => setDeleteCampaignTarget(null)}
       />
       <ConfirmDialog
         open={!!deletePlanTarget}
-        title="Remove Regional Plan"
+        title="Remove Sub-region"
         description={deletePlanTarget ? `Remove ${deletePlanTarget.region} from this campaign?` : ''}
-        confirmLabel="Remove Region"
+        confirmLabel="Remove Sub-region"
         onConfirm={confirmDeletePlan}
         onCancel={() => setDeletePlanTarget(null)}
       />
@@ -303,7 +287,7 @@ export default function CampaignsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-[#141920]">Campaigns</h1>
-              <p className="text-sm text-[#4B5666]">Create outreach campaigns first, then add regional plans using registered regional users</p>
+              <p className="text-sm text-[#4B5666]">Create outreach campaigns first, then add sub-regions with assigned project managers</p>
         </div>
         {can('campaigns', 'create') && (
           <Button onClick={openNewCampaign} className="gap-2 rounded-md bg-[#2C9942] text-white hover:bg-[#002E63]">
@@ -330,20 +314,17 @@ export default function CampaignsPage() {
           <FormError message={saveError} />
           <CampaignFields
             form={campaignForm}
-            managers={campaignManagers}
             setForm={setCampaignForm}
-            chooseRegion={chooseCampaignRegion}
-            chooseManager={chooseManager}
           />
         </ModalForm>
       )}
 
       {showPlanForm && selected && (
         <ModalForm
-          title={editingPlan ? 'Edit Regional Plan' : 'Add Regional Plan'}
+          title={editingPlan ? 'Edit Sub-region' : 'Add Sub-region'}
           onClose={() => setShowPlanForm(false)}
           onSave={savePlan}
-          saveLabel={editingPlan ? 'Save Plan' : 'Add Region'}
+          saveLabel={editingPlan ? 'Save Sub-region' : 'Add Sub-region'}
           saveDisabled={planInvalid}
         >
           <FormError message={saveError} />
@@ -352,6 +333,7 @@ export default function CampaignsPage() {
             selected={selected}
             regionalManagers={regionalManagers}
             setForm={setPlanForm}
+            chooseRegion={choosePlanRegion}
             chooseRegionalManager={chooseRegionalManager}
           />
         </ModalForm>
@@ -563,9 +545,7 @@ function CampaignDetailsPanel({
               <p className="mt-1 text-sm text-[#4B5666]">{campaign.type}</p>
               <div className="mt-3 flex flex-wrap gap-4 text-xs text-[#647184]">
                 <span className="flex items-center gap-1.5"><Calendar size={13} /> {campaign.startDate} - {campaign.endDate}</span>
-                <span className="flex items-center gap-1.5"><UserRound size={13} /> {campaign.projectManagerName}</span>
-                <span className="flex items-center gap-1.5"><MapPin size={13} /> {campaign.region}</span>
-                <span className="flex items-center gap-1.5"><MapPin size={13} /> {regions.length} regions added</span>
+                <span className="flex items-center gap-1.5"><MapPin size={13} /> {regions.length} sub-regions added</span>
               </div>
             </div>
             <div className="flex gap-2">
@@ -594,13 +574,13 @@ function CampaignDetailsPanel({
                 onClick={() => setTab(item)}
                 className={`rounded-md px-3 py-2 text-sm font-semibold capitalize ${tab === item ? 'bg-[#2C9942] text-white' : 'text-[#4B5666] hover:bg-[#F5F7FA]'}`}
               >
-                {item}
+                {item === 'regions' ? 'Sub-regions' : item}
               </button>
             ))}
           </div>
           {canCreate && (
             <Button onClick={onAddPlan} className="gap-2 rounded-md bg-[#2C9942] text-white hover:bg-[#002E63]">
-              <Plus size={14} /> Add Sub-contract
+              <Plus size={14} /> Add Sub-region
             </Button>
           )}
         </div>
@@ -640,8 +620,8 @@ function CampaignOverview({ campaign, regions, summary }: {
         <div className="grid grid-cols-2 gap-3 border-y border-[#EAEEF3] py-4 lg:grid-cols-4">
           <OverviewFact icon={<Calendar size={15} />} label="Start Date" value={campaign.startDate} />
           <OverviewFact icon={<Calendar size={15} />} label="End Date" value={campaign.endDate} />
-          <OverviewFact icon={<MapPin size={15} />} label="Total Regions" value={String(summary.regions)} />
-          <OverviewFact icon={<UserRound size={15} />} label="Project Manager" value={campaign.projectManagerName || '-'} />
+          <OverviewFact icon={<MapPin size={15} />} label="Sub-regions" value={String(summary.regions)} />
+          <OverviewFact icon={<ClipboardList size={15} />} label="Contract Type" value={campaign.type} />
         </div>
 
         <div className="pt-4">
@@ -661,7 +641,7 @@ function CampaignOverview({ campaign, regions, summary }: {
 
       <section className="rounded-md border border-[#EAEEF3] bg-white">
         <div className="border-b border-[#EAEEF3] px-4 py-3">
-          <h3 className="font-bold text-[#141920]">Regions Participating in this Campaign</h3>
+          <h3 className="font-bold text-[#141920]">Sub-regions in this Campaign</h3>
         </div>
         <RegionsPreview regions={regions} />
       </section>
@@ -683,7 +663,7 @@ function OverviewFact({ icon, label, value }: { icon: ReactNode; label: string; 
 
 function RegionsPreview({ regions }: { regions: CampaignRegion[] }) {
   if (regions.length === 0) {
-    return <div className="p-10 text-center text-sm text-[#647184]">No regional plans added yet.</div>;
+    return <div className="p-10 text-center text-sm text-[#647184]">No sub-regions added yet.</div>;
   }
 
   return (
@@ -745,12 +725,9 @@ function FormError({ message }: { message: string }) {
   return <div className="mb-4 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">{message}</div>;
 }
 
-function CampaignFields({ form, managers, setForm, chooseRegion, chooseManager }: {
+function CampaignFields({ form, setForm }: {
   form: CampaignForm;
-  managers: User[];
   setForm: (value: SetStateAction<CampaignForm>) => void;
-  chooseRegion: (region: string) => void;
-  chooseManager: (id: string) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -760,14 +737,11 @@ function CampaignFields({ form, managers, setForm, chooseRegion, chooseManager }
           <Field label="Campaign Name *" className="sm:col-span-2">
             <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className={F.input} />
           </Field>
-          <Field label="Campaign Region *">
-            <Select value={form.region} onValueChange={(v) => { if (v) chooseRegion(v); }}>
-              <SelectTrigger className={F.select}><SelectValue placeholder="Select campaign region" /></SelectTrigger>
-              <SelectContent>{REGIONAL_CAMPAIGN_AREAS.map((area) => <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>)}</SelectContent>
+          <Field label="Contract Type *">
+            <Select value={form.type} onValueChange={(v) => { if (v) setForm((p) => ({ ...p, type: v as CampaignType })); }}>
+              <SelectTrigger className={F.select}><SelectValue /></SelectTrigger>
+              <SelectContent>{TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
             </Select>
-          </Field>
-          <Field label="Operation District *">
-            <input value={form.operationDistrict} onChange={(e) => setForm((p) => ({ ...p, operationDistrict: e.target.value }))} className={F.input} />
           </Field>
           <Field label="Status *">
             <Select value={form.status} onValueChange={(v) => { if (v) setForm((p) => ({ ...p, status: v as CampaignStatus })); }}>
@@ -781,17 +755,6 @@ function CampaignFields({ form, managers, setForm, chooseRegion, chooseManager }
           <Field label="End Date *">
             <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} className={F.input} />
           </Field>
-          <Field label="Project Manager *" className="sm:col-span-2">
-            <Select value={form.projectManagerId} disabled={!form.region || managers.length === 0} onValueChange={(v) => { if (v) chooseManager(v); }}>
-              <SelectTrigger className={F.select}>
-                <SelectValue placeholder={!form.region ? 'Select campaign region first' : managers.length ? 'Select registered project manager' : 'No Project Manager assigned to this region'}>
-                  {form.projectManagerName || undefined}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>{managers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name}</SelectItem>)}</SelectContent>
-            </Select>
-            {form.region && managers.length === 0 && <p className="mt-1 text-xs text-[#E53935]">Assign a Project Manager to {form.region} in Settings before creating this campaign.</p>}
-          </Field>
           <Field label="Description" className="sm:col-span-2">
             <textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} className={`${F.input} resize-none`} />
           </Field>
@@ -804,11 +767,12 @@ function CampaignFields({ form, managers, setForm, chooseRegion, chooseManager }
   );
 }
 
-function PlanFields({ form, selected, regionalManagers, setForm, chooseRegionalManager }: {
+function PlanFields({ form, selected, regionalManagers, setForm, chooseRegion, chooseRegionalManager }: {
   form: PlanForm;
   selected: Campaign;
   regionalManagers: User[];
   setForm: (value: SetStateAction<PlanForm>) => void;
+  chooseRegion: (region: string) => void;
   chooseRegionalManager: (id: string) => void;
 }) {
   return (
@@ -817,23 +781,14 @@ function PlanFields({ form, selected, regionalManagers, setForm, chooseRegionalM
         Region dates must stay within {selected.startDate} - {selected.endDate}.
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Sub-contract Type *">
-          <Select value={form.type} onValueChange={(v) => { if (v) setForm((p) => ({ ...p, type: v as CampaignType })); }}>
-            <SelectTrigger className={F.select}><SelectValue /></SelectTrigger>
-            <SelectContent>{SUB_CONTRACT_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+        <Field label="Sub-region *">
+          <Select value={form.region} onValueChange={(v) => { if (v) chooseRegion(v); }}>
+            <SelectTrigger className={F.select}><SelectValue placeholder="Select sub-region" /></SelectTrigger>
+            <SelectContent>{REGIONAL_CAMPAIGN_AREAS.map((area) => <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>)}</SelectContent>
           </Select>
-        </Field>
-        <Field label="Region *">
-          <input value={form.region || selected.region} disabled className={F.input} />
         </Field>
         <Field label="Operation District *">
           <input value={form.operationDistrict} onChange={(e) => setForm((p) => ({ ...p, operationDistrict: e.target.value }))} className={F.input} />
-        </Field>
-        <Field label="Target Patients *">
-          <input type="number" value={form.targetPatients} min={0} onChange={(e) => setForm((p) => ({ ...p, targetPatients: Number(e.target.value) }))} className={F.input} />
-        </Field>
-        <Field label="Target Screenings *">
-          <input type="number" value={form.targetScreenings} min={0} onChange={(e) => setForm((p) => ({ ...p, targetScreenings: Number(e.target.value) }))} className={F.input} />
         </Field>
         <Field label="Target Surgeries *">
           <input type="number" value={form.targetSurgeries} min={0} onChange={(e) => setForm((p) => ({ ...p, targetSurgeries: Number(e.target.value) }))} className={F.input} />
@@ -850,17 +805,17 @@ function PlanFields({ form, selected, regionalManagers, setForm, chooseRegionalM
         <Field label="End Date *">
           <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} className={F.input} />
         </Field>
-        <Field label="Regional Manager" className="sm:col-span-2">
+        <Field label="Project Manager *" className="sm:col-span-2">
           <Select value={form.regionalManagerId} disabled={!form.region || regionalManagers.length === 0} onValueChange={(v) => { if (v) chooseRegionalManager(v); }}>
             <SelectTrigger className={F.select}>
-              <SelectValue placeholder={!form.region ? 'Select region first' : regionalManagers.length ? 'Select regional manager' : 'No registered manager for this region'}>
+              <SelectValue placeholder={!form.region ? 'Select sub-region first' : regionalManagers.length ? 'Select Project Manager' : 'No Project Manager assigned to this sub-region'}>
                 {form.regionalManagerName || undefined}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>{regionalManagers.map((manager) => <SelectItem key={manager.id} value={manager.id}>{manager.name}</SelectItem>)}</SelectContent>
           </Select>
           {form.region && regionalManagers.length === 0 && (
-            <p className="mt-1 text-xs text-[#E53935]">Create or assign a Project Manager to {form.region} in Settings to link a regional manager.</p>
+            <p className="mt-1 text-xs text-[#E53935]">Create or assign a Project Manager to {form.region} in Settings before adding this sub-region.</p>
           )}
         </Field>
         <Field label="Notes" className="sm:col-span-2">
@@ -917,8 +872,8 @@ function RegionsTab({ regions, canEdit, canDelete, onEdit, onDelete }: {
               <td className="px-4 py-3"><StatusBadge status={plan.status} /></td>
               <td className="px-4 py-3">
                 <div className="flex gap-1">
-                  {canEdit && <IconButton label="Edit regional plan" onClick={() => onEdit(plan)} icon={<Pencil size={13} />} />}
-                  {canDelete && <IconButton label="Remove regional plan" onClick={() => onDelete(plan)} icon={<Trash2 size={13} />} danger />}
+                  {canEdit && <IconButton label="Edit sub-region" onClick={() => onEdit(plan)} icon={<Pencil size={13} />} />}
+                  {canDelete && <IconButton label="Remove sub-region" onClick={() => onDelete(plan)} icon={<Trash2 size={13} />} danger />}
                 </div>
               </td>
             </tr>

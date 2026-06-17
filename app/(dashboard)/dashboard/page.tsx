@@ -123,8 +123,8 @@ function computeRegionStats(
 
     return {
       region:         area.region,
-      district:       primaryPlan?.operationDistrict ?? primary?.operationDistrict ?? area.defaultDistrict,
-      manager:        primaryPlan?.regionalManagerName ?? primary?.projectManagerName ?? '',
+      district:       primaryPlan?.operationDistrict ?? area.defaultDistrict,
+      manager:        primaryPlan?.regionalManagerName ?? '',
       campaignName:   primary?.name ?? '',
       campaignStatus: primary?.status ?? null,
       campaignStart:  primary?.startDate ?? '',

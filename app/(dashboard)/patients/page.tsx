@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import type { Campaign, DisabilityStatus, Patient, Sex } from '@/types';
-import { getPatientsPaginated, actionCreatePatient, actionDeletePatient, actionUpdatePatient } from '@/app/actions/patients';
-import { getAllCampaigns } from '@/app/actions/campaigns';
+import {
+  getPatientsPaginated,
+  actionCreatePatient,
+  actionDeletePatient,
+  actionUpdatePatient,
+  getPatientRegistrationCampaigns,
+} from '@/app/actions/patients';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -67,8 +72,9 @@ type PatientForm = typeof BLANK;
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PatientsPage() {
-  const { can, role } = usePermissions();
+  const { can, role, user } = usePermissions();
   const isSuperAdmin   = role === 'Super Administrator';
+  const canManagePatients = can('patients', 'create') || can('patients', 'edit');
 
   const [patients,     setPatients]     = useState<Patient[]>([]);
   const [total,        setTotal]        = useState(0);
@@ -105,8 +111,15 @@ export default function PatientsPage() {
     return () => { cancelled = true; };
   }, [debouncedSearch, regionFilter, statusFilter, page]);
 
-  // Load campaigns once for the form dropdown
-  useEffect(() => { getAllCampaigns().then(setCampaigns); }, []);
+  // Load region-scoped campaigns only for roles that can use the registration form.
+  useEffect(() => {
+    if (!canManagePatients) return;
+    let cancelled = false;
+    getPatientRegistrationCampaigns()
+      .then((rows) => { if (!cancelled) setCampaigns(rows); })
+      .catch(() => { if (!cancelled) setCampaigns([]); });
+    return () => { cancelled = true; };
+  }, [canManagePatients]);
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
@@ -114,10 +127,15 @@ export default function PatientsPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function eligiblePlans(campaign: Campaign) {
+    const plans = campaign.regions ?? [];
+    return isSuperAdmin ? plans : plans.filter((plan) => plan.region === user?.assignedRegion);
+  }
+
   function chooseCampaign(campaignId: string) {
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (campaign) {
-      const firstPlan = campaign.regions?.[0];
+      const firstPlan = eligiblePlans(campaign)[0];
       setForm((prev) => firstPlan ? applyRegionalPlanContext(prev, campaign, firstPlan) : {
         ...prev,
         campaignId: campaign.id,
@@ -131,7 +149,7 @@ export default function PatientsPage() {
 
   function chooseRegionalPlan(campaignRegionId: string) {
     const campaign = campaigns.find((c) => c.id === form.campaignId);
-    const plan = campaign?.regions?.find((r) => r.id === campaignRegionId);
+    const plan = campaign ? eligiblePlans(campaign).find((r) => r.id === campaignRegionId) : undefined;
     if (campaign && plan) setForm((prev) => applyRegionalPlanContext(prev, campaign, plan));
   }
 
@@ -142,8 +160,9 @@ export default function PatientsPage() {
     setEditing(null);
     let base = BLANK;
     if (!isSuperAdmin) {
-      const active = campaigns.find((c) => c.status === 'Active') ?? campaigns[0];
-      const firstPlan = active?.regions?.[0];
+      const active = campaigns.find((c) => c.status === 'Active' && eligiblePlans(c).length > 0)
+        ?? campaigns.find((c) => eligiblePlans(c).length > 0);
+      const firstPlan = active ? eligiblePlans(active)[0] : undefined;
       if (active && firstPlan) base = applyRegionalPlanContext(BLANK, active, firstPlan);
     }
     setForm(base);
@@ -196,6 +215,7 @@ export default function PatientsPage() {
 
   const hasFilters = !!search || !!regionFilter || !!statusFilter;
   const formInvalid = !form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId || !form.campaignRegionId;
+  const registrationCampaigns = campaigns.filter((campaign) => eligiblePlans(campaign).length > 0);
 
   return (
     <div className="space-y-5">
@@ -246,8 +266,10 @@ export default function PatientsPage() {
           )}
           <PatientRegistrationForm
             form={form}
-            campaigns={campaigns}
+            campaigns={registrationCampaigns}
             selectedCampaign={selectedCampaign}
+            assignedRegion={user?.assignedRegion}
+            isSuperAdmin={isSuperAdmin}
             campaignLocked={campaignLocked}
             set={set}
             chooseCampaign={chooseCampaign}
@@ -386,19 +408,26 @@ export default function PatientsPage() {
 // ─── Patient registration form ────────────────────────────────────────────────
 
 function PatientRegistrationForm({
-  form, campaigns, selectedCampaign, campaignLocked, set, chooseCampaign, chooseRegionalPlan,
+  form, campaigns, selectedCampaign, assignedRegion, isSuperAdmin, campaignLocked, set, chooseCampaign, chooseRegionalPlan,
 }: {
   form: PatientForm;
   campaigns: Campaign[];
   selectedCampaign: Campaign | undefined;
+  assignedRegion?: string;
+  isSuperAdmin: boolean;
   campaignLocked: boolean;
   set: <K extends keyof PatientForm>(key: K, value: PatientForm[K]) => void;
   chooseCampaign: (id: string) => void;
   chooseRegionalPlan: (id: string) => void;
 }) {
-  const selectedPlan = selectedCampaign?.regions?.find((plan) => plan.id === form.campaignRegionId);
+  const selectedPlans = selectedCampaign
+    ? (isSuperAdmin ? selectedCampaign.regions ?? [] : (selectedCampaign.regions ?? []).filter((plan) => plan.region === assignedRegion))
+    : [];
+  const visiblePlansForCampaign = (campaign: Campaign) =>
+    isSuperAdmin ? campaign.regions ?? [] : (campaign.regions ?? []).filter((plan) => plan.region === assignedRegion);
+  const selectedPlan = selectedPlans.find((plan) => plan.id === form.campaignRegionId);
   const selectedCampaignLabel = selectedCampaign
-    ? `${selectedCampaign.name} - ${selectedCampaign.regions?.length ?? 0} regional plans`
+    ? `${selectedCampaign.name} - ${selectedPlans.length} sub-region${selectedPlans.length === 1 ? '' : 's'}`
     : '';
   const selectedPlanLabel = selectedPlan
     ? `${selectedPlan.region} - ${selectedPlan.operationDistrict}`
@@ -413,7 +442,7 @@ function PatientRegistrationForm({
             {campaignLocked && selectedCampaign ? (
               <div className="truncate rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2 text-sm text-[#4B5666]">
                 {selectedCampaign.name}
-                <span className="ml-2 text-[#647184]">- {selectedPlan?.region ?? 'Select regional plan'}</span>
+                <span className="ml-2 text-[#647184]">- {selectedPlan?.region ?? 'Select sub-region'}</span>
               </div>
             ) : (
               <Select value={form.campaignId} onValueChange={(v) => { if (v) chooseCampaign(v); }}>
@@ -425,25 +454,30 @@ function PatientRegistrationForm({
                   )}
                 </SelectTrigger>
                 <SelectContent align="start" className="min-w-96 max-w-[calc(100vw-2rem)]">
-                  {campaigns.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name} - {c.regions?.length ?? 0} regional plans</SelectItem>
-                  ))}
+                  {campaigns.map((c) => {
+                    const count = visiblePlansForCampaign(c).length;
+                    return (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name} - {count} sub-region{count === 1 ? '' : 's'}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}
           </div>
           <div>
-            <label className={F.label}>Regional Plan *</label>
+            <label className={F.label}>Sub-region *</label>
             <Select value={form.campaignRegionId} disabled={!selectedCampaign} onValueChange={(v) => { if (v) chooseRegionalPlan(v); }}>
               <SelectTrigger className={F.sel}>
                 {selectedPlanLabel ? (
                   <span className="min-w-0 flex-1 truncate text-left">{selectedPlanLabel}</span>
                 ) : (
-                  <SelectValue placeholder={selectedCampaign ? 'Select regional plan' : 'Select campaign first'} />
+                  <SelectValue placeholder={selectedCampaign ? 'Select sub-region' : 'Select campaign first'} />
                 )}
               </SelectTrigger>
               <SelectContent align="start" className="min-w-80 max-w-[calc(100vw-2rem)]">
-                {(selectedCampaign?.regions ?? []).map((plan) => (
+                {selectedPlans.map((plan) => (
                   <SelectItem key={plan.id} value={plan.id}>{plan.region} - {plan.operationDistrict}</SelectItem>
                 ))}
               </SelectContent>
@@ -451,11 +485,11 @@ function PatientRegistrationForm({
           </div>
           <div>
             <label className={F.label}>State / Region</label>
-            <input value={form.region} disabled className={F.input} placeholder="Auto-filled from campaign" />
+            <input value={form.region} disabled className={F.input} placeholder="Auto-filled from sub-region" />
           </div>
           <div>
             <label className={F.label}>Operation City / District</label>
-            <input value={form.operationDistrict} disabled className={F.input} placeholder="Auto-filled from campaign" />
+            <input value={form.operationDistrict} disabled className={F.input} placeholder="Auto-filled from sub-region" />
           </div>
         </div>
       </section>

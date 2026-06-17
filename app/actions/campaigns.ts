@@ -30,10 +30,10 @@ const CampaignSchema = z.object({
   name: z.string().trim().min(1, 'Campaign name is required'),
   type: z.enum(CAMPAIGN_TYPES),
   status: z.enum(CAMPAIGN_STATUSES),
-  region: z.string().refine(isCampaignRegion, 'Valid campaign region is required'),
-  operationDistrict: z.string().trim().min(1, 'Operation district is required'),
-  projectManagerId: z.string().min(1, 'Project Manager is required'),
-  projectManagerName: z.string().min(1, 'Project Manager is required'),
+  region: z.string().optional().default(''),
+  operationDistrict: z.string().trim().optional().default(''),
+  projectManagerId: z.string().optional().default(''),
+  projectManagerName: z.string().optional().default(''),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
   description: z.string().optional().default(''),
@@ -45,10 +45,10 @@ const CampaignRegionSchema = z.object({
   type: z.enum(CAMPAIGN_TYPES),
   region: z.string().refine(isCampaignRegion, 'Valid region is required'),
   operationDistrict: z.string().trim().min(1, 'Operation district is required'),
-  regionalManagerId: z.string().optional().default(''),
-  regionalManagerName: z.string().optional().default(''),
-  targetPatients: z.number().int().min(0, 'Target patients must be 0 or more'),
-  targetScreenings: z.number().int().min(0, 'Target screenings must be 0 or more'),
+  regionalManagerId: z.string().min(1, 'Project Manager is required'),
+  regionalManagerName: z.string().min(1, 'Project Manager is required'),
+  targetPatients: z.number().int().min(0, 'Target patients must be 0 or more').optional().default(0),
+  targetScreenings: z.number().int().min(0, 'Target screenings must be 0 or more').optional().default(0),
   targetSurgeries: z.number().int().min(0, 'Target surgeries must be 0 or more'),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
@@ -90,10 +90,10 @@ async function validateProjectManager(userId: string, userName: string, region: 
 async function validateRegionalManager(userId: string, userName: string, region: string): Promise<string | null> {
   if (!userId) return null;
   const user = await getRegisteredUser(userId);
-  if (!user) return 'Selected Regional Manager must be a registered user';
-  if (!user.active) return 'Selected Regional Manager is inactive';
-  if (user.role !== 'ProjectManager') return 'Selected Regional Manager must have the Project Manager role';
-  if (user.name !== userName) return 'Selected Regional Manager does not match the registered user record';
+  if (!user) return 'Selected Project Manager must be a registered user';
+  if (!user.active) return 'Selected Project Manager is inactive';
+  if (user.role !== 'ProjectManager') return 'Selected Project Manager must have the Project Manager role';
+  if (user.name !== userName) return 'Selected Project Manager does not match the registered user record';
   if (user.assignedRegion !== region) return `${user.name} is assigned to ${user.assignedRegion ?? 'no region'}, not ${region}`;
   return null;
 }
@@ -113,10 +113,24 @@ function canAccessCampaign(actor: Exclude<Awaited<ReturnType<typeof requireActor
   return { ok: false, error: 'Forbidden: region access denied' };
 }
 
+function scopeCampaignForActor(
+  actor: Exclude<Awaited<ReturnType<typeof requireActor>>, { error: string }>,
+  campaign: Campaign,
+): Campaign {
+  if (isSuperAdmin(actor)) return campaign;
+  const region = actor.assignedRegion;
+  if (!region) return { ...campaign, regions: [] };
+  return {
+    ...campaign,
+    regions: (campaign.regions ?? []).filter((plan) => plan.region === region),
+  };
+}
+
 export async function getAllCampaigns(): Promise<Campaign[]> {
   const actor = await requireActor('campaigns', 'view');
   if ('error' in actor) throw new Error(actor.error);
-  return fetchAllCampaigns(campaignWhereForActor(actor));
+  const campaigns = await fetchAllCampaigns(campaignWhereForActor(actor));
+  return campaigns.map((campaign) => scopeCampaignForActor(actor, campaign));
 }
 
 export async function actionGetCampaignActivity(campaignId: string): Promise<AuditLog[]> {
@@ -128,7 +142,10 @@ export async function actionGetCampaignActivity(campaignId: string): Promise<Aud
   if (denied) throw new Error(denied.error);
 
   const rows = await prisma.auditLog.findMany({
-    where: { campaignId },
+    where: {
+      campaignId,
+      ...(isSuperAdmin(actor) ? {} : { region: actor.assignedRegion ?? '__no_region__' }),
+    },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
@@ -157,12 +174,18 @@ export async function actionCreateCampaign(input: unknown): Promise<ActionResult
 
   const parsed = CampaignSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
-  const denied = ensureRegionAccess(actor, parsed.data.region);
-  if (denied) return denied;
+  if (parsed.data.region) {
+    if (!isCampaignRegion(parsed.data.region)) return { ok: false, error: 'Valid campaign region is required' };
+    const denied = ensureRegionAccess(actor, parsed.data.region);
+    if (denied) return denied;
+  }
   const rangeError = validateDateRange(parsed.data.startDate, parsed.data.endDate);
   if (rangeError) return { ok: false, error: rangeError };
-  const managerError = await validateProjectManager(parsed.data.projectManagerId, parsed.data.projectManagerName, parsed.data.region);
-  if (managerError) return { ok: false, error: managerError };
+  if (parsed.data.projectManagerId || parsed.data.projectManagerName) {
+    if (!parsed.data.region) return { ok: false, error: 'Campaign region is required when assigning a Project Manager' };
+    const managerError = await validateProjectManager(parsed.data.projectManagerId, parsed.data.projectManagerName, parsed.data.region);
+    if (managerError) return { ok: false, error: managerError };
+  }
 
   try {
     const campaign = await createCampaign(parsed.data);
@@ -173,7 +196,7 @@ export async function actionCreateCampaign(input: unknown): Promise<ActionResult
       entity: 'Campaign',
       entityId: campaign.id,
       campaignId: campaign.id,
-      region: campaign.region,
+      region: campaign.region || undefined,
       details: `Campaign created: ${campaign.name}`,
       after: campaign,
     }));
@@ -189,12 +212,18 @@ export async function actionUpdateCampaign(id: string, input: unknown): Promise<
 
   const parsed = CampaignSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
-  const newRegionDenied = ensureRegionAccess(actor, parsed.data.region);
-  if (newRegionDenied) return newRegionDenied;
+  if (parsed.data.region) {
+    if (!isCampaignRegion(parsed.data.region)) return { ok: false, error: 'Valid campaign region is required' };
+    const newRegionDenied = ensureRegionAccess(actor, parsed.data.region);
+    if (newRegionDenied) return newRegionDenied;
+  }
   const rangeError = validateDateRange(parsed.data.startDate, parsed.data.endDate);
   if (rangeError) return { ok: false, error: rangeError };
-  const managerError = await validateProjectManager(parsed.data.projectManagerId, parsed.data.projectManagerName, parsed.data.region);
-  if (managerError) return { ok: false, error: managerError };
+  if (parsed.data.projectManagerId || parsed.data.projectManagerName) {
+    if (!parsed.data.region) return { ok: false, error: 'Campaign region is required when assigning a Project Manager' };
+    const managerError = await validateProjectManager(parsed.data.projectManagerId, parsed.data.projectManagerName, parsed.data.region);
+    if (managerError) return { ok: false, error: managerError };
+  }
 
   try {
     const before = await getCampaignById(id);
@@ -209,7 +238,7 @@ export async function actionUpdateCampaign(id: string, input: unknown): Promise<
       const parentEnd = dateMs(parsed.data.endDate);
       return planStart === null || planEnd === null || parentStart === null || parentEnd === null || planStart < parentStart || planEnd > parentEnd;
     });
-    if (invalidPlan) return { ok: false, error: `${invalidPlan.region} regional plan dates must stay within the parent campaign date range` };
+    if (invalidPlan) return { ok: false, error: `${invalidPlan.region} sub-region dates must stay within the parent campaign date range` };
 
     const campaign = await updateCampaign(id, parsed.data);
     updateTag('campaigns');
@@ -292,7 +321,7 @@ export async function actionCreateCampaignRegion(input: unknown): Promise<Action
       entityId: plan.id,
       region: plan.region,
       campaignId: plan.campaignId,
-      details: `Sub-contract added: ${plan.type} in ${plan.region}`,
+      details: `Sub-region added: ${plan.type} in ${plan.region}`,
       after: plan,
     }));
     return { ok: true, data: plan };
@@ -314,7 +343,7 @@ export async function actionUpdateCampaignRegion(id: string, input: unknown): Pr
 
   try {
     const before = await prisma.campaignRegion.findUnique({ where: { id } });
-    if (!before) return { ok: false, error: 'Regional plan not found' };
+    if (!before) return { ok: false, error: 'Sub-region not found' };
     const beforeDenied = ensureRegionAccess(actor, before.region);
     if (beforeDenied) return beforeDenied;
 
@@ -357,7 +386,7 @@ export async function actionDeleteCampaignRegion(id: string): Promise<ActionResu
 
   try {
     const before = await prisma.campaignRegion.findUnique({ where: { id } });
-    if (!before) return { ok: false, error: 'Regional plan not found' };
+    if (!before) return { ok: false, error: 'Sub-region not found' };
     const denied = ensureRegionAccess(actor, before.region);
     if (denied) return denied;
 

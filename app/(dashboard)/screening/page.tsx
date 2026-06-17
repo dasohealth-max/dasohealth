@@ -1,13 +1,12 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Campaign, Patient, Screening, VAGrade } from '@/types';
+import type { Patient, Screening, VAGrade } from '@/types';
 import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated } from '@/app/actions/screenings';
 import { getAllPatients } from '@/app/actions/patients';
 import Pagination from '@/components/ui/Pagination';
 
 const PAGE_SIZE = 50;
-import { getAllCampaigns } from '@/app/actions/campaigns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
@@ -73,7 +72,6 @@ export default function ScreeningPage() {
   const [screeningsPage,      setScreeningsPage]      = useState(1);
   const [debouncedHistSearch, setDebouncedHistSearch] = useState('');
   const [patients,            setPatients]            = useState<Patient[]>([]);
-  const [campaigns,           setCampaigns]           = useState<Campaign[]>([]);
   const [form,                setForm]                = useState(blankForm);
   const [editing,             setEditing]             = useState<Screening | null>(null);
   const [showForm,            setShowForm]            = useState(false);
@@ -85,13 +83,12 @@ export default function ScreeningPage() {
   const [historyOpen,         setHistoryOpen]         = useState(false);
   const [deleteTarget,        setDeleteTarget]        = useState<Screening | null>(null);
 
-  // Load patients + campaigns for queue and form
+  // Load region-scoped patients for queue and form
   useEffect(() => {
-    Promise.all([getAllPatients(), getAllCampaigns()]).then(([patientRows, campaignRows]) => {
+    getAllPatients().then((patientRows) => {
       setPatients(patientRows);
-      setCampaigns(campaignRows);
       setIsLoading(false);
-    });
+    }).catch(() => setIsLoading(false));
   }, []);
 
   // Debounce history search, reset page
@@ -137,14 +134,13 @@ export default function ScreeningPage() {
 
   function choosePatient(patientId: string) {
     const patient  = patients.find((p) => p.id === patientId);
-    const campaign = campaigns.find((c) => c.id === patient?.campaignId);
     setForm((prev) => ({
       ...prev,
       patientId,
       patientName:       patient?.fullName ?? '',
       campaignId:        patient?.campaignId ?? '',
-      region:            patient?.region ?? campaign?.region ?? '',
-      operationDistrict: patient?.operationDistrict ?? campaign?.operationDistrict ?? '',
+      region:            patient?.region ?? '',
+      operationDistrict: patient?.operationDistrict ?? '',
     }));
   }
 
@@ -155,14 +151,13 @@ export default function ScreeningPage() {
     setSaveError('');
     setShowForm(true);
     if (patient) {
-      const campaign = campaigns.find((c) => c.id === patient.campaignId);
       setForm({
         ...base,
         patientId:         patient.id,
         patientName:       patient.fullName,
         campaignId:        patient.campaignId ?? '',
-        region:            patient.region ?? campaign?.region ?? '',
-        operationDistrict: patient.operationDistrict ?? campaign?.operationDistrict ?? '',
+        region:            patient.region ?? '',
+        operationDistrict: patient.operationDistrict ?? '',
       });
     }
   }

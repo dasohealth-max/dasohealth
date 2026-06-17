@@ -99,7 +99,7 @@ describe('actionCreateScreening', () => {
     vi.mocked(screeningApi.createScreening).mockResolvedValue(createdScreening);
   });
 
-  it('records screening using patient campaign and regional plan data', async () => {
+  it('records screening using patient campaign and sub-region data', async () => {
     const result = await actionCreateScreening(screeningInput);
 
     expect(result.ok).toBe(true);

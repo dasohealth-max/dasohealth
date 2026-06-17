@@ -43,6 +43,7 @@ import * as followUpApi from '@/lib/api/follow_ups';
 const surgeryScope = {
   region: 'Galmudug',
   campaignId: 'camp-galmudug-1',
+  campaignRegionId: 'plan-galmudug-1',
   patientId: 'patient-1',
   patientName: 'Amina Hassan',
 };
@@ -52,6 +53,7 @@ const followUpData = {
   patientName: 'Amina Hassan',
   surgeryId: 'surgery-1',
   campaignId: 'camp-galmudug-1',
+  campaignRegionId: 'plan-galmudug-1',
   region: 'Galmudug',
   milestone: 'Day 1' as const,
   dueDate: '2025-03-02',
@@ -90,6 +92,13 @@ describe('actionCreateFollowUp', () => {
     await actionCreateFollowUp({ ...followUpData, region: 'Banadir / Mogadishu' });
     expect(followUpApi.createFollowUp).toHaveBeenCalledWith(
       expect.objectContaining({ region: 'Galmudug' }),
+    );
+  });
+
+  it('follow-up sub-region is derived from surgery, not client input', async () => {
+    await actionCreateFollowUp({ ...followUpData, campaignRegionId: 'client-plan' });
+    expect(followUpApi.createFollowUp).toHaveBeenCalledWith(
+      expect.objectContaining({ campaignRegionId: 'plan-galmudug-1' }),
     );
   });
 
@@ -164,6 +173,14 @@ describe('actionUpdateFollowUp – doctor review', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.doctorReviewStatus).toBe('Completed');
+  });
+
+  it('updates follow-up sub-region from surgery scope', async () => {
+    await actionUpdateFollowUp('followup-1', { ...followUpData, campaignRegionId: 'client-plan' });
+    expect(followUpApi.updateFollowUp).toHaveBeenCalledWith(
+      'followup-1',
+      expect.objectContaining({ campaignRegionId: 'plan-galmudug-1' }),
+    );
   });
 
   it('rejects update when follow-up is not found', async () => {

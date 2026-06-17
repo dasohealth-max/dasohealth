@@ -7,6 +7,7 @@ import { galmudugPatient, patientInput } from '../mocks/data';
 vi.mock('@/lib/auth-server', () => ({
   requireActor: vi.fn(),
   ensureRegionAccess: vi.fn(),
+  isSuperAdmin: vi.fn((actor: { role: string }) => actor.role === 'Super Administrator'),
   auditLog: vi.fn().mockResolvedValue(undefined),
   scopedRegionWhere: vi.fn(() => ({})),
 }));
@@ -29,11 +30,17 @@ vi.mock('@/lib/api/patients', () => ({
   getPatientById: vi.fn(),
 }));
 
+vi.mock('@/lib/api/campaigns', () => ({
+  getAllCampaigns: vi.fn(),
+}));
+
 // Imports after mocks
-import { actionCreatePatient } from '@/app/actions/patients';
+import { actionCreatePatient, getPatientRegistrationCampaigns } from '@/app/actions/patients';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as patientApi from '@/lib/api/patients';
+import * as campaignApi from '@/lib/api/campaigns';
+import { galmudugCampaign } from '../mocks/data';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,6 +76,42 @@ const rawPatientRow = {
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('getPatientRegistrationCampaigns', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('Data Clerk receives only assigned-region campaign sub-regions for patient registration', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
+    vi.mocked(campaignApi.getAllCampaigns).mockResolvedValue([
+      {
+        ...galmudugCampaign,
+        region: '',
+        operationDistrict: '',
+        regions: [
+          ...(galmudugCampaign.regions ?? []),
+          {
+            ...(galmudugCampaign.regions ?? [])[0],
+            id: 'plan-banadir-1',
+            region: 'Banadir / Mogadishu',
+            operationDistrict: 'Mogadishu',
+            regionalManagerId: 'actor-pm-2',
+            regionalManagerName: 'PM Banadir',
+          },
+        ],
+      },
+    ]);
+
+    const rows = await getPatientRegistrationCampaigns();
+
+    expect(campaignApi.getAllCampaigns).toHaveBeenCalledWith({
+      regions: { some: { region: 'Galmudug' } },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].regions?.map((plan) => plan.region)).toEqual(['Galmudug']);
+  });
+});
 
 describe('actionCreatePatient', () => {
   beforeEach(() => {
@@ -112,7 +155,7 @@ describe('actionCreatePatient', () => {
     vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue(null);
     const result = await actionCreatePatient(patientInput);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/Regional plan not found/);
+    if (!result.ok) expect(result.error).toMatch(/Sub-region not found/);
   });
 
   it('Banadir PM cannot register patient into Galmudug campaign', async () => {

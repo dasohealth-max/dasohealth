@@ -109,7 +109,7 @@ type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string
 async function getSurgeryScope(surgeryId: string) {
   return prisma.surgery.findUnique({
     where: { id: surgeryId },
-    select: { region: true, campaignId: true, patientId: true, patientName: true },
+    select: { region: true, campaignId: true, campaignRegionId: true, patientId: true, patientName: true },
   });
 }
 
@@ -134,6 +134,7 @@ export async function actionCreateFollowUp(
       patientId: surgery.patientId,
       patientName: surgery.patientName,
       campaignId: surgery.campaignId,
+      campaignRegionId: surgery.campaignRegionId ?? undefined,
       completedById: data.status === 'Completed' ? actor.id : '',
       completedByName: data.status === 'Completed' ? actor.name : '',
     });
@@ -178,6 +179,7 @@ export async function actionUpdateFollowUp(
       patientId: surgery.patientId,
       patientName: surgery.patientName,
       campaignId: surgery.campaignId,
+      campaignRegionId: surgery.campaignRegionId ?? undefined,
       completedById: data.status === 'Completed' ? actor.id : data.completedById,
       completedByName: data.status === 'Completed' ? actor.name : data.completedByName,
       doctorReviewedAt: data.doctorReviewStatus === 'Completed' && !data.doctorReviewedAt

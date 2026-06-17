@@ -7,7 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePermissions } from '@/lib/auth';
-import { completionRate, type RegionStatus } from '@/lib/reporting';
+import {
+  campaignDistrictsLabel,
+  campaignHasRegion,
+  campaignManagersLabel,
+  campaignRegionsLabel,
+  campaignTargetSurgeries,
+  completionRate,
+  type RegionStatus,
+} from '@/lib/reporting';
 import { CalendarDays, Download, MapPin, UserCheck } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
@@ -40,7 +48,7 @@ export default function ReportsPage() {
 
   const availableRegions = agg?.availableRegions ?? [];
   const availableCampaigns = (agg?.allCampaigns ?? []).filter(
-    (c) => effectiveRegion === 'all' || c.region === effectiveRegion,
+    (c) => effectiveRegion === 'all' || campaignHasRegion(c, effectiveRegion),
   );
   const scoped = agg?.scoped;
   const regionPerformance = agg?.regionPerformance ?? [];
@@ -53,7 +61,7 @@ export default function ReportsPage() {
   const selectedCampaignLabel = campaignId === 'all'
     ? 'All campaigns'
     : selectedCampaign
-      ? `${selectedCampaign.name} · ${selectedCampaign.region}`
+      ? `${selectedCampaign.name} · ${campaignRegionsLabel(selectedCampaign)}`
       : selectedCampaignName;
   const selectedRegionLabel = region === 'all' ? 'All regions' : region;
 
@@ -76,7 +84,7 @@ export default function ReportsPage() {
       const rawData = await getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId });
       const { campaigns, patients, screenings, surgeries, followUps, medications, regionPerformance: rp } = rawData;
 
-      const surgeryTarget = campaigns.reduce((sum, c) => sum + c.targetSurgeries, 0);
+      const surgeryTarget = campaigns.reduce((sum, c) => sum + campaignTargetSurgeries(c), 0);
       const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
       const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
       const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
@@ -158,13 +166,12 @@ export default function ReportsPage() {
           Campaign: c.name,
           Type: c.type,
           Status: c.status,
-          Region: c.region,
-          District: c.operationDistrict,
-          Manager: c.projectManagerName,
+          'Sub-regions': campaignRegionsLabel(c),
+          Districts: campaignDistrictsLabel(c),
+          Managers: campaignManagersLabel(c),
           'Start Date': c.startDate,
           'End Date': c.endDate,
-          'Target Screenings': c.targetScreenings,
-          'Target Surgeries': c.targetSurgeries,
+          'Target Surgeries': campaignTargetSurgeries(c),
           'Target Follow-ups': c.targetFollowUps,
           'Patients Registered': patients.filter((p) => p.campaignId === c.id).length,
           Screenings: screenings.filter((s) => s.campaignId === c.id).length,
@@ -172,7 +179,7 @@ export default function ReportsPage() {
           'Surgeries Completed': cDone,
           'Surgeries Postponed': cSurgeries.filter((s) => s.status === 'Postponed').length,
           'Surgeries Cancelled': cSurgeries.filter((s) => s.status === 'Cancelled').length,
-          'Completion Rate %': completionRate(cDone, c.targetSurgeries),
+          'Completion Rate %': completionRate(cDone, campaignTargetSurgeries(c)),
           'Follow-ups': cFollowUps.length,
           'Follow-ups Completed': cFollowUps.filter((fu) => fu.status === 'Completed').length,
           'Follow-ups Overdue': cFollowUps.filter((fu) => fu.status === 'Overdue').length,
@@ -346,7 +353,7 @@ export default function ReportsPage() {
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
 
-      const surgeryTarget = campaigns.reduce((sum, c) => sum + c.targetSurgeries, 0);
+      const surgeryTarget = campaigns.reduce((sum, c) => sum + campaignTargetSurgeries(c), 0);
       const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
       const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
       const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
@@ -454,7 +461,7 @@ export default function ReportsPage() {
 
       autoTable(doc, {
         startY: 58,
-        head: [['Campaign', 'Type', 'Region', 'Manager', 'Patients', 'Screenings', 'Target', 'Completed', 'Rate %', 'FU Done', 'FU Overdue']],
+        head: [['Campaign', 'Type', 'Sub-regions', 'Managers', 'Patients', 'Screenings', 'Target', 'Completed', 'Rate %', 'FU Done', 'FU Overdue']],
         body: campaigns.map((c) => {
           const cSurgeries = surgeries.filter((s) => s.campaignId === c.id);
           const cFollowUps = followUps.filter((fu) => fu.campaignId === c.id);
@@ -462,13 +469,13 @@ export default function ReportsPage() {
           return [
             c.name,
             c.type,
-            c.region,
-            c.projectManagerName,
+            campaignRegionsLabel(c),
+            campaignManagersLabel(c),
             patients.filter((p) => p.campaignId === c.id).length,
             screenings.filter((s) => s.campaignId === c.id).length,
-            c.targetSurgeries,
+            campaignTargetSurgeries(c),
             cDone,
-            completionRate(cDone, c.targetSurgeries),
+            completionRate(cDone, campaignTargetSurgeries(c)),
             cFollowUps.filter((fu) => fu.status === 'Completed').length,
             cFollowUps.filter((fu) => fu.status === 'Overdue').length,
           ];
@@ -621,7 +628,7 @@ export default function ReportsPage() {
             <SelectItem value="all">All campaigns</SelectItem>
             {availableCampaigns.map((c) => (
               <SelectItem key={c.id} value={c.id}>
-                {c.name} · {c.region}
+                {c.name} · {campaignRegionsLabel(c)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -879,7 +886,7 @@ export default function ReportsPage() {
                 <thead className="border-b border-[#DDE3EA] bg-[#F5F7FA]">
                   <tr>
                     {[
-                      'Campaign', 'Type', 'Region', 'District', 'Manager', 'Status',
+                      'Campaign', 'Type', 'Sub-regions', 'Districts', 'Managers', 'Status',
                       'Patients', 'Screened', 'Scheduled', 'Completed', 'Target', 'Rate',
                     ].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">
@@ -891,20 +898,21 @@ export default function ReportsPage() {
                 <tbody>
                   {(scoped?.campaigns ?? []).map((c) => {
                     const stats = agg?.campaignStats.find((cs) => cs.id === c.id);
-                    const cRate = completionRate(stats?.completed ?? 0, c.targetSurgeries);
+                    const target = campaignTargetSurgeries(c);
+                    const cRate = completionRate(stats?.completed ?? 0, target);
                     return (
                       <tr key={c.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
                         <td className="px-4 py-3 font-medium text-[#141920]">{c.name}</td>
                         <td className="px-4 py-3 text-[#4B5666]">{c.type}</td>
-                        <td className="px-4 py-3 text-[#4B5666]">{c.region}</td>
-                        <td className="px-4 py-3 text-[#4B5666]">{c.operationDistrict}</td>
-                        <td className="px-4 py-3 text-[#4B5666]">{c.projectManagerName}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{campaignRegionsLabel(c)}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{campaignDistrictsLabel(c)}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{campaignManagersLabel(c)}</td>
                         <td className="px-4 py-3"><CampaignStatusBadge status={c.status} /></td>
                         <td className="px-4 py-3 text-[#4B5666]">{stats?.patients ?? 0}</td>
                         <td className="px-4 py-3 text-[#4B5666]">{stats?.screenings ?? 0}</td>
                         <td className="px-4 py-3 text-[#4B5666]">{stats?.scheduled ?? 0}</td>
                         <td className="px-4 py-3 text-[#4B5666]">{stats?.completed ?? 0}</td>
-                        <td className="px-4 py-3 text-[#4B5666]">{c.targetSurgeries}</td>
+                        <td className="px-4 py-3 text-[#4B5666]">{target}</td>
                         <td className="px-4 py-3">
                           <span className={`font-semibold ${
                             cRate >= 75 ? 'text-[#2C9942]' : cRate >= 25 ? 'text-[#F59E0B]' : 'text-[#E53935]'

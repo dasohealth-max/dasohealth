@@ -1,4 +1,4 @@
-import type { Campaign, FollowUp } from '@/types';
+import type { Campaign, CampaignRegion, FollowUp } from '@/types';
 
 export type RegionStatus = 'No campaign' | 'No activity' | 'Behind' | 'Active' | 'Strong';
 
@@ -62,8 +62,11 @@ export function filterRowsByRegisteredCampaign<T extends CampaignLinkedRow>(
 }
 
 export function campaignHasRegion(campaign: Campaign, region: string): boolean {
-  if (campaign.region === region) return true;
-  return campaign.regions?.some((plan) => plan.region === region) ?? false;
+  if (campaign.regions && campaign.regions.length > 0) {
+    return campaign.regions.some((plan) => plan.region === region);
+  }
+
+  return campaign.region === region;
 }
 
 export function campaignsForRegion(campaigns: Campaign[], region: string): Campaign[] {
@@ -87,4 +90,38 @@ export function campaignTargetSurgeriesForRegion(campaigns: Campaign[], region: 
 
     return campaign.region === region ? sum + campaign.targetSurgeries : sum;
   }, 0);
+}
+
+export function campaignSubRegions(campaign: Campaign): CampaignRegion[] {
+  return campaign.regions ?? [];
+}
+
+export function campaignRegionNames(campaign: Campaign): string[] {
+  const regions = campaignSubRegions(campaign).map((plan) => plan.region).filter(Boolean);
+  return regions.length > 0 ? Array.from(new Set(regions)) : [campaign.region].filter(Boolean);
+}
+
+export function campaignDistrictNames(campaign: Campaign): string[] {
+  const districts = campaignSubRegions(campaign).map((plan) => plan.operationDistrict).filter(Boolean);
+  return districts.length > 0 ? Array.from(new Set(districts)) : [campaign.operationDistrict].filter(Boolean);
+}
+
+export function campaignManagerNames(campaign: Campaign): string[] {
+  const managers = campaignSubRegions(campaign).map((plan) => plan.regionalManagerName).filter(Boolean);
+  return managers.length > 0 ? Array.from(new Set(managers)) : [campaign.projectManagerName].filter(Boolean);
+}
+
+export function campaignRegionsLabel(campaign: Campaign): string {
+  const regions = campaignRegionNames(campaign);
+  return regions.length > 0 ? regions.join(', ') : '-';
+}
+
+export function campaignDistrictsLabel(campaign: Campaign): string {
+  const districts = campaignDistrictNames(campaign);
+  return districts.length > 0 ? districts.join(', ') : '-';
+}
+
+export function campaignManagersLabel(campaign: Campaign): string {
+  const managers = campaignManagerNames(campaign);
+  return managers.length > 0 ? managers.join(', ') : '-';
 }

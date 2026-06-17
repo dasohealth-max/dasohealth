@@ -36,11 +36,11 @@ vi.mock('@/lib/api/campaigns', () => ({
   deleteCampaignRegion: vi.fn(),
 }));
 
-import { actionCreateCampaign, actionCreateCampaignRegion, actionUpdateCampaign } from '@/app/actions/campaigns';
+import { actionCreateCampaign, actionCreateCampaignRegion, actionUpdateCampaign, getAllCampaigns } from '@/app/actions/campaigns';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as campaignApi from '@/lib/api/campaigns';
-import type { CampaignRegion } from '@/types';
+import type { Campaign, CampaignRegion } from '@/types';
 
 function mockRequireActor(actor: typeof superAdmin | typeof galmudugPM | typeof banadiPM) {
   vi.mocked(authServer.requireActor).mockResolvedValue(actor);
@@ -69,6 +69,43 @@ const galmudugPlan: CampaignRegion = {
   updatedAt: '2025-01-01T00:00:00.000Z',
 };
 
+describe('getAllCampaigns', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('scopes returned campaign sub-regions to the Project Manager assigned region', async () => {
+    mockRequireActor(galmudugPM);
+    const sharedCampaign: Campaign = {
+      ...galmudugCampaign,
+      region: '',
+      operationDistrict: '',
+      projectManagerId: '',
+      projectManagerName: '',
+      regions: [
+        galmudugPlan,
+        {
+          ...galmudugPlan,
+          id: 'plan-banadir-1',
+          region: 'Banadir / Mogadishu',
+          operationDistrict: 'Mogadishu',
+          regionalManagerId: 'actor-pm-2',
+          regionalManagerName: 'PM Banadir',
+        },
+      ],
+    };
+    vi.mocked(campaignApi.getAllCampaigns).mockResolvedValue([sharedCampaign]);
+
+    const rows = await getAllCampaigns();
+
+    expect(campaignApi.getAllCampaigns).toHaveBeenCalledWith({
+      OR: [{ region: 'Galmudug' }, { regions: { some: { region: 'Galmudug' } } }],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].regions?.map((plan) => plan.region)).toEqual(['Galmudug']);
+  });
+});
+
 describe('actionCreateCampaign', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -84,12 +121,19 @@ describe('actionCreateCampaign', () => {
     vi.mocked(campaignApi.createCampaign).mockResolvedValue(galmudugCampaign);
   });
 
-  it('Super Admin can create a parent campaign without regional plans', async () => {
+  it('Super Admin can create a parent campaign without sub-regions', async () => {
     mockRequireActor(superAdmin);
     const result = await actionCreateCampaign(campaignInput);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.id).toBe('camp-galmudug-1');
     expect(campaignApi.createCampaign).toHaveBeenCalledOnce();
+    expect(campaignApi.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      region: '',
+      operationDistrict: '',
+      projectManagerId: '',
+      projectManagerName: '',
+    }));
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
   });
 
   it('rejects when actor lacks create permission', async () => {
@@ -114,10 +158,16 @@ describe('actionCreateCampaign', () => {
     if (!result.ok) expect(result.error).toMatch(/End date/);
   });
 
-  it('rejects unregistered project managers', async () => {
+  it('rejects unregistered project managers when a campaign-level manager is supplied', async () => {
     mockRequireActor(superAdmin);
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
-    const result = await actionCreateCampaign(campaignInput);
+    const result = await actionCreateCampaign({
+      ...campaignInput,
+      region: 'Galmudug',
+      operationDistrict: 'Dhuusamareeb',
+      projectManagerId: 'actor-pm-1',
+      projectManagerName: 'PM Galmudug',
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/registered user/);
   });
@@ -151,11 +201,11 @@ describe('actionUpdateCampaign', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('rejects campaign date range that excludes an existing regional plan', async () => {
+  it('rejects campaign date range that excludes an existing sub-region', async () => {
     mockRequireActor(superAdmin);
     const result = await actionUpdateCampaign('camp-galmudug-1', { ...campaignInput, startDate: '2025-02-01' });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/regional plan dates/);
+    if (!result.ok) expect(result.error).toMatch(/sub-region dates/);
   });
 
   it('banadir PM cannot edit galmudug campaign', async () => {
@@ -182,14 +232,14 @@ describe('actionCreateCampaignRegion', () => {
     vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue(null);
   });
 
-  it('adds one regional plan to a campaign', async () => {
+  it('adds one sub-region to a campaign', async () => {
     mockRequireActor(superAdmin);
     const result = await actionCreateCampaignRegion(regionInput);
     expect(result.ok).toBe(true);
     expect(campaignApi.createCampaignRegion).toHaveBeenCalledOnce();
   });
 
-  it('blocks duplicate sub-contract type for the same region inside the same campaign', async () => {
+  it('blocks duplicate contract type for the same sub-region inside the same campaign', async () => {
     mockRequireActor(superAdmin);
     vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue({ id: 'existing' } as never);
     const result = await actionCreateCampaignRegion(regionInput);
@@ -197,14 +247,14 @@ describe('actionCreateCampaignRegion', () => {
     if (!result.ok) expect(result.error).toMatch(/already exists/);
   });
 
-  it('blocks regional plan dates outside parent campaign range', async () => {
+  it('blocks sub-region dates outside parent campaign range', async () => {
     mockRequireActor(superAdmin);
     const result = await actionCreateCampaignRegion({ ...regionInput, endDate: '2026-01-01' });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/within the parent campaign/);
   });
 
-  it('blocks a regional manager assigned to another region', async () => {
+  it('blocks a project manager assigned to another sub-region', async () => {
     mockRequireActor(superAdmin);
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: 'actor-pm-2',

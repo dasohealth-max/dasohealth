@@ -10,6 +10,7 @@ import { fromPrisma as followUpFromPrisma, medFromPrisma } from '@/lib/api/follo
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import {
   campaignHasRegion,
+  campaignRegionNames,
   campaignTargetSurgeries,
   campaignTargetSurgeriesForRegion,
   completionRate,
@@ -19,6 +20,7 @@ import {
   STATUS_WEIGHT,
 } from '@/lib/reporting';
 import type { Campaign, Patient, Screening, Surgery, FollowUp, FollowUpMedication } from '@/types';
+import type { Prisma } from '@/lib/generated/prisma/client';
 
 type ActionResult<T = null> =
   | { ok: true; data: T }
@@ -141,6 +143,24 @@ function buildEntityWhere(
   };
 }
 
+function buildCampaignWhere(regionScope: { region?: string }): Prisma.CampaignWhereInput {
+  if (!regionScope.region) return {};
+  return {
+    OR: [
+      { region: regionScope.region },
+      { regions: { some: { region: regionScope.region } } },
+    ],
+  };
+}
+
+function scopeCampaignRegions(campaign: Campaign, regionScope: { region?: string }): Campaign {
+  if (!regionScope.region) return campaign;
+  return {
+    ...campaign,
+    regions: (campaign.regions ?? []).filter((plan) => plan.region === regionScope.region),
+  };
+}
+
 function computeRegionPerf(
   regionName: string,
   scopedCampaigns: Campaign[],
@@ -197,13 +217,13 @@ export async function getReportAggregation(params: {
   const entityWhere = buildEntityWhere(regionScope, params.filterRegion, params.filterCampaignId);
 
   const allCampaignRows = await prisma.campaign.findMany({
-    where: regionScope,
+    where: buildCampaignWhere(regionScope),
     include: { regions: { orderBy: { createdAt: 'asc' } } },
     orderBy: { createdAt: 'desc' },
   });
-  const allCampaigns = allCampaignRows.map(campaignFromPrisma);
+  const allCampaigns = allCampaignRows.map(campaignFromPrisma).map((campaign) => scopeCampaignRegions(campaign, regionScope));
 
-  const regionSet = new Set(allCampaigns.flatMap((c) => [c.region, ...(c.regions?.map((plan) => plan.region) ?? [])]));
+  const regionSet = new Set(allCampaigns.flatMap(campaignRegionNames));
   const availableRegions = REGIONAL_CAMPAIGN_AREAS.map((a) => a.region).filter((r) => regionSet.has(r));
 
   const scopedCampaigns = allCampaigns.filter(
@@ -342,11 +362,11 @@ export async function getReportRawData(params: {
   const entityWhere = buildEntityWhere(regionScope, params.filterRegion, params.filterCampaignId);
 
   const allCampaignRows = await prisma.campaign.findMany({
-    where: regionScope,
+    where: buildCampaignWhere(regionScope),
     include: { regions: { orderBy: { createdAt: 'asc' } } },
     orderBy: { createdAt: 'desc' },
   });
-  const allCampaigns = allCampaignRows.map(campaignFromPrisma);
+  const allCampaigns = allCampaignRows.map(campaignFromPrisma).map((campaign) => scopeCampaignRegions(campaign, regionScope));
 
   const [patientRows, screeningRows, surgeryRows, followUpRows, medRows] = await Promise.all([
     prisma.patient.findMany({ where: entityWhere }),
@@ -371,7 +391,7 @@ export async function getReportRawData(params: {
     .map(medFromPrisma)
     .filter((medication) => followUpIds.has(medication.followUpId));
 
-  const regionSet = new Set(allCampaigns.flatMap((c) => [c.region, ...(c.regions?.map((plan) => plan.region) ?? [])]));
+  const regionSet = new Set(allCampaigns.flatMap(campaignRegionNames));
   const availableRegions = REGIONAL_CAMPAIGN_AREAS.map((a) => a.region).filter((r) => regionSet.has(r));
   const regionsForPerf = params.filterRegion === 'all' ? availableRegions : [params.filterRegion];
   const regionPerformance = regionsForPerf

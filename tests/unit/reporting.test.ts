@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   campaignTargetSurgeries,
   campaignTargetSurgeriesForRegion,
+  campaignHasRegion,
+  campaignRegionsLabel,
   completionRate,
   filterRowsByRegisteredCampaign,
   followUpCounts,
@@ -159,7 +161,7 @@ describe('campaign data consistency helpers', () => {
     expect(filterRowsByRegisteredCampaign(rows, new Set())).toEqual([]);
   });
 
-  it('uses sub-contract surgery targets when a campaign has regional plans', () => {
+  it('uses sub-region surgery targets when a campaign has sub-regions', () => {
     const campaign = makeCampaign({
       targetSurgeries: 999,
       regions: [
@@ -204,6 +206,39 @@ describe('campaign data consistency helpers', () => {
 
     expect(campaignTargetSurgeries(campaign)).toBe(55);
     expect(campaignTargetSurgeriesForRegion([campaign], 'Galmudug')).toBe(55);
+  });
+
+  it('matches regions from sub-regions even when the parent campaign has no region', () => {
+    const campaign = makeCampaign({
+      region: '',
+      operationDistrict: '',
+      projectManagerId: '',
+      projectManagerName: '',
+      regions: [
+        {
+          id: 'plan-1',
+          campaignId: 'campaign-1',
+          type: 'Cataract Surgery Outreach',
+          region: 'Galmudug',
+          operationDistrict: 'Dhuusamareeb',
+          regionalManagerId: 'rm-1',
+          regionalManagerName: 'Asha',
+          targetPatients: 0,
+          targetScreenings: 0,
+          targetSurgeries: 40,
+          startDate: '2026-06-01',
+          endDate: '2026-06-30',
+          status: 'On Track',
+          notes: '',
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(campaignHasRegion(campaign, 'Galmudug')).toBe(true);
+    expect(campaignHasRegion(campaign, 'Puntland')).toBe(false);
+    expect(campaignRegionsLabel(campaign)).toBe('Galmudug');
   });
 
   it('uses campaign-level surgery targets for legacy campaigns without plans', () => {

@@ -5,14 +5,37 @@ import { updateTag } from 'next/cache';
 import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetchPatientById } from '@/lib/api/patients';
-import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
-import type { Patient } from '@/types';
+import { getAllCampaigns as fetchAllCampaigns } from '@/lib/api/campaigns';
+import { auditLog, ensureRegionAccess, isSuperAdmin, requireActor, scopedRegionWhere } from '@/lib/auth-server';
+import type { Campaign, Patient } from '@/types';
 import type { Sex, DisabilityStatus, Prisma } from '@/lib/generated/prisma/client';
 
 export async function getAllPatients(): Promise<Patient[]> {
   const actor = await requireActor('patients', 'view');
   if ('error' in actor) throw new Error(actor.error);
   return fetchAllPatients(scopedRegionWhere(actor));
+}
+
+export async function getPatientRegistrationCampaigns(): Promise<Campaign[]> {
+  const actor = await requireActor('patients', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const where: Prisma.CampaignWhereInput = isSuperAdmin(actor)
+    ? {}
+    : { regions: { some: { region: actor.assignedRegion ?? '__no_region__' } } };
+
+  const campaigns = await fetchAllCampaigns(where);
+  if (isSuperAdmin(actor)) {
+    return campaigns.filter((campaign) => (campaign.regions ?? []).length > 0);
+  }
+
+  const assignedRegion = actor.assignedRegion ?? '__no_region__';
+  return campaigns
+    .map((campaign) => ({
+      ...campaign,
+      regions: (campaign.regions ?? []).filter((plan) => plan.region === assignedRegion),
+    }))
+    .filter((campaign) => (campaign.regions ?? []).length > 0);
 }
 
 export async function getPatientsPaginated(params: {
@@ -77,7 +100,7 @@ const PatientSchema = z.object({
   consentGiven: z.boolean(),
   consentDate: z.string().optional(),
   campaignId: z.string().min(1, 'Campaign is required'),
-  campaignRegionId: z.string().min(1, 'Regional plan is required'),
+  campaignRegionId: z.string().min(1, 'Sub-region is required'),
   referralSource: z.string(),
   notes: z.string().optional(),
 });
@@ -141,7 +164,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
 
   try {
     const campaign = await getCampaignScope(d.campaignId, d.campaignRegionId);
-    if (!campaign) return { ok: false, error: 'Regional plan not found for selected campaign' };
+    if (!campaign) return { ok: false, error: 'Sub-region not found for selected campaign' };
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
@@ -218,7 +241,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
     if (beforeDenied) return beforeDenied;
 
     const campaign = await getCampaignScope(d.campaignId, d.campaignRegionId);
-    if (!campaign) return { ok: false, error: 'Regional plan not found for selected campaign' };
+    if (!campaign) return { ok: false, error: 'Sub-region not found for selected campaign' };
     const denied = ensureRegionAccess(actor, campaign.region);
     if (denied) return denied;
 
