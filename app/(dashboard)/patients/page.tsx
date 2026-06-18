@@ -17,6 +17,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import DateOfBirthPicker from '@/components/forms/DateOfBirthPicker';
 import Pagination from '@/components/ui/Pagination';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
@@ -207,13 +208,19 @@ export default function PatientsPage() {
     const result = editing
       ? await actionUpdatePatient(editing.id, form)
       : await actionCreatePatient(form);
-    if (!result.ok) { setSaveError(result.error); return; }
+    if (!result.ok) {
+      setSaveError(result.error);
+      toast({ title: editing ? 'Patient update failed' : 'Patient registration failed', description: result.error, variant: 'error' });
+      return;
+    }
     if (editing) {
       setPatients((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
+      toast({ title: 'Patient updated', description: patientDisplayName(result.data.fullName, result.data.patientCode) });
     } else {
       setTotal((t) => t + 1);
       setPatients((rows) => page === 1 ? [result.data, ...rows].slice(0, PAGE_SIZE) : rows);
       setPage(1);
+      toast({ title: 'Patient registered', description: patientDisplayName(result.data.fullName, result.data.patientCode) });
     }
     setShowForm(false);
     setEditing(null);
@@ -225,6 +232,7 @@ export default function PatientsPage() {
     if (!deleteTarget) return;
     const result = await actionDeletePatient(deleteTarget.id);
     if (result.ok) {
+      const deletedName = patientDisplayName(deleteTarget.fullName, deleteTarget.patientCode);
       const remaining = patients.filter((r) => r.id !== deleteTarget.id);
       setTotal((t) => t - 1);
       if (remaining.length === 0 && page > 1) {
@@ -232,6 +240,9 @@ export default function PatientsPage() {
       } else {
         setPatients(remaining);
       }
+      toast({ title: 'Patient deleted', description: deletedName });
+    } else {
+      toast({ title: 'Patient delete failed', description: result.error, variant: 'error' });
     }
     setDeleteTarget(null);
   }

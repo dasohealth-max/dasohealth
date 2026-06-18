@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CardSkeleton, Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { usePermissions } from '@/lib/auth';
 import {
   campaignDistrictsLabel,
@@ -327,8 +328,11 @@ export default function ReportsPage() {
 
       const slug = effectiveRegion === 'all' ? 'all-regions' : effectiveRegion.toLowerCase().replace(/\s+/g, '-');
       XLSX.writeFile(wb, `eyecare-report-${slug}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast({ title: 'Workbook exported', description: selectedCampaignLabel });
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : 'Could not export report');
+      const message = error instanceof Error ? error.message : 'Could not export report';
+      setExportError(message);
+      toast({ title: 'Workbook export failed', description: message, variant: 'error' });
     } finally {
       setExporting(false);
     }
@@ -510,8 +514,11 @@ export default function ReportsPage() {
 
       const slug = effectiveRegion === 'all' ? 'all-regions' : effectiveRegion.toLowerCase().replace(/\s+/g, '-');
       doc.save(`eyecare-report-${slug}-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast({ title: 'PDF exported', description: selectedCampaignLabel });
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : 'Could not export PDF report');
+      const message = error instanceof Error ? error.message : 'Could not export PDF report';
+      setExportError(message);
+      toast({ title: 'PDF export failed', description: message, variant: 'error' });
     } finally {
       setExportingPdf(false);
     }

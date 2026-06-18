@@ -9,6 +9,7 @@ import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
@@ -124,8 +125,13 @@ export default function SurgeriesPage() {
     if (!editing) return;
     setSaveError('');
     const result = await actionUpdateSurgery(editing.id, form);
-    if (!result.ok) { setSaveError(result.error); return; }
+    if (!result.ok) {
+      setSaveError(result.error);
+      toast({ title: 'Surgery update failed', description: result.error, variant: 'error' });
+      return;
+    }
     setSurgeries((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
+    toast({ title: 'Surgery updated', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
     setShowForm(false);
     setEditing(null);
   }
@@ -139,7 +145,12 @@ export default function SurgeriesPage() {
       status:      'Completed',
       performedAt: completeTarget.performedAt ?? nowLocal(),
     });
-    if (result.ok) setSurgeries((rows) => rows.map((r) => r.id === completeTarget.id ? result.data : r));
+    if (result.ok) {
+      setSurgeries((rows) => rows.map((r) => r.id === completeTarget.id ? result.data : r));
+      toast({ title: 'Surgery completed', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
+    } else {
+      toast({ title: 'Could not complete surgery', description: result.error, variant: 'error' });
+    }
     setCompleteTarget(null);
   }
 
@@ -149,6 +160,7 @@ export default function SurgeriesPage() {
     if (!deleteTarget) return;
     const result = await actionDeleteSurgery(deleteTarget.id);
     if (result.ok) {
+      const deletedName = patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode);
       const remaining = surgeries.filter((r) => r.id !== deleteTarget.id);
       setTotal((t) => t - 1);
       if (remaining.length === 0 && page > 1) {
@@ -156,6 +168,9 @@ export default function SurgeriesPage() {
       } else {
         setSurgeries(remaining);
       }
+      toast({ title: 'Surgery deleted', description: deletedName });
+    } else {
+      toast({ title: 'Surgery delete failed', description: result.error, variant: 'error' });
     }
     setDeleteTarget(null);
   }

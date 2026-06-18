@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { CardSkeleton, TableSkeletonRows } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { defaultOperationDistrict, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
 import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2 } from 'lucide-react';
@@ -216,12 +217,19 @@ export default function CampaignsPage() {
     const result = editingCampaign
       ? await actionUpdateCampaign(editingCampaign.id, campaignForm)
       : await actionCreateCampaign(campaignForm);
-    if (!result.ok) { setSaveError(result.error); return; }
-    if (editingCampaign) refreshCampaign(result.data);
-    else {
+    if (!result.ok) {
+      setSaveError(result.error);
+      toast({ title: editingCampaign ? 'Campaign update failed' : 'Campaign create failed', description: result.error, variant: 'error' });
+      return;
+    }
+    if (editingCampaign) {
+      refreshCampaign(result.data);
+      toast({ title: 'Campaign updated', description: result.data.name });
+    } else {
       setCampaigns((rows) => [result.data, ...rows]);
       setSelectedId(result.data.id);
       setTab('regions');
+      toast({ title: 'Campaign created', description: result.data.name });
     }
     setShowCampaignForm(false);
     setEditingCampaign(null);
@@ -232,7 +240,11 @@ export default function CampaignsPage() {
     const result = editingPlan
       ? await actionUpdateCampaignRegion(editingPlan.id, planForm)
       : await actionCreateCampaignRegion(planForm);
-    if (!result.ok) { setSaveError(result.error); return; }
+    if (!result.ok) {
+      setSaveError(result.error);
+      toast({ title: editingPlan ? 'Sub-region update failed' : 'Sub-region add failed', description: result.error, variant: 'error' });
+      return;
+    }
     setCampaigns((rows) => rows.map((campaign) => {
       if (campaign.id !== result.data.campaignId) return campaign;
       const currentRegions = campaign.regions ?? [];
@@ -242,6 +254,7 @@ export default function CampaignsPage() {
       return { ...campaign, regions };
     }));
     setSelectedId(result.data.campaignId);
+    toast({ title: editingPlan ? 'Sub-region updated' : 'Sub-region added', description: `${result.data.region} - ${result.data.operationDistrict}` });
     setShowPlanForm(false);
     setEditingPlan(null);
   }
@@ -250,9 +263,13 @@ export default function CampaignsPage() {
     if (!deleteCampaignTarget) return;
     const result = await actionDeleteCampaign(deleteCampaignTarget.id);
     if (result.ok) {
+      const campaignName = deleteCampaignTarget.name;
       const rows = campaigns.filter((row) => row.id !== deleteCampaignTarget.id);
       setCampaigns(rows);
       setSelectedId(rows[0]?.id ?? '');
+      toast({ title: 'Campaign deleted', description: campaignName });
+    } else {
+      toast({ title: 'Campaign delete failed', description: result.error, variant: 'error' });
     }
     setDeleteCampaignTarget(null);
   }
@@ -262,11 +279,15 @@ export default function CampaignsPage() {
     const campaignId = deletePlanTarget.campaignId;
     const result = await actionDeleteCampaignRegion(deletePlanTarget.id);
     if (result.ok) {
+      const planName = `${deletePlanTarget.region} - ${deletePlanTarget.operationDistrict}`;
       setCampaigns((rows) => rows.map((campaign) => (
         campaign.id === campaignId
           ? { ...campaign, regions: (campaign.regions ?? []).filter((region) => region.id !== deletePlanTarget.id) }
           : campaign
       )));
+      toast({ title: 'Sub-region removed', description: planName });
+    } else {
+      toast({ title: 'Sub-region remove failed', description: result.error, variant: 'error' });
     }
     setDeletePlanTarget(null);
   }

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InlineForm from '@/components/forms/InlineForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { actionCreateUser, actionDeleteUser, actionGetAllUsers, actionGetAuditLogs, actionResetUserPassword, actionUpdateUserMetadata } from '@/app/actions/users';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
@@ -180,11 +181,13 @@ export default function SettingsPage() {
           });
         if (!result.ok) {
           setSaveError(result.error);
+          toast({ title: 'User update failed', description: result.error, variant: 'error' });
           return;
         }
         setUsers((rows) => rows.map((row) => row.id === editing.id
           ? { ...row, name: form.name, role: form.role, assignedRegion, initials, color: form.color }
           : row));
+        toast({ title: 'User updated', description: form.name });
       } else {
         const result = await actionCreateUser({
           email: form.email,
@@ -197,6 +200,7 @@ export default function SettingsPage() {
         });
         if (!result.ok) {
           setSaveError(result.error);
+          toast({ title: 'User create failed', description: result.error, variant: 'error' });
           return;
         }
         setUsers((rows) => [{
@@ -210,6 +214,7 @@ export default function SettingsPage() {
           active: true,
           createdAt: new Date().toISOString(),
         }, ...rows]);
+        toast({ title: 'User created', description: `${form.name} - ${form.role}` });
       }
       setShowForm(false);
       setEditing(null);
@@ -219,7 +224,13 @@ export default function SettingsPage() {
   async function confirmDeleteUser() {
     if (!deleteTarget) return;
     const result = await actionDeleteUser(deleteTarget.id);
-    if (result.ok) setUsers((rows) => rows.filter((row) => row.id !== deleteTarget.id));
+    if (result.ok) {
+      const deletedName = deleteTarget.name;
+      setUsers((rows) => rows.filter((row) => row.id !== deleteTarget.id));
+      toast({ title: 'User deleted', description: deletedName });
+    } else {
+      toast({ title: 'User delete failed', description: result.error, variant: 'error' });
+    }
     setDeleteTarget(null);
   }
 
@@ -230,8 +241,10 @@ export default function SettingsPage() {
       const result = await actionResetUserPassword(resetTarget.id, resetPassword);
       if (!result.ok) {
         setResetError(result.error);
+        toast({ title: 'Password reset failed', description: result.error, variant: 'error' });
         return;
       }
+      toast({ title: 'Password reset', description: resetTarget.name });
       setResetTarget(null);
       setResetPassword('');
       await loadAudit();

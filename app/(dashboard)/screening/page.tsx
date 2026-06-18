@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { toast } from '@/components/ui/toast';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
@@ -182,13 +183,19 @@ export default function ScreeningPage() {
     const result = editing
       ? await actionUpdateScreening(editing.id, form)
       : await actionCreateScreening(form);
-    if (!result.ok) { setSaveError(result.error); return; }
+    if (!result.ok) {
+      setSaveError(result.error);
+      toast({ title: editing ? 'Screening update failed' : 'Screening save failed', description: result.error, variant: 'error' });
+      return;
+    }
     if (editing) {
       setScreenings((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
+      toast({ title: 'Screening updated', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
     } else {
       setScreeningsTotal((n) => n + 1);
       setScreenings((rows) => screeningsPage === 1 ? [result.data, ...rows].slice(0, PAGE_SIZE) : rows);
       setScreeningsPage(1);
+      toast({ title: 'Screening recorded', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
     }
     setPatients((rows) =>
       rows.map((p) => p.id === result.data.patientId ? { ...p, screeningStatus: 'Screened' } : p),
@@ -203,6 +210,7 @@ export default function ScreeningPage() {
     if (!deleteTarget) return;
     const result = await actionDeleteScreening(deleteTarget.id);
     if (result.ok) {
+      const deletedName = patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode);
       setScreenings((rows) => rows.filter((r) => r.id !== deleteTarget.id));
       setScreeningsTotal((n) => Math.max(0, n - 1));
       if (result.data) {
@@ -215,6 +223,9 @@ export default function ScreeningPage() {
         );
       }
       if (screenings.length === 1 && screeningsPage > 1) setScreeningsPage((p) => p - 1);
+      toast({ title: 'Screening deleted', description: deletedName });
+    } else {
+      toast({ title: 'Screening delete failed', description: result.error, variant: 'error' });
     }
     setDeleteTarget(null);
   }

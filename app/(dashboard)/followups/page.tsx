@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
@@ -242,8 +243,13 @@ export default function FollowUpsPage() {
     if (!editing) return;
     setSaveError('');
     const result = await actionUpdateFollowUp(editing.id, form);
-    if (!result.ok) { setSaveError(result.error); return; }
+    if (!result.ok) {
+      setSaveError(result.error);
+      toast({ title: 'Follow-up update failed', description: result.error, variant: 'error' });
+      return;
+    }
     setFollowUps((rows) => rows.map((row) => row.id === editing.id ? result.data : row));
+    toast({ title: 'Follow-up updated', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
     // Refresh counts
     getFollowUpTabCounts().then(setCounts);
     closeForm();
@@ -258,7 +264,10 @@ export default function FollowUpsPage() {
     });
     if (result.ok) {
       setFollowUps((rows) => rows.map((row) => row.id === followUp.id ? result.data : row));
+      toast({ title: 'Follow-up completed', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
       getFollowUpTabCounts().then(setCounts);
+    } else {
+      toast({ title: 'Could not complete follow-up', description: result.error, variant: 'error' });
     }
   }
 
@@ -292,12 +301,22 @@ export default function FollowUpsPage() {
 
     if (editingMed) {
       const result = await actionUpdateMedication(editingMed.id, { ...medForm, followUpId: editing.id });
-      if (!result.ok) { setMedError(result.error); return; }
+      if (!result.ok) {
+        setMedError(result.error);
+        toast({ title: 'Medication update failed', description: result.error, variant: 'error' });
+        return;
+      }
       setMedications((prev) => prev.map((m) => m.id === editingMed.id ? result.data : m));
+      toast({ title: 'Medication updated', description: result.data.drugName });
     } else {
       const result = await actionCreateMedication({ ...medForm, followUpId: editing.id });
-      if (!result.ok) { setMedError(result.error); return; }
+      if (!result.ok) {
+        setMedError(result.error);
+        toast({ title: 'Medication add failed', description: result.error, variant: 'error' });
+        return;
+      }
       setMedications((prev) => [...prev, result.data]);
+      toast({ title: 'Medication added', description: result.data.drugName });
     }
     setShowMedForm(false);
     setEditingMed(null);
@@ -306,7 +325,13 @@ export default function FollowUpsPage() {
   async function confirmDeleteMed() {
     if (!deleteMedTarget) return;
     const result = await actionDeleteMedication(deleteMedTarget.id);
-    if (result.ok) setMedications((prev) => prev.filter((m) => m.id !== deleteMedTarget.id));
+    if (result.ok) {
+      const drugName = deleteMedTarget.drugName;
+      setMedications((prev) => prev.filter((m) => m.id !== deleteMedTarget.id));
+      toast({ title: 'Medication deleted', description: drugName });
+    } else {
+      toast({ title: 'Medication delete failed', description: result.error, variant: 'error' });
+    }
     setDeleteMedTarget(null);
   }
 
