@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InlineForm from '@/components/forms/InlineForm';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { actionCreateUser, actionDeleteUser, actionGetAllUsers, actionGetAuditLogs, actionResetUserPassword, actionUpdateUserMetadata } from '@/app/actions/users';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
@@ -47,6 +49,7 @@ export default function SettingsPage() {
   const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const [form, setForm] = useState<UserFormData>(BLANK);
   const [editing, setEditing] = useState<User | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState('');
@@ -167,36 +170,57 @@ export default function SettingsPage() {
         : role === 'Project Manager'
           ? sessionUser?.assignedRegion
           : form.assignedRegion;
-      const result = editing
-        ? await actionUpdateUserMetadata(editing.id, {
-            name: form.name,
-            role: form.role,
-            assignedRegion,
-            initials,
-            color: form.color,
-          })
-        : await actionCreateUser({
-            email: form.email,
-            password: form.password,
+      if (editing) {
+        const result = await actionUpdateUserMetadata(editing.id, {
             name: form.name,
             role: form.role,
             assignedRegion,
             initials,
             color: form.color,
           });
-      if (!result.ok) {
-        setSaveError(result.error);
-        return;
+        if (!result.ok) {
+          setSaveError(result.error);
+          return;
+        }
+        setUsers((rows) => rows.map((row) => row.id === editing.id
+          ? { ...row, name: form.name, role: form.role, assignedRegion, initials, color: form.color }
+          : row));
+      } else {
+        const result = await actionCreateUser({
+          email: form.email,
+          password: form.password,
+          name: form.name,
+          role: form.role,
+          assignedRegion,
+          initials,
+          color: form.color,
+        });
+        if (!result.ok) {
+          setSaveError(result.error);
+          return;
+        }
+        setUsers((rows) => [{
+          id: result.data.id,
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          assignedRegion,
+          initials,
+          color: form.color,
+          active: true,
+          createdAt: new Date().toISOString(),
+        }, ...rows]);
       }
-      await loadUsers(false);
       setShowForm(false);
       setEditing(null);
     });
   }
 
-  async function remove(user: User) {
-    const result = await actionDeleteUser(user.id);
-    if (result.ok) setUsers((rows) => rows.filter((row) => row.id !== user.id));
+  async function confirmDeleteUser() {
+    if (!deleteTarget) return;
+    const result = await actionDeleteUser(deleteTarget.id);
+    if (result.ok) setUsers((rows) => rows.filter((row) => row.id !== deleteTarget.id));
+    setDeleteTarget(null);
   }
 
   async function resetUserPassword() {
@@ -216,6 +240,18 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete User"
+        description={deleteTarget
+          ? `This will permanently delete ${deleteTarget.name} (${deleteTarget.email}) and remove their login access. This cannot be undone.`
+          : ''}
+        confirmLabel="Delete User"
+        confirmationText="DELETE"
+        onConfirm={confirmDeleteUser}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
       <div>
         <h1 className="text-xl font-bold text-[#141920]">Settings</h1>
         <p className="text-sm text-[#4B5666]">Manage regional users and review accountability logs</p>
@@ -275,12 +311,12 @@ export default function SettingsPage() {
               onClose={() => setShowForm(false)}
               onSave={save}
               saveLabel={editing ? 'Update User' : 'Add User'}
-              saveDisabled={!form.name || !form.email || !form.role || (form.role !== 'Super Administrator' && !form.assignedRegion) || (!editing && form.password.length < 6) || isPending}
+              saveDisabled={!form.name || !form.email || !form.role || (form.role !== 'Super Administrator' && !form.assignedRegion) || (!editing && form.password.length < 10) || isPending}
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div><Label className="mb-1 block text-xs">Full Name *</Label><Input value={form.name} onChange={(e) => set('name', e.target.value)} className="rounded-xl" /></div>
                 <div><Label className="mb-1 block text-xs">Email *</Label><Input type="email" disabled={!!editing} value={form.email} onChange={(e) => set('email', e.target.value)} className="rounded-xl" /></div>
-                {!editing && <div><Label className="mb-1 block text-xs">Password *</Label><Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} className="rounded-xl" /></div>}
+                {!editing && <div><Label className="mb-1 block text-xs">Password *</Label><Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} className="rounded-xl" placeholder="Minimum 10 characters" /></div>}
                 <div>
                   <Label className="mb-1 block text-xs">Role *</Label>
                   <Select value={form.role} onValueChange={(value) => { if (value) setRole(value as Role); }}>
@@ -345,7 +381,8 @@ export default function SettingsPage() {
                     <tr>{['User', 'Email', 'Role', 'Region', 'Status', ''].map((heading) => <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {visibleUsers.map((user) => (
+                    {isLoading && <TableSkeletonRows rows={6} columns={6} />}
+                    {!isLoading && visibleUsers.map((user) => (
                       <tr key={user.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
                         <td className="px-4 py-3 font-medium text-[#141920]">{user.name}</td>
                         <td className="px-4 py-3 text-[#4B5666]">{user.email}</td>
@@ -356,12 +393,12 @@ export default function SettingsPage() {
                           <div className="flex gap-1">
                             {can('settings', 'edit') && <button onClick={() => openEdit(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]"><Pencil size={14} /></button>}
                             {canResetPassword(user) && <button onClick={() => openResetPassword(user)} title="Reset password" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FFF5E6] hover:text-[#F59E0B]"><KeyRound size={14} /></button>}
-                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => remove(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={14} /></button>}
+                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => setDeleteTarget(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={14} /></button>}
                           </div>
                         </td>
                       </tr>
                     ))}
-                    {visibleUsers.length === 0 && (
+                    {!isLoading && visibleUsers.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-10 text-center text-sm text-[#647184]">
                           No users found for this state.

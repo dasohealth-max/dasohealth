@@ -5,6 +5,7 @@ import type { Patient, Screening, VAGrade } from '@/types';
 import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated } from '@/app/actions/screenings';
 import { getAllPatients } from '@/app/actions/patients';
 import Pagination from '@/components/ui/Pagination';
+import { TableSkeletonRows } from '@/components/ui/skeleton';
 
 const PAGE_SIZE = 50;
 import { Card, CardContent } from '@/components/ui/card';
@@ -78,7 +79,7 @@ export default function ScreeningPage() {
   const [showForm,            setShowForm]            = useState(false);
   const [saveError,           setSaveError]           = useState('');
   const [isLoading,           setIsLoading]           = useState(true);
-  const [histLoading,         setHistLoading]         = useState(false);
+  const [histLoading,         setHistLoading]         = useState(true);
   const [queueSearch,         setQueueSearch]         = useState('');
   const [historySearch,       setHistorySearch]       = useState('');
   const [historyOpen,         setHistoryOpen]         = useState(false);
@@ -185,9 +186,9 @@ export default function ScreeningPage() {
     if (editing) {
       setScreenings((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
     } else {
-      // New screening — go to page 1 to see it (ordered by date desc)
-      setScreeningsPage(1);
       setScreeningsTotal((n) => n + 1);
+      setScreenings((rows) => screeningsPage === 1 ? [result.data, ...rows].slice(0, PAGE_SIZE) : rows);
+      setScreeningsPage(1);
     }
     setPatients((rows) =>
       rows.map((p) => p.id === result.data.patientId ? { ...p, screeningStatus: 'Screened' } : p),
@@ -229,6 +230,7 @@ export default function ScreeningPage() {
           ? `Remove the screening record for "${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}"? This cannot be undone.`
           : ''}
         confirmLabel="Delete"
+        confirmationText="DELETE"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -304,7 +306,7 @@ export default function ScreeningPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={7} className="py-10 text-center text-sm text-[#647184]">Loading...</td></tr>
+                  <TableSkeletonRows rows={6} columns={7} />
                 )}
                 {!isLoading && filteredQueue.length === 0 && (
                   <tr><td colSpan={7} className="py-10 text-center text-sm text-[#647184]">
@@ -394,7 +396,7 @@ export default function ScreeningPage() {
                   </thead>
                   <tbody>
                     {histLoading && (
-                      <tr><td colSpan={9} className="py-8 text-center text-sm text-[#647184]">Loading…</td></tr>
+                      <TableSkeletonRows rows={5} columns={9} />
                     )}
                     {!histLoading && screenings.length === 0 && (
                       <tr><td colSpan={9} className="py-8 text-center text-sm text-[#647184]">No screenings found.</td></tr>

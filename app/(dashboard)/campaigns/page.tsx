@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { CardSkeleton, TableSkeletonRows } from '@/components/ui/skeleton';
 import { defaultOperationDistrict, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
 import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2 } from 'lucide-react';
@@ -132,12 +133,6 @@ export default function CampaignsPage() {
     setCampaigns((rows) => rows.map((row) => row.id === updated.id ? updated : row));
   }
 
-  async function reloadCampaigns(selectId?: string) {
-    const rows = await getAllCampaigns();
-    setCampaigns(rows);
-    if (selectId) setSelectedId(selectId);
-  }
-
   async function reloadUsers() {
     const result = await actionGetAllUsers();
     if (result.ok) setUsers(result.data);
@@ -238,7 +233,15 @@ export default function CampaignsPage() {
       ? await actionUpdateCampaignRegion(editingPlan.id, planForm)
       : await actionCreateCampaignRegion(planForm);
     if (!result.ok) { setSaveError(result.error); return; }
-    await reloadCampaigns(result.data.campaignId);
+    setCampaigns((rows) => rows.map((campaign) => {
+      if (campaign.id !== result.data.campaignId) return campaign;
+      const currentRegions = campaign.regions ?? [];
+      const regions = editingPlan
+        ? currentRegions.map((region) => region.id === result.data.id ? result.data : region)
+        : [...currentRegions, result.data];
+      return { ...campaign, regions };
+    }));
+    setSelectedId(result.data.campaignId);
     setShowPlanForm(false);
     setEditingPlan(null);
   }
@@ -258,7 +261,13 @@ export default function CampaignsPage() {
     if (!deletePlanTarget) return;
     const campaignId = deletePlanTarget.campaignId;
     const result = await actionDeleteCampaignRegion(deletePlanTarget.id);
-    if (result.ok) await reloadCampaigns(campaignId);
+    if (result.ok) {
+      setCampaigns((rows) => rows.map((campaign) => (
+        campaign.id === campaignId
+          ? { ...campaign, regions: (campaign.regions ?? []).filter((region) => region.id !== deletePlanTarget.id) }
+          : campaign
+      )));
+    }
     setDeletePlanTarget(null);
   }
 
@@ -272,6 +281,7 @@ export default function CampaignsPage() {
         title="Delete Campaign"
         description={deleteCampaignTarget ? `This will delete "${deleteCampaignTarget.name}" and its sub-regions.` : ''}
         confirmLabel="Delete Campaign"
+        confirmationText="DELETE"
         onConfirm={confirmDeleteCampaign}
         onCancel={() => setDeleteCampaignTarget(null)}
       />
@@ -280,6 +290,7 @@ export default function CampaignsPage() {
         title="Remove Sub-region"
         description={deletePlanTarget ? `Remove ${deletePlanTarget.region} from this campaign?` : ''}
         confirmLabel="Remove Sub-region"
+        confirmationText="REMOVE"
         onConfirm={confirmDeletePlan}
         onCancel={() => setDeletePlanTarget(null)}
       />
@@ -296,12 +307,18 @@ export default function CampaignsPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard icon={<ClipboardList size={18} />} label="Total Campaigns" value={summary.total} />
-        <SummaryCard icon={<Activity size={18} />} label="Active Campaigns" value={summary.active} color="green" />
-        <SummaryCard icon={<Target size={18} />} label="Completed Campaigns" value={summary.completed} />
-        <SummaryCard icon={<MapPin size={18} />} label="Regions Involved" value={summary.regions} />
-      </div>
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => <CardSkeleton key={index} />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SummaryCard icon={<ClipboardList size={18} />} label="Total Campaigns" value={summary.total} />
+          <SummaryCard icon={<Activity size={18} />} label="Active Campaigns" value={summary.active} color="green" />
+          <SummaryCard icon={<Target size={18} />} label="Completed Campaigns" value={summary.completed} />
+          <SummaryCard icon={<MapPin size={18} />} label="Regions Involved" value={summary.regions} />
+        </div>
+      )}
 
       {showCampaignForm && (
         <ModalForm
@@ -395,7 +412,15 @@ function CampaignsTable({ campaigns, isLoading, selectedId, canEdit, canDelete, 
       <div className="border-b border-[#EAEEF3] px-4 py-3">
         <p className="text-sm font-bold text-[#141920]">All Campaigns</p>
       </div>
-      {isLoading && <div className="py-12 text-center text-sm text-[#647184]">Loading campaigns...</div>}
+      {isLoading && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-sm">
+            <tbody>
+              <TableSkeletonRows rows={5} columns={8} />
+            </tbody>
+          </table>
+        </div>
+      )}
       {!isLoading && campaigns.length === 0 && (
         <div className="m-4 rounded-md border border-dashed border-[#DDE3EA] p-8 text-center text-sm text-[#647184]">
           No campaigns yet.

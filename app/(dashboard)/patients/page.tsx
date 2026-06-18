@@ -16,6 +16,7 @@ import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import DateOfBirthPicker from '@/components/forms/DateOfBirthPicker';
 import Pagination from '@/components/ui/Pagination';
+import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
@@ -210,6 +211,8 @@ export default function PatientsPage() {
     if (editing) {
       setPatients((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
     } else {
+      setTotal((t) => t + 1);
+      setPatients((rows) => page === 1 ? [result.data, ...rows].slice(0, PAGE_SIZE) : rows);
       setPage(1);
     }
     setShowForm(false);
@@ -246,6 +249,7 @@ export default function PatientsPage() {
           ? `This will permanently delete ${deleteTarget.fullName} (${deleteTarget.patientCode}) along with all their screenings, surgeries, and follow-ups. This cannot be undone.`
           : ''}
         confirmLabel="Delete Patient"
+        confirmationText="DELETE"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -364,9 +368,7 @@ export default function PatientsPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-sm text-[#647184]">Loading patients...</td>
-                  </tr>
+                  <TableSkeletonRows rows={8} columns={8} />
                 )}
                 {!isLoading && patients.length === 0 && (
                   <tr>

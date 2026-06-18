@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
@@ -152,6 +154,7 @@ export default function FollowUpsPage() {
   const [medications, setMedications] = useState<FollowUpMedication[]>([]);
   const [medForm, setMedForm] = useState<Omit<FollowUpMedication, 'id' | 'createdAt' | 'followUpId'>>(BLANK_MED);
   const [editingMed, setEditingMed] = useState<FollowUpMedication | null>(null);
+  const [deleteMedTarget, setDeleteMedTarget] = useState<FollowUpMedication | null>(null);
   const [showMedForm, setShowMedForm] = useState(false);
   const [medError, setMedError] = useState('');
 
@@ -300,10 +303,11 @@ export default function FollowUpsPage() {
     setEditingMed(null);
   }
 
-  async function deleteMed(med: FollowUpMedication) {
-    if (!confirm(`Remove ${med.drugName}?`)) return;
-    const result = await actionDeleteMedication(med.id);
-    if (result.ok) setMedications((prev) => prev.filter((m) => m.id !== med.id));
+  async function confirmDeleteMed() {
+    if (!deleteMedTarget) return;
+    const result = await actionDeleteMedication(deleteMedTarget.id);
+    if (result.ok) setMedications((prev) => prev.filter((m) => m.id !== deleteMedTarget.id));
+    setDeleteMedTarget(null);
   }
 
   const showDoctorSection = form.needsDoctorReview || form.doctorReviewStatus !== 'Not Needed';
@@ -312,6 +316,16 @@ export default function FollowUpsPage() {
 
   return (
     <div className="space-y-4">
+      <ConfirmDialog
+        open={!!deleteMedTarget}
+        title="Delete Medication"
+        description={deleteMedTarget ? `Remove ${deleteMedTarget.drugName} from this follow-up record? This cannot be undone.` : ''}
+        confirmLabel="Delete Medication"
+        confirmationText="DELETE"
+        onConfirm={confirmDeleteMed}
+        onCancel={() => setDeleteMedTarget(null)}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
@@ -616,7 +630,7 @@ export default function FollowUpsPage() {
                           {can('followups', 'edit') && (
                             <div className="flex gap-1">
                               <button onClick={() => openEditMed(med)} className="rounded p-1 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]"><Pencil size={11} /></button>
-                              <button onClick={() => deleteMed(med)} className="rounded p-1 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={11} /></button>
+                              <button onClick={() => setDeleteMedTarget(med)} className="rounded p-1 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={11} /></button>
                             </div>
                           )}
                         </td>
@@ -683,7 +697,7 @@ export default function FollowUpsPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={9} className="py-10 text-center text-sm text-[#647184]">Loading follow-ups…</td></tr>
+                  <TableSkeletonRows rows={8} columns={9} />
                 )}
                 {!isLoading && followUps.length === 0 && (
                   <tr><td colSpan={9} className="py-10 text-center text-sm text-[#647184]">No follow-ups found.</td></tr>

@@ -10,6 +10,7 @@ import { getAllScreenings } from '@/app/actions/screenings';
 import { getAllSurgeries } from '@/app/actions/surgeries';
 import { usePermissions } from '@/lib/auth';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
+import { CardSkeleton, Skeleton } from '@/components/ui/skeleton';
 import {
   campaignTargetSurgeriesForRegion,
   campaignsForRegion,
@@ -183,11 +184,7 @@ export default function DashboardPage() {
     : (allStats.find((r) => r.region === effectiveSelectedRegion) ?? null);
 
   if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center text-sm text-[#647184]">
-        Loading dashboard...
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -216,6 +213,40 @@ export default function DashboardPage() {
           onBack={() => undefined}
         />
       )}
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div>
+        <Skeleton className="h-6 w-36" />
+        <Skeleton className="mt-2 h-4 w-64" />
+      </div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <div className="rounded-xl border border-[#DDE3EA] bg-white p-5 shadow-sm">
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="mt-3 h-8 w-72" />
+          <Skeleton className="mt-2 h-4 w-96 max-w-full" />
+          <Skeleton className="mt-6 h-4 w-full rounded-full" />
+        </div>
+        <div className="rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm">
+          <Skeleton className="h-4 w-32" />
+          <div className="mt-4 space-y-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-16 w-full" />
+            ))}
+          </div>
+        </div>
+      </section>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => <CardSkeleton key={index} />)}
+      </div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl" />
+      </section>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Pagination from '@/components/ui/Pagination';
+import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
@@ -185,6 +186,7 @@ export default function SurgeriesPage() {
           ? `Permanently delete the surgery record for "${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}"? All associated follow-up records will also be deleted. This cannot be undone.`
           : ''}
         confirmLabel="Delete Surgery"
+        confirmationText="DELETE"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -283,7 +285,7 @@ export default function SurgeriesPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={10} className="py-12 text-center text-sm text-[#647184]">Loading surgeries...</td></tr>
+                  <TableSkeletonRows rows={8} columns={10} />
                 )}
                 {!isLoading && surgeries.length === 0 && (
                   <tr><td colSpan={10} className="py-12 text-center text-sm text-[#647184]">
