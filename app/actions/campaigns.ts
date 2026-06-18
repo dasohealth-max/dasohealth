@@ -12,6 +12,7 @@ import {
   getCampaignById,
   updateCampaign,
   updateCampaignRegion,
+  normalizeDoctorName,
 } from '@/lib/api/campaigns';
 import { auditLog, ensureRegionAccess, isSuperAdmin, requireActor } from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
@@ -47,6 +48,7 @@ const CampaignRegionSchema = z.object({
   operationDistrict: z.string().trim().min(1, 'Operation district is required'),
   regionalManagerId: z.string().min(1, 'Project Manager is required'),
   regionalManagerName: z.string().min(1, 'Project Manager is required'),
+  doctorName: z.string().trim().min(1, 'Doctor name is required'),
   targetPatients: z.number().int().min(0, 'Target patients must be 0 or more').optional().default(0),
   targetScreenings: z.number().int().min(0, 'Target screenings must be 0 or more').optional().default(0),
   targetSurgeries: z.number().int().min(0, 'Target surgeries must be 0 or more'),
@@ -96,6 +98,20 @@ async function validateRegionalManager(userId: string, userName: string, region:
   if (user.name !== userName) return 'Selected Project Manager does not match the registered user record';
   if (user.assignedRegion !== region) return `${user.name} is assigned to ${user.assignedRegion ?? 'no region'}, not ${region}`;
   return null;
+}
+
+async function validateDoctorAssignment(doctorName: string, currentRegionId?: string): Promise<string | null> {
+  const doctorNameKey = normalizeDoctorName(doctorName);
+  if (!doctorNameKey) return 'Doctor name is required';
+  const existing = await prisma.campaignRegion.findFirst({
+    where: {
+      doctorNameKey,
+      ...(currentRegionId ? { id: { not: currentRegionId } } : {}),
+    },
+    select: { region: true, operationDistrict: true, doctorName: true },
+  });
+  if (!existing) return null;
+  return `${existing.doctorName} is already assigned to ${existing.region} - ${existing.operationDistrict}`;
 }
 
 function campaignWhereForActor(actor: Awaited<ReturnType<typeof requireActor>>): Prisma.CampaignWhereInput {
@@ -295,6 +311,8 @@ export async function actionCreateCampaignRegion(input: unknown): Promise<Action
   if (denied) return denied;
   const managerError = await validateRegionalManager(parsed.data.regionalManagerId, parsed.data.regionalManagerName, parsed.data.region);
   if (managerError) return { ok: false, error: managerError };
+  const doctorError = await validateDoctorAssignment(parsed.data.doctorName);
+  if (doctorError) return { ok: false, error: doctorError };
 
   try {
     const campaign = await getCampaignById(parsed.data.campaignId);
@@ -340,6 +358,8 @@ export async function actionUpdateCampaignRegion(id: string, input: unknown): Pr
   if (denied) return denied;
   const managerError = await validateRegionalManager(parsed.data.regionalManagerId, parsed.data.regionalManagerName, parsed.data.region);
   if (managerError) return { ok: false, error: managerError };
+  const doctorError = await validateDoctorAssignment(parsed.data.doctorName, id);
+  if (doctorError) return { ok: false, error: doctorError };
 
   try {
     const before = await prisma.campaignRegion.findUnique({ where: { id } });

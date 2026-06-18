@@ -36,7 +36,7 @@ export default function ModalForm({
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className={`relative flex w-full flex-col rounded-xl bg-white shadow-2xl ${wide ? 'max-w-5xl' : 'max-w-2xl'} my-auto`}>
+      <div className={`relative my-auto flex w-full flex-col rounded-xl bg-white shadow-2xl ${wide ? 'max-w-7xl' : 'max-w-2xl'}`}>
         {/* Header â€” sticky */}
         <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-xl border-b border-[#DDE3EA] bg-white px-6 py-4">
           <div>

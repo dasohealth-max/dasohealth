@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Patient, Screening, VAGrade } from '@/types';
+import type { Patient, Screening, SurgeryEye, VAGrade } from '@/types';
 import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated } from '@/app/actions/screenings';
 import { getAllPatients } from '@/app/actions/patients';
 import Pagination from '@/components/ui/Pagination';
@@ -21,6 +21,8 @@ import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, Search, Stetho
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const VA_GRADES: VAGrade[] = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'HM', 'PL', 'NPL'];
+const EYES: SurgeryEye[] = ['Right', 'Left', 'Both'];
+const FINDING_KEYS = ['cataractSuspected', 'glaucomaSuspected', 'diabeticRetinopathy'] as const;
 
 // Only active recommendations shown in new/edit screening forms; legacy values stay displayable for existing records.
 const ACTIVE_RECOMMENDATIONS: Screening['recommendation'][] = [
@@ -59,6 +61,7 @@ function blankForm(): Omit<Screening, 'id' | 'createdAt'> {
     screenedAt: nowLocal(),
     vaRightUnaided: '6/6', vaLeftUnaided: '6/6',
     cataractSuspected: false, glaucomaSuspected: false, diabeticRetinopathy: false,
+    eye: 'Both',
     otherFindings: '', medicalHistory: '', currentMedications: '',
     recommendation: 'Refer for Surgery',
     notes: '',
@@ -133,6 +136,15 @@ export default function ScreeningPage() {
 
   function set<K extends keyof ReturnType<typeof blankForm>>(key: K, value: ReturnType<typeof blankForm>[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function chooseFinding(key: (typeof FINDING_KEYS)[number], checked: boolean) {
+    setForm((prev) => ({
+      ...prev,
+      cataractSuspected: key === 'cataractSuspected' ? checked : false,
+      glaucomaSuspected: key === 'glaucomaSuspected' ? checked : false,
+      diabeticRetinopathy: key === 'diabeticRetinopathy' ? checked : false,
+    }));
   }
 
   function choosePatient(patientId: string) {
@@ -268,6 +280,7 @@ export default function ScreeningPage() {
             queuedPatients={queuedPatients}
             isEditing={!!editing}
             set={set}
+            chooseFinding={chooseFinding}
             choosePatient={choosePatient}
           />
         </ModalForm>
@@ -470,13 +483,14 @@ export default function ScreeningPage() {
 // ─── Screening form body (inside modal) ──────────────────────────────────────
 
 function ScreeningFormBody({
-  form, patients, queuedPatients, isEditing, set, choosePatient,
+  form, patients, queuedPatients, isEditing, set, chooseFinding, choosePatient,
 }: {
   form: ReturnType<typeof blankForm>;
   patients: Patient[];
   queuedPatients: Patient[];
   isEditing: boolean;
   set: <K extends keyof ReturnType<typeof blankForm>>(key: K, value: ReturnType<typeof blankForm>[K]) => void;
+  chooseFinding: (key: (typeof FINDING_KEYS)[number], checked: boolean) => void;
   choosePatient: (id: string) => void;
 }) {
   const patientList = isEditing ? patients : queuedPatients;
@@ -484,11 +498,12 @@ function ScreeningFormBody({
   const selectedPatientLabel = selectedPatient
     ? `${selectedPatient.patientCode} - ${selectedPatient.fullName}`
     : patientDisplayName(form.patientName, form.patientCode);
+  const selectedFinding = FINDING_KEYS.find((key) => form[key]);
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       {/* Section 1: Patient & Timestamp */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-2`}>Patient & Session</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="md:col-span-2">
@@ -527,7 +542,7 @@ function ScreeningFormBody({
       </section>
 
       {/* Section 2: Visual Acuity */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-2`}>Visual Acuity (Unaided)</p>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div>
@@ -568,7 +583,7 @@ function ScreeningFormBody({
       </section>
 
       {/* Section 3: Findings */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-2`}>Clinical Findings</p>
         <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
           {[
@@ -576,16 +591,31 @@ function ScreeningFormBody({
             { key: 'glaucomaSuspected' as const,    label: 'Glaucoma Suspected' },
             { key: 'diabeticRetinopathy' as const,  label: 'Diabetic Retinopathy' },
           ].map(({ key, label }) => (
-            <label key={key} className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md border border-[#DDE3EA] px-3 py-2 transition hover:bg-[#F5F7FA]">
+            <label
+              key={key}
+              className={`flex min-h-10 items-center gap-2.5 rounded-md border px-3 py-2 transition ${
+                selectedFinding && selectedFinding !== key
+                  ? 'cursor-not-allowed border-[#EAEEF3] bg-[#F5F7FA] text-[#94A0AE]'
+                  : 'cursor-pointer border-[#DDE3EA] hover:bg-[#F5F7FA]'
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={form[key]}
-                onChange={(e) => set(key, e.target.checked)}
+                disabled={!!selectedFinding && selectedFinding !== key}
+                onChange={(e) => chooseFinding(key, e.target.checked)}
                 className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
               />
               <span className="text-sm leading-tight text-[#141920]">{label}</span>
             </label>
           ))}
+        </div>
+        <div className="mb-3 max-w-xs">
+          <label className={F.label}>Eye *</label>
+          <Select value={form.eye} onValueChange={(v) => { if (v) set('eye', v as SurgeryEye); }}>
+            <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
+            <SelectContent>{EYES.map((eye) => <SelectItem key={eye} value={eye}>{eye}</SelectItem>)}</SelectContent>
+          </Select>
         </div>
         <div>
           <label className={F.label}>Other Findings</label>
@@ -599,7 +629,7 @@ function ScreeningFormBody({
       </section>
 
       {/* Section 4: Patient History */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-2`}>Patient History</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
@@ -624,7 +654,7 @@ function ScreeningFormBody({
       </section>
 
       {/* Section 5: Outcome */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3 xl:col-span-2">
         <p className={`${F.label} mb-2`}>Outcome</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)]">
           <div>

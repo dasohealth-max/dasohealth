@@ -67,7 +67,6 @@ enum RegionalPlanStatus {
 enum Sex {
   Male
   Female
-  Other
 
   @@map("sex")
 }
@@ -232,6 +231,8 @@ model CampaignRegion {
   operationDistrict   String             @map("operation_district")
   regionalManagerId   String             @default("") @map("regional_manager_id")
   regionalManagerName String             @default("") @map("regional_manager_name")
+  doctorName          String             @default("") @map("doctor_name")
+  doctorNameKey       String?            @unique(map: "campaign_regions_doctor_name_key_key") @map("doctor_name_key")
   targetPatients      Int                @default(0) @map("target_patients")
   targetScreenings    Int                @default(0) @map("target_screenings")
   targetSurgeries     Int                @default(0) @map("target_surgeries")
@@ -322,6 +323,7 @@ model Screening {
   cataractSuspected   Boolean                 @default(false) @map("cataract_suspected")
   glaucomaSuspected   Boolean                 @default(false) @map("glaucoma_suspected")
   diabeticRetinopathy Boolean                 @default(false) @map("diabetic_retinopathy")
+  eye                 SurgeryEye              @default(Both)
   otherFindings       String                  @default("") @map("other_findings")
   medicalHistory      String                  @default("") @map("medical_history")
   currentMedications  String                  @default("") @map("current_medications")

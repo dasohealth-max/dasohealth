@@ -24,6 +24,7 @@ const ScreeningSchema = z.object({
   cataractSuspected: z.boolean(),
   glaucomaSuspected: z.boolean(),
   diabeticRetinopathy: z.boolean(),
+  eye: z.enum(['Right', 'Left', 'Both']),
   otherFindings: z.string(),
   medicalHistory: z.string(),
   currentMedications: z.string(),
@@ -81,6 +82,10 @@ export async function getScreeningHistoryPaginated(params: {
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
+function hasMultipleFindings(data: Pick<Screening, 'cataractSuspected' | 'glaucomaSuspected' | 'diabeticRetinopathy'>) {
+  return [data.cataractSuspected, data.glaucomaSuspected, data.diabeticRetinopathy].filter(Boolean).length > 1;
+}
+
 async function deriveScope(data: Omit<Screening, 'id' | 'createdAt'>) {
   const patient = await prisma.patient.findUnique({
     where: { id: data.patientId },
@@ -98,12 +103,26 @@ async function deriveScope(data: Omit<Screening, 'id' | 'createdAt'>) {
   return { ...patient, campaignId: patient.campaignId };
 }
 
-async function routeSurgery(screening: Screening, preOpVa: string) {
+function preOpVaForEye(screening: Screening) {
+  if (screening.eye === 'Right') return screening.vaRightUnaided;
+  if (screening.eye === 'Left') return screening.vaLeftUnaided;
+  return `Right: ${screening.vaRightUnaided} / Left: ${screening.vaLeftUnaided}`;
+}
+
+async function routeSurgery(screening: Screening) {
   if (screening.recommendation !== 'Refer for Surgery') return;
-  const existing = await prisma.surgery.findFirst({
-    where: { createdFromScreeningId: screening.id },
-    select: { id: true },
-  });
+  const [existing, campaignRegion] = await Promise.all([
+    prisma.surgery.findFirst({
+      where: { createdFromScreeningId: screening.id },
+      select: { id: true },
+    }),
+    screening.campaignRegionId
+      ? prisma.campaignRegion.findUnique({
+          where: { id: screening.campaignRegionId },
+          select: { doctorName: true },
+        })
+      : Promise.resolve(null),
+  ]);
 
   const data = {
     patientId: screening.patientId,
@@ -113,11 +132,12 @@ async function routeSurgery(screening: Screening, preOpVa: string) {
     region: screening.region,
     operationDistrict: screening.operationDistrict,
     createdFromScreeningId: screening.id,
-    eye: 'Left' as never,
+    surgeonName: campaignRegion?.doctorName || '',
+    eye: screening.eye as never,
     lensType: 'FoldableAcrylic' as never,
     scheduledAt: new Date(Date.now() + 7 * 86400_000),
     status: 'Scheduled' as never,
-    preOpVa,
+    preOpVa: preOpVaForEye(screening),
     complications: '',
     intraopNotes: `Created automatically from screening by ${screening.screenedByName || screening.screenedBy}. ${screening.notes}`.trim(),
   };
@@ -137,6 +157,7 @@ export async function actionCreateScreening(
 
   const parsed = ScreeningSchema.safeParse(data);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (hasMultipleFindings(data)) return { ok: false, error: 'Choose only one clinical finding at a time' };
 
   try {
     if (!data.patientId || !data.campaignId) {
@@ -167,7 +188,7 @@ export async function actionCreateScreening(
       where: { id: data.patientId },
       data: { screeningStatus: 'Screened' },
     });
-    await routeSurgery(screening, data.vaRightUnaided);
+    await routeSurgery(screening);
     updateTag('screenings');
     updateTag('patients');
     updateTag('surgeries');
@@ -196,6 +217,7 @@ export async function actionUpdateScreening(
 
   const parsed = ScreeningSchema.safeParse(data);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  if (hasMultipleFindings(data)) return { ok: false, error: 'Choose only one clinical finding at a time' };
 
   try {
     if (!data.patientId || !data.campaignId) {
@@ -227,7 +249,7 @@ export async function actionUpdateScreening(
       })),
       patientCode: scope.patientCode,
     };
-    await routeSurgery(screening, data.vaRightUnaided);
+    await routeSurgery(screening);
     updateTag('screenings');
     updateTag('patients');
     updateTag('surgeries');

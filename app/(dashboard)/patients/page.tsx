@@ -27,7 +27,7 @@ import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 50;
-const SEXES: Sex[] = ['Female', 'Male', 'Other'];
+const SEXES: Sex[] = ['Female', 'Male'];
 const DISABILITIES: DisabilityStatus[] = ['None', 'Visual', 'Hearing', 'Mobility', 'Cognitive', 'Multiple'];
 const REFERRAL_SOURCES = ['Campaign walk-in', 'Community health worker', 'Self-referral', 'Doctor referral', 'NGO partner', 'Radio / TV campaign', 'Mosque / community leader'];
 const SCREENING_STATUSES = ['Awaiting Screening', 'Screened'] as const;
@@ -49,7 +49,7 @@ const BLANK = {
   fullName:         '',
   dateOfBirth:      '',
   sex:              'Female' as Sex,
-  phone:            '',
+  phone:            '252',
   district:         '',
   region:           '',
   operationDistrict:'',
@@ -569,7 +569,7 @@ function PatientRegistrationForm({
             <input
               value={form.phone}
               onChange={(e) => set('phone', e.target.value)}
-              placeholder="e.g. +252 61 234 5678"
+              placeholder="252 61 234 5678"
               className={F.input}
             />
           </div>
@@ -587,7 +587,7 @@ function PatientRegistrationForm({
             <input
               value={form.emergencyPhone}
               onChange={(e) => set('emergencyPhone', e.target.value)}
-              placeholder="e.g. +252 61 234 5678"
+              placeholder="252 61 234 5678"
               className={F.input}
             />
           </div>

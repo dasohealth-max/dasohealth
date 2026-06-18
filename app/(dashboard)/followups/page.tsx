@@ -7,6 +7,7 @@ import {
   getMedicationsForFollowUp,
   actionCreateMedication, actionUpdateMedication, actionDeleteMedication,
 } from '@/app/actions/follow_ups';
+import type { FollowUpGroup } from '@/app/actions/follow_ups';
 import Pagination from '@/components/ui/Pagination';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,7 +21,7 @@ import { toast } from '@/components/ui/toast';
 import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { AlertTriangle, CheckCircle, Clock, Eye, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Trash2, UserX, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -29,11 +30,12 @@ const PAGE_SIZE = 50;
 const DR_STATUSES: DoctorReviewStatus[] = ['Not Needed', 'Pending', 'Completed'];
 const MED_STATUSES: MedicationStatus[] = ['Prescribed', 'Taking', 'Completed', 'Stopped'];
 
-type Tab = 'due' | 'overdue' | 'needs-review' | 'review-completed' | 'all';
+type Tab = 'due' | 'overdue' | 'missed' | 'needs-review' | 'review-completed' | 'all';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'due', label: 'Due Follow-ups' },
   { id: 'overdue', label: 'Overdue' },
+  { id: 'missed', label: 'Missed' },
   { id: 'needs-review', label: 'Needs Doctor Review' },
   { id: 'review-completed', label: 'Doctor Review Completed' },
   { id: 'all', label: 'All Follow-ups' },
@@ -87,6 +89,40 @@ function milestoneBadge(m: string) {
   return `rounded-full px-2 py-1 text-xs font-medium ${c}`;
 }
 
+function followUpBelongsToTab(followUp: FollowUp, target: Tab) {
+  if (target === 'due') return ['Pending', 'Due'].includes(followUp.status);
+  if (target === 'overdue') return followUp.status === 'Overdue';
+  if (target === 'missed') return followUp.status === 'Missed';
+  if (target === 'needs-review') return followUp.needsDoctorReview && followUp.doctorReviewStatus === 'Pending';
+  if (target === 'review-completed') return followUp.doctorReviewStatus === 'Completed';
+  return true;
+}
+
+function groupBelongsToTab(group: FollowUpGroup, target: Tab) {
+  return group.followUps.some((followUp) => followUpBelongsToTab(followUp, target));
+}
+
+function groupSummary(group: FollowUpGroup) {
+  const completed = group.followUps.filter((fu) => fu.status === 'Completed').length;
+  const missed = group.followUps.filter((fu) => fu.status === 'Missed').length;
+  const overdue = group.followUps.filter((fu) => fu.status === 'Overdue').length;
+  const pending = group.followUps.filter((fu) => ['Pending', 'Due'].includes(fu.status)).length;
+  return { completed, missed, overdue, pending, total: group.followUps.length };
+}
+
+function mostUrgentFollowUp(group: FollowUpGroup, target: Tab) {
+  return group.followUps.find((fu) => followUpBelongsToTab(fu, target)) ?? group.followUps[0];
+}
+
+function updateFollowUpInGroups(groups: FollowUpGroup[], updated: FollowUp, target: Tab) {
+  return groups.flatMap((group) => {
+    if (group.surgeryId !== updated.surgeryId) return [group];
+    const followUps = group.followUps.map((followUp) => followUp.id === updated.id ? updated : followUp);
+    const nextGroup = { ...group, followUps };
+    return groupBelongsToTab(nextGroup, target) ? [nextGroup] : [];
+  });
+}
+
 function nextActionForCounts(counts: Record<Tab, number>) {
   if (counts.overdue > 0) {
     return {
@@ -138,11 +174,11 @@ const ACTION_PANEL_TONE = {
 
 export default function FollowUpsPage() {
   const { can } = usePermissions();
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [followUpGroups, setFollowUpGroups] = useState<FollowUpGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [counts, setCounts] = useState<Record<Tab, number>>({ due: 0, overdue: 0, 'needs-review': 0, 'review-completed': 0, all: 0 });
+  const [counts, setCounts] = useState<Record<Tab, number>>({ due: 0, overdue: 0, missed: 0, 'needs-review': 0, 'review-completed': 0, all: 0 });
   const [form, setForm] = useState(BLANK);
   const [editing, setEditing] = useState<FollowUp | null>(null);
   const [tab, setTab] = useState<Tab>('due');
@@ -150,6 +186,7 @@ export default function FollowUpsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Medications state
   const [medications, setMedications] = useState<FollowUpMedication[]>([]);
@@ -175,7 +212,7 @@ export default function FollowUpsPage() {
     let cancelled = false;
     getFollowUpsPaginated({ tab, search: debouncedSearch, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
-        if (!cancelled) { setFollowUps(data); setTotal(t); setIsLoading(false); }
+        if (!cancelled) { setFollowUpGroups(data); setTotal(t); setIsLoading(false); }
       })
       .catch(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
@@ -198,6 +235,15 @@ export default function FollowUpsPage() {
 
   function setMed<K extends keyof typeof BLANK_MED>(key: K, value: (typeof BLANK_MED)[K]) {
     setMedForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleGroup(surgeryId: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(surgeryId)) next.delete(surgeryId);
+      else next.add(surgeryId);
+      return next;
+    });
   }
 
   function setRecoveryStatus(hasProblem: boolean) {
@@ -248,7 +294,11 @@ export default function FollowUpsPage() {
       toast({ title: 'Follow-up update failed', description: result.error, variant: 'error' });
       return;
     }
-    setFollowUps((rows) => rows.map((row) => row.id === editing.id ? result.data : row));
+    setFollowUpGroups((groups) => {
+      const next = updateFollowUpInGroups(groups, result.data, tab);
+      if (next.length < groups.length) setTotal((current) => Math.max(0, current - 1));
+      return next;
+    });
     toast({ title: 'Follow-up updated', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
     // Refresh counts
     getFollowUpTabCounts().then(setCounts);
@@ -263,11 +313,35 @@ export default function FollowUpsPage() {
       completedAt: new Date().toISOString(),
     });
     if (result.ok) {
-      setFollowUps((rows) => rows.map((row) => row.id === followUp.id ? result.data : row));
+      setFollowUpGroups((groups) => {
+        const next = updateFollowUpInGroups(groups, result.data, tab);
+        if (next.length < groups.length) setTotal((current) => Math.max(0, current - 1));
+        return next;
+      });
       toast({ title: 'Follow-up completed', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
       getFollowUpTabCounts().then(setCounts);
     } else {
       toast({ title: 'Could not complete follow-up', description: result.error, variant: 'error' });
+    }
+  }
+
+  async function markMissed(followUp: FollowUp) {
+    if (!confirm(`Mark ${followUp.milestone} follow-up for "${patientDisplayName(followUp.patientName, followUp.patientCode)}" as missed?`)) return;
+    const result = await actionUpdateFollowUp(followUp.id, {
+      ...followUp,
+      status: 'Missed',
+      completedAt: '',
+    });
+    if (result.ok) {
+      setFollowUpGroups((groups) => {
+        const next = updateFollowUpInGroups(groups, result.data, tab);
+        if (next.length < groups.length) setTotal((current) => Math.max(0, current - 1));
+        return next;
+      });
+      toast({ title: 'Follow-up marked missed', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
+      getFollowUpTabCounts().then(setCounts);
+    } else {
+      toast({ title: 'Could not mark follow-up missed', description: result.error, variant: 'error' });
     }
   }
 
@@ -705,65 +779,111 @@ export default function FollowUpsPage() {
             <X size={14} />
           </button>
         )}
-        <span className="text-xs text-[#647184]">{total} record{total !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-[#647184]">{total} patient follow-up group{total !== 1 ? 's' : ''}</span>
       </div>
 
-      {/* Table */}
+      {/* Grouped follow-up list */}
       <Card className="overflow-hidden border-0 shadow-sm">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
-                <tr>
-                  {['Patient', 'Region', 'Milestone', 'Due', 'Days', 'Status', 'Dr. Review', 'Completed By', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && (
-                  <TableSkeletonRows rows={8} columns={9} />
-                )}
-                {!isLoading && followUps.length === 0 && (
-                  <tr><td colSpan={9} className="py-10 text-center text-sm text-[#647184]">No follow-ups found.</td></tr>
-                )}
-                {!isLoading && followUps.map((fu) => {
-                  const days = daysUntil(fu.dueDate);
-                  return (
-                    <tr key={fu.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-[#141920]">{fu.patientName}</p>
-                        {fu.patientCode && <p className="font-mono text-xs text-[#647184]">{fu.patientCode}</p>}
-                      </td>
-                      <td className="px-4 py-3 text-[#4B5666]">{fu.region}</td>
-                      <td className="px-4 py-3"><span className={milestoneBadge(fu.milestone)}>{fu.milestone}</span></td>
-                      <td className="px-4 py-3 text-[#4B5666]">{formatDate(fu.dueDate)}</td>
-                      <td className="px-4 py-3 text-xs text-[#4B5666]">
-                        {fu.status === 'Completed' ? '-' : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
-                      </td>
-                      <td className="px-4 py-3"><span className={statusBadge(fu.status)}>{fu.status}</span></td>
-                      <td className="px-4 py-3"><span className={drBadge(fu.doctorReviewStatus)}>{fu.doctorReviewStatus}</span></td>
-                      <td className="px-4 py-3 text-[#4B5666]">{fu.completedByName || '-'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          {fu.status !== 'Completed' && can('followups', 'edit') && (
-                            <button onClick={() => complete(fu)} title="Mark complete" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
-                              <CheckCircle size={14} />
-                            </button>
-                          )}
-                          {can('followups', 'edit') && (
-                            <button onClick={() => openEdit(fu)} title="Edit" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
-                              <Pencil size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          {isLoading && (
+            <div className="p-4">
+              <table className="w-full text-sm">
+                <tbody><TableSkeletonRows rows={6} columns={6} /></tbody>
+              </table>
+            </div>
+          )}
+          {!isLoading && followUpGroups.length === 0 && (
+            <div className="py-10 text-center text-sm text-[#647184]">No follow-ups found.</div>
+          )}
+          {!isLoading && followUpGroups.length > 0 && (
+            <div className="divide-y divide-[#EAEEF3]">
+              {followUpGroups.map((group) => {
+                const summary = groupSummary(group);
+                const urgent = mostUrgentFollowUp(group, tab);
+                const urgentDays = daysUntil(urgent.dueDate);
+                const expanded = expandedGroups.has(group.surgeryId);
+                return (
+                  <section key={group.surgeryId}>
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.surgeryId)}
+                      className="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left transition hover:bg-[#F8FAFC]"
+                      aria-expanded={expanded}
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#EAEEF3] text-[#647184]">
+                          {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-[#141920]">{patientDisplayName(group.patientName, group.patientCode)}</span>
+                          <span className="mt-0.5 block text-xs text-[#647184]">{group.region} · Click to {expanded ? 'hide' : 'view'} follow-up milestones</span>
+                        </span>
+                      </div>
+                      <span className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full bg-[#EBF7EE] px-2 py-1 font-semibold text-[#2C9942]">{summary.completed}/{summary.total} completed</span>
+                        {summary.overdue > 0 && <span className="rounded-full bg-[#FDECEB] px-2 py-1 font-semibold text-[#E53935]">{summary.overdue} overdue</span>}
+                        {summary.missed > 0 && <span className="rounded-full bg-[#FDECEB] px-2 py-1 font-semibold text-[#8A1F1D]">{summary.missed} missed</span>}
+                        {summary.pending > 0 && <span className="rounded-full bg-[#FFF5E6] px-2 py-1 font-semibold text-[#A16207]">{summary.pending} pending</span>}
+                        <span className="rounded-full bg-[#EAEEF3] px-2 py-1 font-medium text-[#4B5666]">
+                          Next: {urgent.milestone} · {urgent.status === 'Completed' ? 'done' : urgentDays < 0 ? `${Math.abs(urgentDays)}d overdue` : urgentDays === 0 ? 'today' : `${urgentDays}d`}
+                        </span>
+                      </span>
+                    </button>
+                    {expanded && (
+                    <div className="grid grid-cols-1 gap-3 px-4 pb-4 lg:grid-cols-3">
+                      {group.followUps.map((fu) => {
+                        const days = daysUntil(fu.dueDate);
+                        return (
+                          <div key={fu.id} className="rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className={milestoneBadge(fu.milestone)}>{fu.milestone}</span>
+                              <span className={statusBadge(fu.status)}>{fu.status}</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#4B5666]">
+                              <div>
+                                <p className="font-semibold uppercase tracking-wide text-[#647184]">Due</p>
+                                <p className="mt-0.5">{formatDate(fu.dueDate)}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold uppercase tracking-wide text-[#647184]">Days</p>
+                                <p className="mt-0.5">{fu.status === 'Completed' ? '-' : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold uppercase tracking-wide text-[#647184]">Dr. Review</p>
+                                <p className="mt-1"><span className={drBadge(fu.doctorReviewStatus)}>{fu.doctorReviewStatus}</span></p>
+                              </div>
+                              <div>
+                                <p className="font-semibold uppercase tracking-wide text-[#647184]">Completed By</p>
+                                <p className="mt-0.5">{fu.completedByName || '-'}</p>
+                              </div>
+                            </div>
+                            {can('followups', 'edit') && (
+                              <div className="mt-3 flex justify-end gap-1">
+                                {!['Completed', 'Missed'].includes(fu.status) && (
+                                  <button onClick={() => complete(fu)} title="Mark complete" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
+                                    <CheckCircle size={14} />
+                                  </button>
+                                )}
+                                {!['Completed', 'Missed'].includes(fu.status) && (
+                                  <button onClick={() => markMissed(fu)} title="Mark missed" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]">
+                                    <UserX size={14} />
+                                  </button>
+                                )}
+                                <button onClick={() => openEdit(fu)} title="Edit" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
+                                  <Pencil size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          )}
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </CardContent>
       </Card>

@@ -55,6 +55,7 @@ const BLANK_PLAN = {
   operationDistrict: '',
   regionalManagerId: '',
   regionalManagerName: '',
+  doctorName: '',
   targetPatients: 0,
   targetScreenings: 0,
   targetSurgeries: 0,
@@ -293,7 +294,7 @@ export default function CampaignsPage() {
   }
 
   const campaignInvalid = !campaignForm.name || !campaignForm.type || !campaignForm.status || !campaignForm.startDate || !campaignForm.endDate;
-  const planInvalid = !planForm.campaignId || !planForm.region || !planForm.operationDistrict || !planForm.regionalManagerId || !planForm.startDate || !planForm.endDate;
+  const planInvalid = !planForm.campaignId || !planForm.region || !planForm.operationDistrict || !planForm.regionalManagerId || !planForm.doctorName.trim() || !planForm.startDate || !planForm.endDate;
 
   return (
     <div className="space-y-5">
@@ -717,7 +718,7 @@ function RegionsPreview({ regions }: { regions: CampaignRegion[] }) {
       <table className="w-full min-w-[640px] text-sm">
         <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
           <tr>
-            {['#', 'Region', 'Surgeries Target', 'Completed', 'Progress', 'Status'].map((heading) => (
+            {['#', 'Region', 'Doctor', 'Surgeries Target', 'Completed', 'Progress', 'Status'].map((heading) => (
               <th key={heading} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>
             ))}
           </tr>
@@ -730,6 +731,7 @@ function RegionsPreview({ regions }: { regions: CampaignRegion[] }) {
               <tr key={plan.id} className="border-b border-[#EAEEF3]">
                 <td className="px-4 py-3 text-[#647184]">{index + 1}</td>
                 <td className="px-4 py-3 font-semibold text-[#141920]">{plan.region}</td>
+                <td className="px-4 py-3 text-[#4B5666]">{plan.doctorName || '-'}</td>
                 <td className="px-4 py-3">{plan.targetSurgeries.toLocaleString()}</td>
                 <td className="px-4 py-3">{completed.toLocaleString()}</td>
                 <td className="px-4 py-3">
@@ -867,6 +869,15 @@ function PlanFields({ form, selected, regionalManagers, setForm, chooseRegion, c
             <p className="mt-1 text-xs text-[#E53935]">Create or assign a Project Manager to {form.region} in Settings before adding this sub-region.</p>
           )}
         </Field>
+        <Field label="Assigned Doctor Name *" className="sm:col-span-2">
+          <input
+            value={form.doctorName}
+            onChange={(e) => setForm((p) => ({ ...p, doctorName: e.target.value }))}
+            className={F.input}
+            placeholder="Doctor name assigned to this sub-region"
+          />
+          <p className="mt-1 text-xs text-[#647184]">Each doctor can belong to one sub-region only.</p>
+        </Field>
         <Field label="Notes" className="sm:col-span-2">
           <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={2} className={`${F.input} resize-none`} />
         </Field>
@@ -901,7 +912,7 @@ function RegionsTab({ regions, canEdit, canDelete, onEdit, onDelete }: {
       <table className="w-full text-sm">
         <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
           <tr>
-            {['Type', 'Region', 'District', 'Patients', 'Screenings', 'Surgeries', 'Start', 'End', 'Manager', 'Status', ''].map((heading) => (
+            {['Type', 'Region', 'District', 'Doctor', 'Patients', 'Screenings', 'Surgeries', 'Start', 'End', 'Manager', 'Status', ''].map((heading) => (
               <th key={heading} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{heading}</th>
             ))}
           </tr>
@@ -912,6 +923,7 @@ function RegionsTab({ regions, canEdit, canDelete, onEdit, onDelete }: {
               <td className="px-4 py-3 font-semibold text-[#141920]">{plan.type}</td>
               <td className="px-4 py-3 font-semibold text-[#141920]">{plan.region}</td>
               <td className="px-4 py-3 text-[#4B5666]">{plan.operationDistrict}</td>
+              <td className="px-4 py-3 text-[#4B5666]">{plan.doctorName || '-'}</td>
               <td className="px-4 py-3">{plan.targetPatients.toLocaleString()}</td>
               <td className="px-4 py-3">{plan.targetScreenings.toLocaleString()}</td>
               <td className="px-4 py-3">{plan.targetSurgeries.toLocaleString()}</td>

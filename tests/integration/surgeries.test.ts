@@ -42,10 +42,13 @@ import { Prisma } from '@/lib/generated/prisma/client';
 
 const patientScope = {
   id: 'patient-1',
+  patientCode: 'CS-GM-0001',
   fullName: 'Amina Hassan',
   campaignId: 'camp-galmudug-1',
+  campaignRegionId: 'plan-galmudug-1',
   region: 'Galmudug',
   operationDistrict: 'Dhuusamareeb',
+  campaignRegion: { doctorName: 'Dr. Galmudug' },
 };
 
 const rawSurgeryRow = {
@@ -53,6 +56,8 @@ const rawSurgeryRow = {
   region: 'Galmudug',
   status: 'Scheduled',
   performedAt: null,
+  eye: 'Left',
+  surgeonName: 'Dr. Galmudug',
 };
 
 const surgeryData = {

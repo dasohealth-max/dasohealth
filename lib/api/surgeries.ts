@@ -1,12 +1,15 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
-import { surgeryStatusToApp, surgeryStatusFromApp, lensTypeToApp, lensTypeFromApp } from '@/lib/prisma-enums';
+import { surgeryStatusToApp, surgeryStatusFromApp, lensTypeToApp, lensTypeFromApp, screeningRecToApp, vaGradeToApp } from '@/lib/prisma-enums';
 import type { Surgery } from '@/types';
+import type { Prisma } from '@/lib/generated/prisma/client';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.surgery.findFirst>>> & {
   patient?: { patientCode: string } | null;
 };
+type ScreeningSnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>>;
+type SurgeryScreeningResult = NonNullable<Surgery['screeningResult']>;
 
 export function fromPrisma(row: Row): Surgery {
   return {
@@ -49,7 +52,58 @@ export const getAllSurgeries = unstable_cache(
   { revalidate: 30, tags: ['surgeries'] },
 );
 
+export async function attachScreeningResults(rows: Row[]): Promise<Surgery[]> {
+  const surgeries = rows.map(fromPrisma);
+  const screeningIds = [...new Set(surgeries.map((surgery) => surgery.createdFromScreeningId).filter(Boolean))] as string[];
+  if (screeningIds.length === 0) return surgeries;
+
+  const screenings = await prisma.screening.findMany({
+    where: { id: { in: screeningIds } },
+  });
+  const byId = new Map<string, ScreeningSnapshotRow>(screenings.map((screening) => [screening.id, screening]));
+
+  return surgeries.map((surgery) => {
+    const screening = surgery.createdFromScreeningId ? byId.get(surgery.createdFromScreeningId) : undefined;
+    if (!screening) return surgery;
+    return {
+      ...surgery,
+      screeningResult: {
+        screenedAt: (screening.screenedAt as Date).toISOString(),
+        screenedByName: screening.screenedByName,
+        vaRightUnaided: vaGradeToApp(screening.vaRightUnaided) as SurgeryScreeningResult['vaRightUnaided'],
+        vaLeftUnaided: vaGradeToApp(screening.vaLeftUnaided) as SurgeryScreeningResult['vaLeftUnaided'],
+        iopRight: screening.iopRight ?? undefined,
+        iopLeft: screening.iopLeft ?? undefined,
+        cataractSuspected: screening.cataractSuspected,
+        glaucomaSuspected: screening.glaucomaSuspected,
+        diabeticRetinopathy: screening.diabeticRetinopathy,
+        eye: screening.eye as Surgery['eye'],
+        recommendation: screeningRecToApp(screening.recommendation) as SurgeryScreeningResult['recommendation'],
+        otherFindings: screening.otherFindings,
+        medicalHistory: screening.medicalHistory,
+        currentMedications: screening.currentMedications,
+        notes: screening.notes,
+      },
+    };
+  });
+}
+
+export async function getSurgeriesWithScreeningResults(where: Prisma.SurgeryWhereInput = {}): Promise<Surgery[]> {
+  const rows = await prisma.surgery.findMany({
+    where,
+    include: { patient: { select: { patientCode: true } } },
+    orderBy: { scheduledAt: 'desc' },
+  });
+  return attachScreeningResults(rows);
+}
+
 export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Promise<Surgery> {
+  const assignedDoctor = data.campaignRegionId
+    ? await prisma.campaignRegion.findUnique({
+        where: { id: data.campaignRegionId },
+        select: { doctorName: true },
+      })
+    : null;
   const row = await prisma.surgery.create({
     data: {
       patientId: data.patientId,
@@ -59,7 +113,7 @@ export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Pr
       region: data.region,
       operationDistrict: data.operationDistrict,
       createdFromScreeningId: data.createdFromScreeningId || null,
-      surgeonName: data.surgeonName || null,
+      surgeonName: data.surgeonName || assignedDoctor?.doctorName || null,
       eye: data.eye as never,
       lensType: lensTypeFromApp(data.lensType) as never,
       scheduledAt: new Date(data.scheduledAt),

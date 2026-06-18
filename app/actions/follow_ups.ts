@@ -47,11 +47,23 @@ export async function getMedicationsForFollowUp(followUpId: string): Promise<Fol
   return fetchMedications(followUpId);
 }
 
-type FollowUpTab = 'due' | 'overdue' | 'needs-review' | 'review-completed' | 'all';
+type FollowUpTab = 'due' | 'overdue' | 'missed' | 'needs-review' | 'review-completed' | 'all';
+
+export type FollowUpGroup = {
+  surgeryId: string;
+  patientId: string;
+  patientCode?: string;
+  patientName: string;
+  region: string;
+  campaignId: string;
+  campaignRegionId?: string;
+  followUps: FollowUp[];
+};
 
 function tabWhere(tab: FollowUpTab): Prisma.FollowUpWhereInput {
   if (tab === 'due') return { status: { in: ['Pending', 'Due'] as never[] } };
   if (tab === 'overdue') return { status: 'Overdue' as never };
+  if (tab === 'missed') return { status: 'Missed' as never };
   if (tab === 'needs-review') return { needsDoctorReview: true, doctorReviewStatus: 'Pending' as never };
   if (tab === 'review-completed') return { doctorReviewStatus: 'Completed' as never };
   return {};
@@ -62,15 +74,16 @@ export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number
   if ('error' in actor) throw new Error(actor.error);
   const base = scopedRegionWhere(actor);
 
-  const [due, overdue, needsReview, reviewCompleted, all] = await Promise.all([
+  const [due, overdue, missed, needsReview, reviewCompleted, all] = await Promise.all([
     prisma.followUp.count({ where: { ...base, ...tabWhere('due') } }),
     prisma.followUp.count({ where: { ...base, ...tabWhere('overdue') } }),
+    prisma.followUp.count({ where: { ...base, ...tabWhere('missed') } }),
     prisma.followUp.count({ where: { ...base, ...tabWhere('needs-review') } }),
     prisma.followUp.count({ where: { ...base, ...tabWhere('review-completed') } }),
     prisma.followUp.count({ where: base }),
   ]);
 
-  return { due, overdue, 'needs-review': needsReview, 'review-completed': reviewCompleted, all };
+  return { due, overdue, missed, 'needs-review': needsReview, 'review-completed': reviewCompleted, all };
 }
 
 export async function getFollowUpsPaginated(params: {
@@ -78,7 +91,7 @@ export async function getFollowUpsPaginated(params: {
   search?: string;
   page: number;
   pageSize: number;
-}): Promise<{ data: FollowUp[]; total: number }> {
+}): Promise<{ data: FollowUpGroup[]; total: number }> {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);
 
@@ -97,18 +110,52 @@ export async function getFollowUpsPaginated(params: {
   const pageSize = Math.min(Math.max(1, params.pageSize), 200);
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
-  const [rows, total] = await Promise.all([
-    prisma.followUp.findMany({
+  const [pageGroups, allGroups] = await Promise.all([
+    prisma.followUp.groupBy({
+      by: ['surgeryId'],
       where,
       skip,
       take: pageSize,
-      include: { patient: { select: { patientCode: true } } },
-      orderBy: { dueDate: 'asc' },
+      _min: { dueDate: true },
+      orderBy: { _min: { dueDate: 'asc' } },
     }),
-    prisma.followUp.count({ where }),
+    prisma.followUp.groupBy({ by: ['surgeryId'], where }),
   ]);
+  const surgeryIds = pageGroups.map((group) => group.surgeryId);
+  if (surgeryIds.length === 0) return { data: [], total: allGroups.length };
 
-  return { data: rows.map(followUpFromPrisma), total };
+  const rows = await prisma.followUp.findMany({
+    where: {
+      ...scopedRegionWhere(actor),
+      surgeryId: { in: surgeryIds },
+    },
+    include: { patient: { select: { patientCode: true } } },
+    orderBy: [{ surgeryId: 'asc' }, { dueDate: 'asc' }],
+  });
+
+  const grouped = new Map<string, FollowUp[]>();
+  rows.forEach((row) => {
+    const item = followUpFromPrisma(row);
+    grouped.set(item.surgeryId, [...(grouped.get(item.surgeryId) ?? []), item]);
+  });
+
+  const data = surgeryIds.flatMap((surgeryId) => {
+    const followUps = grouped.get(surgeryId) ?? [];
+    const first = followUps[0];
+    if (!first) return [];
+    return [{
+      surgeryId,
+      patientId: first.patientId,
+      patientCode: first.patientCode,
+      patientName: first.patientName,
+      region: first.region,
+      campaignId: first.campaignId,
+      campaignRegionId: first.campaignRegionId,
+      followUps,
+    }];
+  });
+
+  return { data, total: allGroups.length };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
@@ -193,8 +240,8 @@ export async function actionUpdateFollowUp(
       patientName: surgery.patientName,
       campaignId: surgery.campaignId,
       campaignRegionId: surgery.campaignRegionId ?? undefined,
-      completedById: data.status === 'Completed' ? actor.id : data.completedById,
-      completedByName: data.status === 'Completed' ? actor.name : data.completedByName,
+      completedById: data.status === 'Completed' ? actor.id : data.status === 'Missed' ? '' : data.completedById,
+      completedByName: data.status === 'Completed' ? actor.name : data.status === 'Missed' ? '' : data.completedByName,
       doctorReviewedAt: data.doctorReviewStatus === 'Completed' && !data.doctorReviewedAt
         ? new Date().toISOString()
         : data.doctorReviewedAt,
@@ -211,6 +258,8 @@ export async function actionUpdateFollowUp(
       campaignId: followUp.campaignId,
       details: followUp.status === 'Completed'
         ? `Completed follow-up for ${followUp.patientName}`
+        : followUp.status === 'Missed'
+          ? `Marked follow-up missed for ${followUp.patientName}`
         : followUp.doctorReviewStatus === 'Completed'
           ? `Recorded doctor review for ${followUp.patientName}`
           : `Updated follow-up for ${followUp.patientName}`,

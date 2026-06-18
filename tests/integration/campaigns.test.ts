@@ -31,6 +31,7 @@ vi.mock('@/lib/api/campaigns', () => ({
   updateCampaign: vi.fn(),
   deleteCampaign: vi.fn(),
   getCampaignById: vi.fn(),
+  normalizeDoctorName: vi.fn((value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase() || null),
   createCampaignRegion: vi.fn(),
   updateCampaignRegion: vi.fn(),
   deleteCampaignRegion: vi.fn(),
@@ -53,6 +54,7 @@ const regionInput = {
   operationDistrict: 'Dhuusamareeb',
   regionalManagerId: 'actor-pm-1',
   regionalManagerName: 'PM Galmudug',
+  doctorName: 'Dr. Galmudug',
   targetPatients: 600,
   targetScreenings: 500,
   targetSurgeries: 400,
@@ -91,6 +93,8 @@ describe('getAllCampaigns', () => {
           operationDistrict: 'Mogadishu',
           regionalManagerId: 'actor-pm-2',
           regionalManagerName: 'PM Banadir',
+          doctorName: 'Dr. Banadir',
+          doctorNameKey: 'dr. banadir',
         },
       ],
     };
@@ -241,7 +245,9 @@ describe('actionCreateCampaignRegion', () => {
 
   it('blocks duplicate contract type for the same sub-region inside the same campaign', async () => {
     mockRequireActor(superAdmin);
-    vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue({ id: 'existing' } as never);
+    vi.mocked(prisma.campaignRegion.findFirst)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'existing' } as never);
     const result = await actionCreateCampaignRegion(regionInput);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/already exists/);

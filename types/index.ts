@@ -37,6 +37,8 @@ export interface CampaignRegion {
   operationDistrict: string;
   regionalManagerId: string;
   regionalManagerName: string;
+  doctorName: string;
+  doctorNameKey?: string;
   targetPatients: number;
   targetScreenings: number;
   targetSurgeries: number;
@@ -71,7 +73,7 @@ export interface Campaign {
   regions?: CampaignRegion[];
 }
 
-export type Sex = 'Male' | 'Female' | 'Other';
+export type Sex = 'Male' | 'Female';
 export type DisabilityStatus = 'None' | 'Visual' | 'Hearing' | 'Mobility' | 'Cognitive' | 'Multiple';
 
 export interface Patient {
@@ -127,6 +129,7 @@ export interface Screening {
   cataractSuspected: boolean;
   glaucomaSuspected: boolean;
   diabeticRetinopathy: boolean;
+  eye: SurgeryEye;
   otherFindings: string;
   medicalHistory: string;
   currentMedications: string;
@@ -161,6 +164,23 @@ export interface Surgery {
   intraopNotes: string;
   completedById: string;
   completedByName: string;
+  screeningResult?: {
+    screenedAt: string;
+    screenedByName: string;
+    vaRightUnaided: VAGrade;
+    vaLeftUnaided: VAGrade;
+    iopRight?: number;
+    iopLeft?: number;
+    cataractSuspected: boolean;
+    glaucomaSuspected: boolean;
+    diabeticRetinopathy: boolean;
+    eye: SurgeryEye;
+    recommendation: Screening['recommendation'];
+    otherFindings: string;
+    medicalHistory: string;
+    currentMedications: string;
+    notes: string;
+  };
   createdAt: string;
 }
 

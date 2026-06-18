@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import type { LensType, Surgery, SurgeryEye, SurgeryStatus } from '@/types';
+import type { LensType, Surgery, SurgeryStatus } from '@/types';
 import { actionDeleteSurgery, actionUpdateSurgery, getSurgeriesPaginated } from '@/app/actions/surgeries';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -21,7 +21,6 @@ const PAGE_SIZE = 50;
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUSES: SurgeryStatus[] = ['Scheduled', 'Completed', 'Cancelled', 'Postponed'];
-const EYES: SurgeryEye[]        = ['Right', 'Left', 'Both'];
 const LENSES: LensType[]        = ['PMMA', 'Foldable Acrylic', 'Hydrophilic', 'Hydrophobic'];
 
 const STATUS_STYLE: Record<SurgeryStatus, string> = {
@@ -59,6 +58,13 @@ function toLocal(iso?: string): string {
 
 function nowLocal(): string {
   return toLocal(new Date().toISOString());
+}
+
+function screeningFindingLabel(screening: NonNullable<Surgery['screeningResult']>) {
+  if (screening.cataractSuspected) return 'Cataract Suspected';
+  if (screening.glaucomaSuspected) return 'Glaucoma Suspected';
+  if (screening.diabeticRetinopathy) return 'Diabetic Retinopathy';
+  return 'No major finding selected';
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -215,6 +221,7 @@ export default function SurgeriesPage() {
           onSave={save}
           saveLabel="Save Changes"
           saveDisabled={formInvalid}
+          wide
         >
           {saveError && (
             <div className="mb-5 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
@@ -384,12 +391,12 @@ function SurgeryFormBody({
   set: <K extends keyof SurgeryForm>(key: K, value: SurgeryForm[K]) => void;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       {/* Section 1: Patient (locked) */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Patient</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="sm:col-span-1">
+          <div>
             <label className={F.label}>Patient Name</label>
             <input value={patientDisplayName(form.patientName, form.patientCode)} disabled className={F.input} />
           </div>
@@ -405,24 +412,21 @@ function SurgeryFormBody({
       </section>
 
       {/* Section 2: Surgery Details */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Surgery Details</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="col-span-2">
             <label className={F.label}>Surgeon / Doctor Name</label>
             <input
               value={form.surgeonName}
-              onChange={(e) => set('surgeonName', e.target.value)}
-              placeholder="e.g. Dr. Ali Hassan"
+              disabled
+              placeholder="Assigned doctor from sub-region"
               className={F.input}
             />
           </div>
           <div>
             <label className={F.label}>Eye</label>
-            <Select value={form.eye} onValueChange={(v) => { if (v) set('eye', v as SurgeryEye); }}>
-              <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
-              <SelectContent>{EYES.map((e) => <SelectItem key={e} value={e}>{e} Eye</SelectItem>)}</SelectContent>
-            </Select>
+            <input value={form.eye} disabled className={F.input} />
           </div>
           <div>
             <label className={F.label}>Lens Type</label>
@@ -435,7 +439,7 @@ function SurgeryFormBody({
       </section>
 
       {/* Section 3: Schedule & Status */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Schedule & Status</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
@@ -466,28 +470,29 @@ function SurgeryFormBody({
         </div>
       </section>
 
+      {form.screeningResult && (
+        <section className="rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3 xl:col-span-2">
+          <p className={`${F.label} mb-3`}>Previous Screening Result</p>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+            <ReadOnlyValue label="Screened At" value={formatDateTime(form.screeningResult.screenedAt)} />
+            <ReadOnlyValue label="Screened By" value={form.screeningResult.screenedByName || '—'} />
+            <ReadOnlyValue label="Finding" value={screeningFindingLabel(form.screeningResult)} />
+            <ReadOnlyValue label="Eye" value={form.screeningResult.eye} />
+            <ReadOnlyValue label="VA Right / Left" value={`${form.screeningResult.vaRightUnaided} / ${form.screeningResult.vaLeftUnaided}`} />
+            <ReadOnlyValue label="IOP Right / Left" value={`${form.screeningResult.iopRight ?? '—'} / ${form.screeningResult.iopLeft ?? '—'}`} />
+            <ReadOnlyValue label="Recommendation" value={form.screeningResult.recommendation} />
+            <ReadOnlyValue label="Other Findings" value={form.screeningResult.otherFindings || '—'} wide />
+            <ReadOnlyValue label="Medical History" value={form.screeningResult.medicalHistory || '—'} wide />
+            <ReadOnlyValue label="Current Medications" value={form.screeningResult.currentMedications || '—'} wide />
+            <ReadOnlyValue label="Screening Notes" value={form.screeningResult.notes || '—'} wide />
+          </div>
+        </section>
+      )}
+
       {/* Section 4: Clinical */}
-      <section>
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Clinical</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className={F.label}>Pre-op Visual Acuity</label>
-            <input
-              value={form.preOpVA}
-              onChange={(e) => set('preOpVA', e.target.value)}
-              placeholder="e.g. 6/60"
-              className={F.input}
-            />
-          </div>
-          <div>
-            <label className={F.label}>Post-op Visual Acuity</label>
-            <input
-              value={form.postOpVA ?? ''}
-              onChange={(e) => set('postOpVA', e.target.value)}
-              placeholder="e.g. 6/9"
-              className={F.input}
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-3">
           <div>
             <label className={F.label}>Complications</label>
             <input
@@ -508,6 +513,17 @@ function SurgeryFormBody({
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ReadOnlyValue({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={wide ? 'md:col-span-2 xl:col-span-3' : undefined}>
+      <p className={F.label}>{label}</p>
+      <p className="min-h-10 rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#4B5666]">
+        {value}
+      </p>
     </div>
   );
 }

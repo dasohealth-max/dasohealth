@@ -107,6 +107,9 @@ function resolveDoctorReviewStatus(data: Pick<FollowUp, 'needsDoctorReview' | 'd
 
 export async function createFollowUp(data: Omit<FollowUp, 'id' | 'createdAt'>): Promise<FollowUp> {
   const resolvedStatus = resolveDoctorReviewStatus(data);
+  const assignedDoctor = data.doctorName
+    ? data.doctorName
+    : await resolveAssignedDoctor(data.surgeryId, data.campaignRegionId);
   const row = await prisma.followUp.create({
     data: {
       patientId: data.patientId,
@@ -126,7 +129,7 @@ export async function createFollowUp(data: Omit<FollowUp, 'id' | 'createdAt'>): 
       needsDoctorReview: data.needsDoctorReview,
       doctorReviewStatus: doctorReviewStatusFromApp(resolvedStatus) as never,
       doctorReviewedAt: data.doctorReviewedAt ? new Date(data.doctorReviewedAt) : null,
-      doctorName: data.doctorName,
+      doctorName: assignedDoctor,
       doctorDiagnosis: data.doctorDiagnosis,
       doctorTreatmentPlan: data.doctorTreatmentPlan,
       doctorNotes: data.doctorNotes,
@@ -136,6 +139,20 @@ export async function createFollowUp(data: Omit<FollowUp, 'id' | 'createdAt'>): 
     },
   });
   return fromPrisma(row);
+}
+
+async function resolveAssignedDoctor(surgeryId: string, campaignRegionId?: string): Promise<string> {
+  const surgery = await prisma.surgery.findUnique({
+    where: { id: surgeryId },
+    select: { surgeonName: true },
+  });
+  if (surgery?.surgeonName) return surgery.surgeonName;
+  if (!campaignRegionId) return '';
+  const region = await prisma.campaignRegion.findUnique({
+    where: { id: campaignRegionId },
+    select: { doctorName: true },
+  });
+  return region?.doctorName ?? '';
 }
 
 export async function updateFollowUp(id: string, data: Omit<FollowUp, 'id' | 'createdAt'>): Promise<FollowUp> {

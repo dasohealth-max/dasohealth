@@ -72,7 +72,7 @@ function toUserFromDb(u: {
 }
 
 async function getDbUsers(): Promise<User[]> {
-  const rows = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.user.findMany({ where: { active: true }, orderBy: { createdAt: 'desc' } });
   return rows.map(toUserFromDb);
 }
 
@@ -314,7 +314,8 @@ export async function actionDeleteUser(userId: string): Promise<ActionResult> {
 
   const db = createServerClient();
   const current = await db.auth.admin.getUserById(userId);
-  const before = current.data?.user ? toUser(current.data.user) : null;
+  const dbBefore = await prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
+  const before = current.data?.user ? toUser(current.data.user) : dbBefore ? toUserFromDb(dbBefore) : null;
   if (actor.role === 'Project Manager' && before?.assignedRegion !== actor.assignedRegion) {
     return { ok: false, error: 'Forbidden: region access denied' };
   }
@@ -323,7 +324,7 @@ export async function actionDeleteUser(userId: string): Promise<ActionResult> {
   if (error && !error.message.toLowerCase().includes('not found')) {
     return { ok: false, error: error.message };
   }
-  await prisma.user.update({ where: { id: userId }, data: { active: false } }).catch(() => undefined);
+  await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
 
   await auditLog({
     actor,

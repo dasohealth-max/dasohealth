@@ -86,7 +86,7 @@ export async function getPatientById(id: string): Promise<Patient | null> {
 const PatientSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
   dateOfBirth: z.string().min(1, 'Date of birth is required'),
-  sex: z.enum(['Male', 'Female', 'Other']),
+  sex: z.enum(['Male', 'Female']),
   phone: z.string().min(1, 'Phone is required'),
   email: z.string().optional(),
   district: z.string().optional(),

@@ -31,6 +31,7 @@ export type CampaignRegionInput = Pick<
   | 'operationDistrict'
   | 'regionalManagerId'
   | 'regionalManagerName'
+  | 'doctorName'
   | 'targetPatients'
   | 'targetScreenings'
   | 'targetSurgeries'
@@ -57,6 +58,11 @@ function dateOnly(value: Date): string {
   return value.toISOString().split('T')[0];
 }
 
+export function normalizeDoctorName(value: string): string | null {
+  const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase();
+  return normalized || null;
+}
+
 export function fromPrismaCampaignRegion(row: CampaignRegionRow): CampaignRegion {
   return {
     id: row.id,
@@ -66,6 +72,8 @@ export function fromPrismaCampaignRegion(row: CampaignRegionRow): CampaignRegion
     operationDistrict: row.operationDistrict,
     regionalManagerId: row.regionalManagerId,
     regionalManagerName: row.regionalManagerName,
+    doctorName: row.doctorName,
+    doctorNameKey: row.doctorNameKey ?? undefined,
     targetPatients: row.targetPatients,
     targetScreenings: row.targetScreenings,
     targetSurgeries: row.targetSurgeries,
@@ -188,6 +196,8 @@ export async function createCampaignRegion(data: CampaignRegionInput): Promise<C
       operationDistrict: data.operationDistrict,
       regionalManagerId: data.regionalManagerId,
       regionalManagerName: data.regionalManagerName,
+      doctorName: data.doctorName.trim().replace(/\s+/g, ' '),
+      doctorNameKey: normalizeDoctorName(data.doctorName),
       targetPatients: data.targetPatients,
       targetScreenings: data.targetScreenings,
       targetSurgeries: data.targetSurgeries,
@@ -209,6 +219,8 @@ export async function updateCampaignRegion(id: string, data: Omit<CampaignRegion
       operationDistrict: data.operationDistrict,
       regionalManagerId: data.regionalManagerId,
       regionalManagerName: data.regionalManagerName,
+      doctorName: data.doctorName.trim().replace(/\s+/g, ' '),
+      doctorNameKey: normalizeDoctorName(data.doctorName),
       targetPatients: data.targetPatients,
       targetScreenings: data.targetScreenings,
       targetSurgeries: data.targetSurgeries,

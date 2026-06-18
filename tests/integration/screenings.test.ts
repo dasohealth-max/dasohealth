@@ -20,6 +20,9 @@ vi.mock('@/lib/prisma', () => ({
       create: vi.fn(),
       update: vi.fn(),
     },
+    campaignRegion: {
+      findUnique: vi.fn(),
+    },
     screening: {
       findUnique: vi.fn(),
       count: vi.fn(),
@@ -42,6 +45,7 @@ import * as screeningApi from '@/lib/api/screenings';
 
 const patientScope = {
   id: 'patient-1',
+  patientCode: 'CS-GM-0001',
   fullName: 'Amina Hassan',
   campaignId: 'camp-galmudug-1',
   campaignRegionId: 'plan-galmudug-1',
@@ -69,6 +73,7 @@ const screeningInput = {
   cataractSuspected: true,
   glaucomaSuspected: false,
   diabeticRetinopathy: false,
+  eye: 'Right' as const,
   otherFindings: '',
   medicalHistory: '',
   currentMedications: '',
@@ -100,6 +105,7 @@ describe('actionCreateScreening', () => {
     vi.mocked(prisma.patient.update).mockResolvedValue({} as never);
     vi.mocked(prisma.surgery.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.surgery.create).mockResolvedValue({} as never);
+    vi.mocked(prisma.campaignRegion.findUnique).mockResolvedValue({ doctorName: 'Dr. Galmudug' } as never);
     vi.mocked(screeningApi.createScreening).mockResolvedValue(createdScreening);
   });
 
@@ -142,6 +148,8 @@ describe('actionCreateScreening', () => {
         region: 'Galmudug',
         operationDistrict: 'Dhuusamareeb',
         createdFromScreeningId: 'screening-1',
+        surgeonName: 'Dr. Galmudug',
+        eye: 'Right',
         status: 'Scheduled',
         preOpVa: '6/60',
       }),
@@ -179,6 +187,17 @@ describe('actionCreateScreening', () => {
       expect.objectContaining({ recommendation: 'Discharge' }),
     );
     expect(prisma.surgery.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects multiple clinical findings in one screening', async () => {
+    const result = await actionCreateScreening({
+      ...screeningInput,
+      glaucomaSuspected: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/only one clinical finding/i);
+    expect(screeningApi.createScreening).not.toHaveBeenCalled();
   });
 
   it('blocks cross-region screening from a different regional user', async () => {

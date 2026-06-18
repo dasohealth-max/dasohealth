@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { updateTag } from 'next/cache';
 import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, deleteSurgery, fromPrisma } from '@/lib/api/surgeries';
+import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, deleteSurgery, fromPrisma, attachScreeningResults } from '@/lib/api/surgeries';
 import { surgeryStatusFromApp } from '@/lib/prisma-enums';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
@@ -75,7 +75,7 @@ export async function getSurgeriesPaginated(params: {
     prisma.surgery.count({ where }),
   ]);
 
-  return { data: rows.map(fromPrisma), total };
+  return { data: await attachScreeningResults(rows), total };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
@@ -100,6 +100,7 @@ async function deriveScope(data: Omit<Surgery, 'id' | 'createdAt'>) {
       campaignRegionId: true,
       region: true,
       operationDistrict: true,
+      campaignRegion: { select: { doctorName: true } },
     },
   });
   return patient?.campaignId ? { ...patient, campaignId: patient.campaignId } : null;
@@ -129,7 +130,7 @@ async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
           doctorReviewStatus: 'NotNeeded' as never,
           complications: '',
           notes: '',
-          doctorName: '',
+          doctorName: surgery.surgeonName,
           doctorDiagnosis: '',
           doctorTreatmentPlan: '',
           doctorNotes: '',
@@ -184,6 +185,7 @@ export async function actionCreateSurgery(
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
       operationDistrict: scope.operationDistrict,
+      surgeonName: scope.campaignRegion?.doctorName || data.surgeonName.trim() || '',
       completedById: data.status === 'Completed' ? actor.id : '',
       completedByName: data.status === 'Completed' ? actor.name : '',
       })),
@@ -246,6 +248,8 @@ export async function actionUpdateSurgery(
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
       operationDistrict: scope.operationDistrict,
+      surgeonName: scope.campaignRegion?.doctorName || beforeRow.surgeonName || data.surgeonName.trim() || '',
+      eye: beforeRow.eye as Surgery['eye'],
       completedById: newStatusKey === 'Completed' ? actor.id : data.completedById,
       completedByName: newStatusKey === 'Completed' ? actor.name : data.completedByName,
       })),
