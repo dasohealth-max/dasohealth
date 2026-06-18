@@ -260,7 +260,7 @@ export async function getReportAggregation(params: {
   const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
   const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
 
-  const MILESTONES = ['Day 1', 'Week 1', 'Month 1', 'Month 3'] as const;
+  const MILESTONES = ['Day 1', 'Week 1', 'Month 1'] as const;
   const followUpByMilestone = MILESTONES.map((m) => {
     const mFu = followUps.filter((fu) => fu.milestone === m);
     return {
@@ -399,4 +399,3 @@ export async function getReportRawData(params: {
 
   return { campaigns, patients, screenings, surgeries, followUps, medications, regionPerformance };
 }
-

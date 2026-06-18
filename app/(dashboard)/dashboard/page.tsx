@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Campaign, FollowUp, Patient, Screening, Surgery } from '@/types';
@@ -56,6 +57,7 @@ type RegionStats = {
   scheduled: number;
   completed: number;
   followUpsDone: number;
+  followUpsDue: number;
   overdue: number;
   doctorReview: number;
   pct: number;
@@ -135,6 +137,7 @@ function computeRegionStats(
       scheduled,
       completed,
       followUpsDone:  rFollowUps.filter((f) => f.status === 'Completed').length,
+      followUpsDue:   rFollowUps.filter((f) => f.status === 'Pending' || f.status === 'Due').length,
       overdue:        rFollowUps.filter((f) => f.status === 'Overdue').length,
       doctorReview:   rFollowUps.filter((f) => f.needsDoctorReview).length,
       pct,
@@ -228,8 +231,11 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
   const totalScreened   = stats.reduce((s, r) => s + r.screened, 0);
   const totalScheduled  = stats.reduce((s, r) => s + r.scheduled, 0);
   const followUpsDone   = stats.reduce((s, r) => s + r.followUpsDone, 0);
+  const followUpsDue    = stats.reduce((s, r) => s + r.followUpsDue, 0);
+  const overdueFollowUps = stats.reduce((s, r) => s + r.overdue, 0);
+  const doctorReview    = stats.reduce((s, r) => s + r.doctorReview, 0);
   const behindCount     = stats.filter((r) => r.status === 'Behind' || r.status === 'No Activity').length;
-  const alertCount      = stats.reduce((s, r) => s + r.overdue + r.doctorReview, 0);
+  const alertCount      = overdueFollowUps + doctorReview;
   const noCampaignCount = stats.filter((r) => r.status === 'No Campaign').length;
 
   const regionalChart = [...stats]
@@ -264,9 +270,9 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
-              <ExecutiveMetric label="Attention" value={behindCount} tone={behindCount ? 'red' : 'green'} />
-              <ExecutiveMetric label="Alerts" value={alertCount} tone={alertCount ? 'red' : 'green'} />
-              <ExecutiveMetric label="No Campaign" value={noCampaignCount} tone={noCampaignCount ? 'amber' : 'green'} />
+              <ExecutiveMetric label="Behind Regions" value={behindCount} tone={behindCount ? 'red' : 'green'} />
+              <ExecutiveMetric label="Overdue Follow-ups" value={overdueFollowUps} tone={overdueFollowUps ? 'red' : 'green'} />
+              <ExecutiveMetric label="Doctor Review" value={doctorReview} tone={doctorReview ? 'amber' : 'green'} />
             </div>
           </div>
 
@@ -278,7 +284,7 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
             <SnapshotTile label="Patients" value={totalPatients} sub={`${totalScreened.toLocaleString()} screened`} />
             <SnapshotTile label="Scheduled" value={totalScheduled} sub="awaiting theatre" />
             <SnapshotTile label="Follow-ups" value={followUpsDone} sub="completed visits" />
-            <SnapshotTile label="At Risk" value={behindCount + alertCount} sub="regions + alerts" tone="red" />
+            <SnapshotTile label="Overdue" value={overdueFollowUps} sub="follow-ups late" tone={overdueFollowUps ? 'red' : 'default'} />
           </div>
         </div>
 
@@ -290,6 +296,21 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
         />
       </section>
 
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <WorkflowProgress
+          registered={totalPatients}
+          screened={totalScreened}
+          surgeries={totalCompleted}
+          followUpsDue={followUpsDue + overdueFollowUps}
+          followUpsDone={followUpsDone}
+        />
+        <FollowUpNextAction
+          due={followUpsDue}
+          overdue={overdueFollowUps}
+          doctorReview={doctorReview}
+        />
+      </section>
+
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <ChartCard title="Regional Surgery Progress" subtitle="Completed surgeries against remaining target">
           <ResponsiveContainer width="100%" height="100%">
@@ -298,10 +319,10 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
               <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
               <YAxis type="category" dataKey="region" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={92} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
               <Tooltip
-                formatter={(value, name) => [Number(value).toLocaleString(), name === 'completed' ? 'Completed' : 'Remaining']}
+                formatter={(value, name) => [Number(value).toLocaleString(), name === 'completed' ? 'Completed' : 'Target remaining']}
                 labelFormatter={(label) => `${label}`}
               />
-              <Bar dataKey="completed" stackId="surgeries" fill="var(--chart-1)" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="completed" stackId="surgeries" fill="#238038" radius={[0, 0, 0, 0]} />
               <Bar dataKey="remaining" stackId="surgeries" fill="var(--dashboard-remaining-bar)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -419,6 +440,121 @@ const ACTION_TONE = {
   navy: 'bg-[#E7F0FB] text-[#002E63] dark:bg-[#0A1423] dark:text-[#C2D2E6]',
 };
 
+function WorkflowProgress({
+  registered,
+  screened,
+  surgeries,
+  followUpsDue,
+  followUpsDone,
+}: {
+  registered: number;
+  screened: number;
+  surgeries: number;
+  followUpsDue: number;
+  followUpsDone: number;
+}) {
+  const steps = [
+    { label: 'Registered', value: registered, Icon: Users },
+    { label: 'Screened', value: screened, Icon: Microscope },
+    { label: 'Surgery Completed', value: surgeries, Icon: CheckCircle },
+    { label: 'Follow-ups Due', value: followUpsDue, Icon: Calendar },
+    { label: 'Follow-up Completed', value: followUpsDone, Icon: CalendarCheck },
+  ];
+
+  return (
+    <div className="rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0E1726] dark:shadow-none">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold text-[#141920]">Clinical Workflow</p>
+          <p className="text-xs text-[#647184]">Current patient movement from registration to completed follow-up.</p>
+        </div>
+        <span className="rounded-full bg-[#E7F0FB] px-2.5 py-1 text-xs font-semibold text-[#002E63]">
+          Pilot flow
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+        {steps.map(({ label, value, Icon }, index) => (
+          <div key={label} className="rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3 dark:border-white/10 dark:bg-[#111C2D]">
+            <div className="flex items-center justify-between">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EBF7EE] text-[#2C9942]">
+                <Icon size={16} />
+              </div>
+              <span className="text-[11px] font-semibold text-[#647184]">Step {index + 1}</span>
+            </div>
+            <p className="mt-3 text-xl font-bold text-[#141920]">{value.toLocaleString()}</p>
+            <p className="mt-1 text-xs font-semibold text-[#4B5666]">{label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FollowUpNextAction({
+  due,
+  overdue,
+  doctorReview,
+}: {
+  due: number;
+  overdue: number;
+  doctorReview: number;
+}) {
+  const action = overdue > 0
+    ? {
+        label: 'Overdue follow-ups',
+        value: overdue,
+        detail: 'Complete overdue visits before routine due visits.',
+        style: 'border-[#FACDCB] bg-[#FDECEB] text-[#E53935]',
+        href: '/followups',
+      }
+    : due > 0
+      ? {
+          label: 'Follow-ups due',
+          value: due,
+          detail: 'Open today\'s follow-up queue.',
+          style: 'border-[#FFE3B3] bg-[#FFF5E6] text-[#A16207]',
+          href: '/followups',
+        }
+      : doctorReview > 0
+        ? {
+            label: 'Doctor review needed',
+            value: doctorReview,
+            detail: 'Review clinical problem cases.',
+            style: 'border-[#FFE3B3] bg-[#FFF5E6] text-[#A16207]',
+            href: '/followups',
+          }
+        : {
+            label: 'Follow-up queue clear',
+            value: 0,
+            detail: 'No urgent follow-up action right now.',
+            style: 'border-[#A6DCB5] bg-[#EBF7EE] text-[#238038]',
+            href: '/followups',
+          };
+
+  return (
+    <div className={`rounded-xl border p-4 shadow-sm ${action.style}`}>
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/70">
+          {overdue > 0 ? <AlertTriangle size={18} /> : <CalendarCheck size={18} />}
+        </div>
+        <div>
+          <p className="text-sm font-bold">Next Action</p>
+          <p className="mt-1 text-2xl font-bold">{action.value.toLocaleString()}</p>
+          <p className="mt-1 text-sm font-semibold">{action.label}</p>
+          <p className="mt-1 text-xs opacity-90">{action.detail}</p>
+        </div>
+      </div>
+      <Link
+        href={action.href}
+        className="mt-4 block rounded-lg bg-white px-3 py-2 text-center text-sm font-semibold text-[#002E63] shadow-sm transition hover:bg-[#F8FAFC]"
+      >
+        Open Follow-ups
+      </Link>
+    </div>
+  );
+}
+
 function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0E1726] dark:shadow-none">
@@ -524,6 +660,21 @@ function SingleRegionView({
           ))}
         </div>
       </div>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <WorkflowProgress
+          registered={stats.patients}
+          screened={stats.screened}
+          surgeries={stats.completed}
+          followUpsDue={stats.followUpsDue + stats.overdue}
+          followUpsDone={stats.followUpsDone}
+        />
+        <FollowUpNextAction
+          due={stats.followUpsDue}
+          overdue={stats.overdue}
+          doctorReview={stats.doctorReview}
+        />
+      </section>
 
       {/* Surgery target */}
       <div className={`rounded-xl border ${compact ? 'border-[#A6DCB5] bg-[#EBF7EE] p-4' : 'border-[#DDE3EA] bg-white p-5'} shadow-sm`}>

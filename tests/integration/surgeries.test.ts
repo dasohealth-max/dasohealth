@@ -80,7 +80,6 @@ const allFollowUpMilestoneRows = [
   { milestone: 'Day1' },
   { milestone: 'Week1' },
   { milestone: 'Month1' },
-  { milestone: 'Month3' },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -134,7 +133,7 @@ describe('actionCreateSurgery', () => {
       performedAt: '2025-03-01T10:00:00.000Z',
     });
     expect(result.ok).toBe(true);
-    expect(prisma.followUp.create).toHaveBeenCalledTimes(4);
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(3);
     expect(prisma.followUp.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ milestone: 'Day1' }),
     });
@@ -143,9 +142,6 @@ describe('actionCreateSurgery', () => {
     });
     expect(prisma.followUp.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ milestone: 'Month1' }),
-    });
-    expect(prisma.followUp.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ milestone: 'Month3' }),
     });
   });
 
@@ -223,7 +219,7 @@ describe('actionUpdateSurgery', () => {
       performedAt: '2025-03-01T10:00:00.000Z',
     });
     expect(result.ok).toBe(true);
-    expect(prisma.followUp.create).toHaveBeenCalledTimes(4);
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(3);
   });
 
   it('fills missing follow-ups idempotently when already Completed', async () => {
@@ -237,7 +233,7 @@ describe('actionUpdateSurgery', () => {
       performedAt: '2025-03-01T10:00:00.000Z',
     });
     vi.mocked(prisma.followUp.findFirst).mockImplementation(async ({ where }) => {
-      return where.milestone === 'Month3' ? null : ({ id: `existing-${where.milestone}` } as never);
+      return where.milestone === 'Month1' ? null : ({ id: `existing-${where.milestone}` } as never);
     });
     vi.mocked(prisma.followUp.create).mockResolvedValue({} as never);
 
@@ -248,7 +244,7 @@ describe('actionUpdateSurgery', () => {
     });
     expect(prisma.followUp.create).toHaveBeenCalledTimes(1);
     expect(prisma.followUp.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ milestone: 'Month3' }),
+      data: expect.objectContaining({ milestone: 'Month1' }),
     });
   });
 
@@ -294,14 +290,14 @@ describe('actionUpdateSurgery', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(prisma.followUp.create).toHaveBeenCalledTimes(4);
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(3);
     expect(prisma.followUp.findMany).toHaveBeenCalledWith({
       where: { surgeryId: 'surgery-1' },
       select: { milestone: true },
     });
   });
 
-  it('fails completion if the four required follow-up milestones cannot be verified', async () => {
+  it('fails completion if the three required follow-up milestones cannot be verified', async () => {
     vi.mocked(surgeryApi.updateSurgery).mockResolvedValue({
       ...galmudugSurgery,
       status: 'Completed',
@@ -312,7 +308,6 @@ describe('actionUpdateSurgery', () => {
     vi.mocked(prisma.followUp.findMany).mockResolvedValue([
       { milestone: 'Day1' },
       { milestone: 'Week1' },
-      { milestone: 'Month1' },
     ] as never);
 
     const result = await actionUpdateSurgery('surgery-1', {
@@ -322,6 +317,6 @@ describe('actionUpdateSurgery', () => {
     });
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/Month3/);
+    if (!result.ok) expect(result.error).toMatch(/Month1/);
   });
 });

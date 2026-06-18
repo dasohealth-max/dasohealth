@@ -22,7 +22,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 
-const MILESTONES = ['Day 1', 'Week 1', 'Month 1', 'Month 3'] as const;
+const MILESTONES = ['Day 1', 'Week 1', 'Month 1'] as const;
 
 export default function ReportsPage() {
   const { user, role } = usePermissions();
@@ -1205,4 +1205,3 @@ function CampaignStatusBadge({ status }: { status: string }) {
 function shortRegion(region: string) {
   return region.replace(' / Mogadishu', '').replace(' Somalia', '').replace(' State', '');
 }
-

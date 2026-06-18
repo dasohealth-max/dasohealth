@@ -58,7 +58,7 @@ export const lensTypeFromApp = (v: string) => LT_FROM_APP[v] ?? v;
 
 // ─── FollowUpMilestone ────────────────────────────────────────────────────────
 const FM_TO_APP: Record<string, string> = {
-  Day1: 'Day 1', Week1: 'Week 1', Month1: 'Month 1', Month3: 'Month 3',
+  Day1: 'Day 1', Week1: 'Week 1', Month1: 'Month 1',
 };
 const FM_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(FM_TO_APP).map(([k, v]) => [v, k]));
 export const followUpMilestoneToApp = (k: string) => FM_TO_APP[k] ?? k;

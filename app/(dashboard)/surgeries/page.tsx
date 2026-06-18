@@ -168,7 +168,7 @@ export default function SurgeriesPage() {
         open={!!completeTarget}
         title="Mark Surgery as Completed"
         description={completeTarget
-          ? `Mark "${completeTarget.patientName}"'s surgery as completed? This will automatically create Day 1, Week 1, Month 1, and Month 3 follow-up records.`
+          ? `Mark "${completeTarget.patientName}"'s surgery as completed? This will automatically create Day 1, Week 1, and Month 1 follow-up records.`
           : ''}
         confirmLabel="Mark Completed"
         danger={false}

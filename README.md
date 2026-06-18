@@ -33,7 +33,7 @@ Removed from the active app surface:
 6. Screening Officer records screening results.
 7. A screening recommendation of `Refer for Surgery` creates a scheduled surgery record.
 8. Screening Officer updates surgery status and records actual surgery completion date.
-9. Completed surgery creates Day 1, Week 1, Month 1, and Month 3 follow-up tasks.
+9. Completed surgery creates Day 1, Week 1, and Month 1 follow-up tasks.
 10. Follow-up records capture notes, outcome, and whether doctor review is needed.
 
 ## Verification

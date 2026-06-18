@@ -141,7 +141,6 @@ enum FollowUpMilestone {
   Day1    @map("Day 1")
   Week1   @map("Week 1")
   Month1  @map("Month 1")
-  Month3  @map("Month 3")
 
   @@map("follow_up_milestone")
 }

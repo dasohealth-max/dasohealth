@@ -58,11 +58,10 @@ Use this checklist before and during the 1-week internal pilot. Run it in a stag
 - Open Surgeries.
 - Mark a scheduled surgery as `Completed` with a performed date.
 - Open Follow-ups.
-- Confirm exactly four milestones exist for that surgery:
+- Confirm exactly three milestones exist for that surgery:
   - Day 1
   - Week 1
   - Month 1
-  - Month 3
 - Complete a Day 1 follow-up.
 - Mark a follow-up as needing doctor review.
 - Complete a doctor review.

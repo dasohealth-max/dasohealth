@@ -77,7 +77,6 @@ const REQUIRED_FOLLOW_UP_MILESTONES = [
   ['Day1', 1],
   ['Week1', 7],
   ['Month1', 30],
-  ['Month3', 90],
 ] as const;
 
 function isUniqueConstraintError(error: unknown): boolean {

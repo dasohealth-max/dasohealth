@@ -162,7 +162,7 @@ export interface Surgery {
   createdAt: string;
 }
 
-export type FollowUpMilestone = 'Day 1' | 'Week 1' | 'Month 1' | 'Month 3';
+export type FollowUpMilestone = 'Day 1' | 'Week 1' | 'Month 1';
 export type FollowUpStatus = 'Pending' | 'Due' | 'Overdue' | 'Completed' | 'Missed';
 export type DoctorReviewStatus = 'Not Needed' | 'Pending' | 'Completed';
 export type MedicationStatus = 'Prescribed' | 'Taking' | 'Completed' | 'Stopped';
