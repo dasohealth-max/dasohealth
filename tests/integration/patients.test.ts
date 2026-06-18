@@ -49,7 +49,7 @@ const campaignScope = { id: 'plan-galmudug-1', region: 'Galmudug', operationDist
 
 const rawPatientRow = {
   id: 'patient-1',
-  patientCode: 'EC-2025-0001',
+  patientCode: 'CS-GM-0001',
   fullName: 'Amina Hassan',
   dateOfBirth: new Date('1965-03-12'),
   sex: 'Female',
@@ -187,14 +187,14 @@ describe('actionCreatePatient', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('generates patient code starting at EC-<year>-0001 when no patients exist', async () => {
+  it('generates patient code starting at CS-region-0001 when no matching regional codes exist', async () => {
     vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
     vi.mocked(prisma.patient.findFirst).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     await actionCreatePatient(patientInput);
     expect(prisma.patient.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          patientCode: 'G1',
+          patientCode: 'CS-GM-0001',
         }),
       }),
     );
@@ -205,14 +205,14 @@ describe('actionCreatePatient', () => {
     vi.mocked(prisma.patient.findFirst)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
-      patientCode: 'G42',
+      patientCode: 'CS-GM-0042',
     } as never);
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ max: 42 }] as never);
     await actionCreatePatient(patientInput);
     expect(prisma.patient.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          patientCode: 'G43',
+          patientCode: 'CS-GM-0043',
         }),
       }),
     );
@@ -229,7 +229,7 @@ describe('actionCreatePatient', () => {
   it('rejects duplicate patient name and phone inside the same campaign', async () => {
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
     vi.mocked(prisma.patient.findFirst).mockResolvedValueOnce({
-      patientCode: 'G7',
+      patientCode: 'CS-GM-0007',
       fullName: 'Amina Hassan',
     } as never);
 

@@ -4,12 +4,15 @@ import { prisma } from '@/lib/prisma';
 import { vaGradeToApp, vaGradeFromApp, screeningRecToApp, screeningRecFromApp } from '@/lib/prisma-enums';
 import type { Screening } from '@/types';
 
-type Row = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>>;
+type Row = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>> & {
+  patient?: { patientCode: string } | null;
+};
 
 export function fromPrisma(row: Row): Screening {
   return {
     id: row.id,
     patientId: row.patientId,
+    patientCode: row.patient?.patientCode,
     patientName: row.patientName,
     campaignId: row.campaignId,
     campaignRegionId: row.campaignRegionId ?? undefined,
@@ -46,6 +49,7 @@ export const getAllScreenings = unstable_cache(
   async (where: { region?: string } = {}): Promise<Screening[]> => {
     const rows = await prisma.screening.findMany({
       where,
+      include: { patient: { select: { patientCode: true } } },
       orderBy: { screenedAt: 'desc' },
     });
     return rows.map(fromPrisma);

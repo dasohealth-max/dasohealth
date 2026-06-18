@@ -13,6 +13,7 @@ import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
+import { patientDisplayName } from '@/lib/patient-code';
 import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, Search, Stethoscope, Trash2 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ function nowLocal(): string {
 
 function blankForm(): Omit<Screening, 'id' | 'createdAt'> {
   return {
-    patientId: '', patientName: '', campaignId: '', region: '', operationDistrict: '',
+    patientId: '', patientCode: '', patientName: '', campaignId: '', region: '', operationDistrict: '',
     screenedBy: '', screenedById: '', screenedByName: '',
     screenedAt: nowLocal(),
     vaRightUnaided: '6/6', vaLeftUnaided: '6/6',
@@ -137,6 +138,7 @@ export default function ScreeningPage() {
     setForm((prev) => ({
       ...prev,
       patientId,
+      patientCode:       patient?.patientCode ?? '',
       patientName:       patient?.fullName ?? '',
       campaignId:        patient?.campaignId ?? '',
       region:            patient?.region ?? '',
@@ -154,6 +156,7 @@ export default function ScreeningPage() {
       setForm({
         ...base,
         patientId:         patient.id,
+        patientCode:       patient.patientCode,
         patientName:       patient.fullName,
         campaignId:        patient.campaignId ?? '',
         region:            patient.region ?? '',
@@ -223,7 +226,7 @@ export default function ScreeningPage() {
         open={!!deleteTarget}
         title="Delete Screening Record"
         description={deleteTarget
-          ? `Remove the screening record for "${deleteTarget.patientName}"? This cannot be undone.`
+          ? `Remove the screening record for "${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}"? This cannot be undone.`
           : ''}
         confirmLabel="Delete"
         onConfirm={confirmDelete}
@@ -233,7 +236,7 @@ export default function ScreeningPage() {
       {/* Screening form modal */}
       {showForm && (
         <ModalForm
-          title={editing ? `Edit Screening — ${editing.patientName}` : 'Record Screening'}
+          title={editing ? `Edit Screening - ${patientDisplayName(editing.patientName, editing.patientCode)}` : 'Record Screening'}
           subtitle={editing ? undefined : 'Select a patient from the waiting queue and complete the screening assessment'}
           onClose={() => setShowForm(false)}
           onSave={save}
@@ -314,7 +317,7 @@ export default function ScreeningPage() {
                     <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{patient.fullName}</p>
-                      <p className="text-xs text-[#647184]">{patient.sex}</p>
+                      <p className="font-mono text-xs text-[#647184]">{patient.patientCode} - {patient.sex}</p>
                     </td>
                     <td className="px-4 py-3.5 text-[#4B5666]">{patient.phone}</td>
                     <td className="px-4 py-3.5">
@@ -399,7 +402,10 @@ export default function ScreeningPage() {
                     {!histLoading && screenings.map((screening, index) => (
                       <tr key={screening.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
                         <td className="px-4 py-3.5 text-xs text-[#647184]">{(screeningsPage - 1) * PAGE_SIZE + index + 1}</td>
-                        <td className="px-4 py-3.5 font-medium text-[#141920]">{screening.patientName}</td>
+                        <td className="px-4 py-3.5">
+                          <p className="font-medium text-[#141920]">{screening.patientName}</p>
+                          {screening.patientCode && <p className="font-mono text-xs text-[#647184]">{screening.patientCode}</p>}
+                        </td>
                         <td className="px-4 py-3.5 text-[#4B5666]">{screening.region}</td>
                         <td className="px-4 py-3.5 font-mono text-xs">{screening.vaRightUnaided} / {screening.vaLeftUnaided}</td>
                         <td className="px-4 py-3.5">
@@ -464,7 +470,7 @@ function ScreeningFormBody({
   const selectedPatient = patients.find((patient) => patient.id === form.patientId);
   const selectedPatientLabel = selectedPatient
     ? `${selectedPatient.patientCode} - ${selectedPatient.fullName}`
-    : form.patientName;
+    : patientDisplayName(form.patientName, form.patientCode);
 
   return (
     <div className="space-y-4">

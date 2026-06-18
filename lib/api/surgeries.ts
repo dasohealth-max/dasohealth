@@ -4,12 +4,15 @@ import { prisma } from '@/lib/prisma';
 import { surgeryStatusToApp, surgeryStatusFromApp, lensTypeToApp, lensTypeFromApp } from '@/lib/prisma-enums';
 import type { Surgery } from '@/types';
 
-type Row = NonNullable<Awaited<ReturnType<typeof prisma.surgery.findFirst>>>;
+type Row = NonNullable<Awaited<ReturnType<typeof prisma.surgery.findFirst>>> & {
+  patient?: { patientCode: string } | null;
+};
 
 export function fromPrisma(row: Row): Surgery {
   return {
     id: row.id,
     patientId: row.patientId,
+    patientCode: row.patient?.patientCode,
     patientName: row.patientName,
     campaignId: row.campaignId,
     campaignRegionId: row.campaignRegionId ?? undefined,
@@ -35,7 +38,11 @@ export function fromPrisma(row: Row): Surgery {
 // Cached for 30 s; invalidated immediately by revalidateTag('surgeries') after any mutation.
 export const getAllSurgeries = unstable_cache(
   async (where: { region?: string } = {}): Promise<Surgery[]> => {
-    const rows = await prisma.surgery.findMany({ where, orderBy: { scheduledAt: 'desc' } });
+    const rows = await prisma.surgery.findMany({
+      where,
+      include: { patient: { select: { patientCode: true } } },
+      orderBy: { scheduledAt: 'desc' },
+    });
     return rows.map(fromPrisma);
   },
   ['surgeries-list'],

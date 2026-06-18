@@ -108,6 +108,7 @@ export type VAGrade = '6/6' | '6/9' | '6/12' | '6/18' | '6/24' | '6/36' | '6/60'
 export interface Screening {
   id: string;
   patientId: string;
+  patientCode?: string;
   patientName: string;
   campaignId: string;
   campaignRegionId?: string;
@@ -141,6 +142,7 @@ export type SurgeryStatus = 'Scheduled' | 'Completed' | 'Cancelled' | 'Postponed
 export interface Surgery {
   id: string;
   patientId: string;
+  patientCode?: string;
   patientName: string;
   campaignId: string;
   campaignRegionId?: string;
@@ -170,6 +172,7 @@ export type MedicationStatus = 'Prescribed' | 'Taking' | 'Completed' | 'Stopped'
 export interface FollowUp {
   id: string;
   patientId: string;
+  patientCode?: string;
   patientName: string;
   surgeryId: string;
   campaignId: string;

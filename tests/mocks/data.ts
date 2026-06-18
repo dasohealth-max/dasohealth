@@ -82,7 +82,7 @@ export const banadiCampaign: Campaign = {
 
 export const galmudugPatient: Patient = {
   id: 'patient-1',
-  patientCode: 'EC-2025-0001',
+  patientCode: 'CS-GM-0001',
   fullName: 'Amina Hassan',
   dateOfBirth: '1965-03-12',
   sex: 'Female',

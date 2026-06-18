@@ -65,7 +65,13 @@ export async function getSurgeriesPaginated(params: {
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
   const [rows, total] = await Promise.all([
-    prisma.surgery.findMany({ where, skip, take: pageSize, orderBy: { scheduledAt: 'desc' } }),
+    prisma.surgery.findMany({
+      where,
+      skip,
+      take: pageSize,
+      include: { patient: { select: { patientCode: true } } },
+      orderBy: { scheduledAt: 'desc' },
+    }),
     prisma.surgery.count({ where }),
   ]);
 
@@ -88,6 +94,7 @@ async function deriveScope(data: Omit<Surgery, 'id' | 'createdAt'>) {
     where: { id: data.patientId },
     select: {
       id: true,
+      patientCode: true,
       fullName: true,
       campaignId: true,
       campaignRegionId: true,
@@ -167,17 +174,21 @@ export async function actionCreateSurgery(
       return { ok: false, error: 'Actual surgery completion date is required' };
     }
 
-    const surgery = await createSurgery({
+    const surgery = {
+      ...(await createSurgery({
       ...data,
       patientId: scope.id,
       patientName: scope.fullName,
+      patientCode: scope.patientCode,
       campaignId: scope.campaignId,
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
       operationDistrict: scope.operationDistrict,
       completedById: data.status === 'Completed' ? actor.id : '',
       completedByName: data.status === 'Completed' ? actor.name : '',
-    });
+      })),
+      patientCode: scope.patientCode,
+    };
     if (surgery.status === 'Completed' && surgery.performedAt) {
       await createInitialFollowUps(surgery, surgery.performedAt);
       updateTag('follow-ups');
@@ -225,17 +236,21 @@ export async function actionUpdateSurgery(
       return { ok: false, error: 'Actual surgery completion date is required' };
     }
 
-    const updated = await updateSurgery(id, {
+    const updated = {
+      ...(await updateSurgery(id, {
       ...data,
       patientId: scope.id,
       patientName: scope.fullName,
+      patientCode: scope.patientCode,
       campaignId: scope.campaignId,
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
       operationDistrict: scope.operationDistrict,
       completedById: newStatusKey === 'Completed' ? actor.id : data.completedById,
       completedByName: newStatusKey === 'Completed' ? actor.name : data.completedByName,
-    });
+      })),
+      patientCode: scope.patientCode,
+    };
 
     if (newStatusKey === 'Completed' && updated.performedAt) {
       await createInitialFollowUps(updated, updated.performedAt);

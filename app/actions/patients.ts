@@ -9,6 +9,7 @@ import { getAllCampaigns as fetchAllCampaigns } from '@/lib/api/campaigns';
 import { auditLog, ensureRegionAccess, isSuperAdmin, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Campaign, Patient } from '@/types';
 import { Prisma, type Sex, type DisabilityStatus } from '@/lib/generated/prisma/client';
+import { formatPatientCode, patientCodePrefix } from '@/lib/patient-code';
 
 export async function getAllPatients(): Promise<Patient[]> {
   const actor = await requireActor('patients', 'view');
@@ -129,24 +130,8 @@ async function getCampaignScope(campaignId: string, campaignRegionId: string) {
   });
 }
 
-const REGION_PREFIX: Record<string, string> = {
-  'Banadir / Mogadishu':    'B',
-  'Koofur Galbeed Somalia': 'KF',
-  'Hiiraan State':          'HI',
-  'Hirshabelle State':      'HS',
-  'Jubaland':               'J',
-  'Galmudug':               'G',
-  'Puntland':               'P',
-  'Khatumo State':          'KH',
-  'Somaliland':             'S',
-};
-
-function regionCodePrefix(region: string): string {
-  return REGION_PREFIX[region] ?? (region[0]?.toUpperCase() ?? 'X');
-}
-
 async function createPatientWithCode(data: Omit<Parameters<typeof prisma.patient.create>[0]['data'], 'patientCode'>): Promise<Patient> {
-  const prefix = regionCodePrefix((data as { region?: string }).region ?? '');
+  const prefix = patientCodePrefix((data as { region?: string }).region ?? '');
   const startPos = Prisma.raw(String(prefix.length + 1));
   const MAX_RETRIES = 5;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -157,7 +142,7 @@ async function createPatientWithCode(data: Omit<Parameters<typeof prisma.patient
         WHERE patient_code ~ ${`^${prefix}[0-9]+$`}
       `;
       const lastNum = Number(result[0]?.max ?? 0);
-      const patientCode = `${prefix}${lastNum + 1}`;
+      const patientCode = formatPatientCode(prefix, lastNum + 1);
       const row = await prisma.patient.create({ data: { ...(data as Parameters<typeof prisma.patient.create>[0]['data']), patientCode } });
       return fromPrisma(row);
     } catch (e: unknown) {

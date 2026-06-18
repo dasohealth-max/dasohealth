@@ -66,7 +66,13 @@ export async function getScreeningHistoryPaginated(params: {
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
   const [rows, total] = await Promise.all([
-    prisma.screening.findMany({ where, skip, take: pageSize, orderBy: { screenedAt: 'desc' } }),
+    prisma.screening.findMany({
+      where,
+      skip,
+      take: pageSize,
+      include: { patient: { select: { patientCode: true } } },
+      orderBy: { screenedAt: 'desc' },
+    }),
     prisma.screening.count({ where }),
   ]);
 
@@ -80,6 +86,7 @@ async function deriveScope(data: Omit<Screening, 'id' | 'createdAt'>) {
     where: { id: data.patientId },
     select: {
       id: true,
+      patientCode: true,
       fullName: true,
       campaignId: true,
       campaignRegionId: true,
@@ -140,10 +147,12 @@ export async function actionCreateScreening(
     const denied = ensureRegionAccess(actor, scope.region);
     if (denied) return denied;
 
-    const screening = await createScreening({
+    const screening = {
+      ...(await createScreening({
       ...data,
       patientId: scope.id,
       patientName: scope.fullName,
+      patientCode: scope.patientCode,
       campaignId: scope.campaignId,
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
@@ -151,7 +160,9 @@ export async function actionCreateScreening(
       screenedBy: actor.name,
       screenedById: actor.id,
       screenedByName: actor.name,
-    });
+      })),
+      patientCode: scope.patientCode,
+    };
     await prisma.patient.update({
       where: { id: data.patientId },
       data: { screeningStatus: 'Screened' },
@@ -200,10 +211,12 @@ export async function actionUpdateScreening(
     const denied = ensureRegionAccess(actor, scope.region);
     if (denied) return denied;
 
-    const screening = await updateScreening(id, {
+    const screening = {
+      ...(await updateScreening(id, {
       ...data,
       patientId: scope.id,
       patientName: scope.fullName,
+      patientCode: scope.patientCode,
       campaignId: scope.campaignId,
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
@@ -211,7 +224,9 @@ export async function actionUpdateScreening(
       screenedBy: data.screenedBy || actor.name,
       screenedById: data.screenedById || actor.id,
       screenedByName: data.screenedByName || actor.name,
-    });
+      })),
+      patientCode: scope.patientCode,
+    };
     await routeSurgery(screening, data.vaRightUnaided);
     updateTag('screenings');
     updateTag('patients');

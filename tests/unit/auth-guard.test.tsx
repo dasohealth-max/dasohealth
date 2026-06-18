@@ -35,7 +35,7 @@ describe('AuthGuard inactivity timeout', () => {
     vi.clearAllMocks();
   });
 
-  it('signs out and redirects after 20 minutes of inactivity', async () => {
+  it('signs out and redirects after 10 minutes of inactivity', async () => {
     render(
       <AuthGuard>
         <div>Protected app</div>

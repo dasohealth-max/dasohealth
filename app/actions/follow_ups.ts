@@ -98,7 +98,13 @@ export async function getFollowUpsPaginated(params: {
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
   const [rows, total] = await Promise.all([
-    prisma.followUp.findMany({ where, skip, take: pageSize, orderBy: { dueDate: 'asc' } }),
+    prisma.followUp.findMany({
+      where,
+      skip,
+      take: pageSize,
+      include: { patient: { select: { patientCode: true } } },
+      orderBy: { dueDate: 'asc' },
+    }),
     prisma.followUp.count({ where }),
   ]);
 
@@ -110,7 +116,7 @@ type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string
 async function getSurgeryScope(surgeryId: string) {
   return prisma.surgery.findUnique({
     where: { id: surgeryId },
-    select: { region: true, campaignId: true, campaignRegionId: true, patientId: true, patientName: true },
+    include: { patient: { select: { patientCode: true } } },
   });
 }
 
@@ -129,16 +135,20 @@ export async function actionCreateFollowUp(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const followUp = await createFollowUp({
+    const followUp = {
+      ...(await createFollowUp({
       ...data,
       region: surgery.region,
       patientId: surgery.patientId,
+      patientCode: surgery.patient?.patientCode,
       patientName: surgery.patientName,
       campaignId: surgery.campaignId,
       campaignRegionId: surgery.campaignRegionId ?? undefined,
       completedById: data.status === 'Completed' ? actor.id : '',
       completedByName: data.status === 'Completed' ? actor.name : '',
-    });
+      })),
+      patientCode: surgery.patient?.patientCode,
+    };
     updateTag('follow-ups');
     after(() => auditLog({
       actor,
@@ -174,10 +184,12 @@ export async function actionUpdateFollowUp(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const followUp = await updateFollowUp(id, {
+    const followUp = {
+      ...(await updateFollowUp(id, {
       ...data,
       region: surgery.region,
       patientId: surgery.patientId,
+      patientCode: surgery.patient?.patientCode,
       patientName: surgery.patientName,
       campaignId: surgery.campaignId,
       campaignRegionId: surgery.campaignRegionId ?? undefined,
@@ -186,7 +198,9 @@ export async function actionUpdateFollowUp(
       doctorReviewedAt: data.doctorReviewStatus === 'Completed' && !data.doctorReviewedAt
         ? new Date().toISOString()
         : data.doctorReviewedAt,
-    });
+      })),
+      patientCode: surgery.patient?.patientCode,
+    };
     updateTag('follow-ups');
     after(() => auditLog({
       actor,

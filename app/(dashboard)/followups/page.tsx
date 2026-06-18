@@ -1,7 +1,6 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import type { ComponentType } from 'react';
 import type { FollowUp, FollowUpMedication, FollowUpStatus, DoctorReviewStatus, MedicationStatus } from '@/types';
 import {
   actionUpdateFollowUp, checkAndMarkOverdue, getFollowUpsPaginated, getFollowUpTabCounts,
@@ -17,7 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import ModalForm from '@/components/forms/ModalForm';
 import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
-import { AlertTriangle, Calendar, CheckCircle, Clock, Eye, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { patientDisplayName } from '@/lib/patient-code';
+import { AlertTriangle, CheckCircle, Clock, Eye, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -43,7 +43,7 @@ const MILESTONE_FLOW = [
 ] as const;
 
 const BLANK: Omit<FollowUp, 'id' | 'createdAt'> = {
-  patientId: '', patientName: '', surgeryId: '', campaignId: '', region: '',
+  patientId: '', patientCode: '', patientName: '', surgeryId: '', campaignId: '', region: '',
   milestone: 'Day 1', dueDate: '', completedAt: '', status: 'Pending',
   vaRightPost: '', vaLeftPost: '', complications: '', notes: '',
   needsDoctorReview: false,
@@ -247,7 +247,7 @@ export default function FollowUpsPage() {
   }
 
   async function complete(followUp: FollowUp) {
-    if (!confirm(`Mark ${followUp.milestone} follow-up for "${followUp.patientName}" as completed?`)) return;
+    if (!confirm(`Mark ${followUp.milestone} follow-up for "${patientDisplayName(followUp.patientName, followUp.patientCode)}" as completed?`)) return;
     const result = await actionUpdateFollowUp(followUp.id, {
       ...followUp,
       status: 'Completed',
@@ -356,56 +356,16 @@ export default function FollowUpsPage() {
               <p className="mt-1 text-xs opacity-90">{nextAction.detail}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => { setTab(nextAction.tab); setPage(1); }}
-            className="mt-4 w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[#002E63] shadow-sm transition hover:bg-[#F8FAFC]"
-          >
-            Open {nextAction.tab === 'all' ? 'All Follow-ups' : TABS.find((item) => item.id === nextAction.tab)?.label}
-          </button>
+          <p className="mt-4 rounded-lg bg-white px-3 py-2 text-center text-xs font-semibold text-[#002E63] shadow-sm">
+            Use the filter tabs below to open this queue.
+          </p>
         </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <QueueMetric
-          label="Due"
-          value={counts.due}
-          detail="Pending or due visits"
-          Icon={Calendar}
-          active={tab === 'due'}
-          onClick={() => { setTab('due'); setPage(1); }}
-        />
-        <QueueMetric
-          label="Overdue"
-          value={counts.overdue}
-          detail="Needs attention first"
-          Icon={AlertTriangle}
-          active={tab === 'overdue'}
-          danger={counts.overdue > 0}
-          onClick={() => { setTab('overdue'); setPage(1); }}
-        />
-        <QueueMetric
-          label="Doctor Review"
-          value={counts['needs-review']}
-          detail="Clinical problem cases"
-          Icon={Eye}
-          active={tab === 'needs-review'}
-          onClick={() => { setTab('needs-review'); setPage(1); }}
-        />
-        <QueueMetric
-          label="Completed Reviews"
-          value={counts['review-completed']}
-          detail="Reviewed by doctor"
-          Icon={CheckCircle}
-          active={tab === 'review-completed'}
-          onClick={() => { setTab('review-completed'); setPage(1); }}
-        />
       </section>
 
       {/* Edit form */}
       {showForm && (
         <ModalForm
-          title={editing ? `Follow-up · ${editing.patientName} · ${editing.milestone}` : 'Follow-up'}
+          title={editing ? `Follow-up - ${patientDisplayName(editing.patientName, editing.patientCode)} - ${editing.milestone}` : 'Follow-up'}
           subtitle="Record the clinical check, then escalate only if the patient has a problem."
           onClose={closeForm}
           onSave={save}
@@ -419,7 +379,7 @@ export default function FollowUpsPage() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <div className="md:col-span-2">
               <Label className="mb-1 block text-xs">Patient</Label>
-              <Input value={form.patientName} disabled className="rounded-xl bg-[#F5F7FA]" />
+              <Input value={patientDisplayName(form.patientName, form.patientCode)} disabled className="rounded-xl bg-[#F5F7FA]" />
             </div>
             <div>
               <Label className="mb-1 block text-xs">Milestone</Label>
@@ -732,7 +692,10 @@ export default function FollowUpsPage() {
                   const days = daysUntil(fu.dueDate);
                   return (
                     <tr key={fu.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
-                      <td className="px-4 py-3 font-medium text-[#141920]">{fu.patientName}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-[#141920]">{fu.patientName}</p>
+                        {fu.patientCode && <p className="font-mono text-xs text-[#647184]">{fu.patientCode}</p>}
+                      </td>
                       <td className="px-4 py-3 text-[#4B5666]">{fu.region}</td>
                       <td className="px-4 py-3"><span className={milestoneBadge(fu.milestone)}>{fu.milestone}</span></td>
                       <td className="px-4 py-3 text-[#4B5666]">{formatDate(fu.dueDate)}</td>
@@ -769,46 +732,4 @@ export default function FollowUpsPage() {
   );
 }
 
-function QueueMetric({
-  label,
-  value,
-  detail,
-  Icon,
-  active,
-  danger = false,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  detail: string;
-  Icon: ComponentType<{ size?: number; className?: string }>;
-  active: boolean;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border bg-white p-4 text-left shadow-sm transition hover:border-[#A6DCB5] hover:bg-[#F8FAFC] ${
-        active ? 'border-[#2C9942] ring-1 ring-[#A6DCB5]' : 'border-[#DDE3EA]'
-      }`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#647184]">{label}</p>
-          <p className={`mt-1 text-2xl font-bold ${danger ? 'text-[#E53935]' : 'text-[#141920]'}`}>
-            {value.toLocaleString()}
-          </p>
-        </div>
-        <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-          danger ? 'bg-[#FDECEB] text-[#E53935]' : 'bg-[#EBF7EE] text-[#2C9942]'
-        }`}>
-          <Icon size={18} />
-        </div>
-      </div>
-      <p className="mt-2 text-xs text-[#647184]">{detail}</p>
-    </button>
-  );
-}
 

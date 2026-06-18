@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, signOut } from '@/lib/auth';
 
-export const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;
+export const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();

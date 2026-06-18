@@ -11,6 +11,7 @@ import Pagination from '@/components/ui/Pagination';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
+import { patientDisplayName } from '@/lib/patient-code';
 import { CheckCircle, Pencil, Search, Trash2, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
@@ -40,7 +41,7 @@ const F = {
 type SurgeryForm = Omit<Surgery, 'id' | 'createdAt'>;
 
 const BLANK: SurgeryForm = {
-  patientId: '', patientName: '', campaignId: '', region: '', operationDistrict: '',
+  patientId: '', patientCode: '', patientName: '', campaignId: '', region: '', operationDistrict: '',
   createdFromScreeningId: '', surgeonName: '', eye: 'Right', lensType: 'Foldable Acrylic',
   scheduledAt: '', performedAt: '', status: 'Scheduled',
   preOpVA: '', postOpVA: '', complications: '', intraopNotes: '',
@@ -168,7 +169,7 @@ export default function SurgeriesPage() {
         open={!!completeTarget}
         title="Mark Surgery as Completed"
         description={completeTarget
-          ? `Mark "${completeTarget.patientName}"'s surgery as completed? This will automatically create Day 1, Week 1, and Month 1 follow-up records.`
+          ? `Mark "${patientDisplayName(completeTarget.patientName, completeTarget.patientCode)}"'s surgery as completed? This will automatically create Day 1, Week 1, and Month 1 follow-up records.`
           : ''}
         confirmLabel="Mark Completed"
         danger={false}
@@ -181,7 +182,7 @@ export default function SurgeriesPage() {
         open={!!deleteTarget}
         title="Delete Surgery Record"
         description={deleteTarget
-          ? `Permanently delete the surgery record for "${deleteTarget.patientName}"? All associated follow-up records will also be deleted. This cannot be undone.`
+          ? `Permanently delete the surgery record for "${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}"? All associated follow-up records will also be deleted. This cannot be undone.`
           : ''}
         confirmLabel="Delete Surgery"
         onConfirm={confirmDelete}
@@ -191,7 +192,7 @@ export default function SurgeriesPage() {
       {/* Edit modal */}
       {showForm && editing && (
         <ModalForm
-          title={`Edit Surgery — ${editing.patientName}`}
+          title={`Edit Surgery - ${patientDisplayName(editing.patientName, editing.patientCode)}`}
           subtitle={`${editing.region} · ${editing.operationDistrict}`}
           onClose={() => setShowForm(false)}
           onSave={save}
@@ -294,7 +295,9 @@ export default function SurgeriesPage() {
                     <td className="px-4 py-3.5 text-xs text-[#647184]">{(page - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{surgery.patientName}</p>
-                      {surgery.completedByName && <p className="text-xs text-[#647184]">by {surgery.completedByName}</p>}
+                      <p className="font-mono text-xs text-[#647184]">
+                        {surgery.patientCode ?? 'No code'}{surgery.completedByName ? ` - by ${surgery.completedByName}` : ''}
+                      </p>
                     </td>
                     <td className="px-4 py-3.5">
                       <p className="text-[#141920]">{surgery.region}</p>
@@ -371,7 +374,7 @@ function SurgeryFormBody({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="sm:col-span-1">
             <label className={F.label}>Patient Name</label>
-            <input value={form.patientName} disabled className={F.input} />
+            <input value={patientDisplayName(form.patientName, form.patientCode)} disabled className={F.input} />
           </div>
           <div>
             <label className={F.label}>Region</label>

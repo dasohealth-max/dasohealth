@@ -4,13 +4,16 @@ import { prisma } from '@/lib/prisma';
 import { followUpMilestoneToApp, followUpMilestoneFromApp, doctorReviewStatusToApp, doctorReviewStatusFromApp, medicationStatusToApp, medicationStatusFromApp } from '@/lib/prisma-enums';
 import type { FollowUp, FollowUpMedication } from '@/types';
 
-type Row = NonNullable<Awaited<ReturnType<typeof prisma.followUp.findFirst>>>;
+type Row = NonNullable<Awaited<ReturnType<typeof prisma.followUp.findFirst>>> & {
+  patient?: { patientCode: string } | null;
+};
 type MedRow = NonNullable<Awaited<ReturnType<typeof prisma.followUpMedication.findFirst>>>;
 
 export function fromPrisma(row: Row): FollowUp {
   return {
     id: row.id,
     patientId: row.patientId,
+    patientCode: row.patient?.patientCode,
     patientName: row.patientName,
     surgeryId: row.surgeryId,
     campaignId: row.campaignId,
@@ -56,7 +59,11 @@ export function medFromPrisma(row: MedRow): FollowUpMedication {
 // Cached for 30 s; invalidated immediately by revalidateTag('follow-ups') after any mutation.
 export const getAllFollowUps = unstable_cache(
   async (where: { region?: string } = {}): Promise<FollowUp[]> => {
-    const rows = await prisma.followUp.findMany({ where, orderBy: { dueDate: 'asc' } });
+    const rows = await prisma.followUp.findMany({
+      where,
+      include: { patient: { select: { patientCode: true } } },
+      orderBy: { dueDate: 'asc' },
+    });
     return rows.map(fromPrisma);
   },
   ['follow-ups-list'],

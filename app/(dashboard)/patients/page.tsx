@@ -19,6 +19,7 @@ import Pagination from '@/components/ui/Pagination';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
+import { patientDisplayName } from '@/lib/patient-code';
 import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -270,7 +271,7 @@ export default function PatientsPage() {
       {/* Registration form */}
       {showForm && (
         <ModalForm
-          title={editing ? `Edit — ${editing.fullName}` : 'Register New Patient'}
+          title={editing ? `Edit - ${patientDisplayName(editing.fullName, editing.patientCode)}` : 'Register New Patient'}
           subtitle={editing ? undefined : 'Fill in patient details — campaign and location are auto-filled from your assigned region'}
           onClose={() => setShowForm(false)}
           onSave={save}
@@ -380,7 +381,7 @@ export default function PatientsPage() {
                     <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{patient.fullName}</p>
-                      <p className="text-xs text-[#647184]">{formatDate(patient.dateOfBirth)} · {patient.sex}</p>
+                      <p className="font-mono text-xs text-[#647184]">{patient.patientCode} · {formatDate(patient.dateOfBirth)} · {patient.sex}</p>
                     </td>
                     <td className="px-4 py-3.5 text-[#4B5666]">{patient.phone}</td>
                     <td className="px-4 py-3.5">
