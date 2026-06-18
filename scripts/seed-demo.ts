@@ -140,7 +140,7 @@ async function main() {
         projectManagerName: '',
         startDate: campaign.startDate,
         endDate: campaign.endDate,
-        targetScreenings: 60,
+        targetScreenings: 56,
         targetSurgeries: 44,
         targetFollowUps: 72,
         description: campaign.description,
@@ -173,8 +173,8 @@ async function main() {
           operationDistrict: plan.district,
           regionalManagerId: plan.managerId,
           regionalManagerName: plan.managerName,
-          targetPatients: 30,
-          targetScreenings: 30,
+          targetPatients: 32,
+          targetScreenings: 28,
           targetSurgeries: 22,
           startDate: campaign.startDate,
           endDate: campaign.endDate,
@@ -183,7 +183,7 @@ async function main() {
         },
       });
 
-      for (let index = 1; index <= 30; index++) {
+      for (let index = 1; index <= 32; index++) {
         const patientNumber = patientSeq++;
         const firstName = firstNames[(patientNumber - 1) % firstNames.length];
         const lastName = lastNames[(patientNumber + index) % lastNames.length];
@@ -191,7 +191,8 @@ async function main() {
         const screeningId = uuid(20000 + screeningSeq++);
         const registeredAt = dateTime(2026, 6, 1 + (index % 12), 8 + (index % 5), 15);
         const screenedAt = addDays(registeredAt, index % 3);
-        const referredForSurgery = index > 8;
+        const awaitingScreening = index <= 4;
+        const referredForSurgery = !awaitingScreening && index > 10;
         const recommendation = referredForSurgery
           ? 'ReferForSurgery'
           : index % 4 === 0
@@ -223,10 +224,12 @@ async function main() {
             notes: index % 10 === 0 ? 'Needs transport support for appointments.' : '',
             registeredById: plan.clerkId,
             registeredByName: plan.clerkName,
-            screeningStatus: 'Screened',
+            screeningStatus: awaitingScreening ? 'Awaiting Screening' : 'Screened',
             createdAt: registeredAt,
           },
         });
+
+        if (awaitingScreening) continue;
 
         await prisma.screening.create({
           data: {
@@ -260,17 +263,15 @@ async function main() {
 
         if (!referredForSurgery) continue;
 
-        const surgeryLocalIndex = index - 8;
+        const surgeryLocalIndex = index - 10;
         const surgeryId = uuid(30000 + surgerySeq++);
-        const status = surgeryLocalIndex <= 8
+        const status = surgeryLocalIndex <= 10
           ? 'Scheduled'
-          : surgeryLocalIndex <= 10
-            ? 'InTheatre'
-            : surgeryLocalIndex <= 19
-              ? 'Completed'
-              : surgeryLocalIndex <= 21
-                ? 'Postponed'
-                : 'Cancelled';
+          : surgeryLocalIndex <= 19
+            ? 'Completed'
+            : surgeryLocalIndex <= 21
+              ? 'Postponed'
+              : 'Cancelled';
         const scheduledAt = addDays(screenedAt, 2 + surgeryLocalIndex);
         const completed = status === 'Completed';
         const performedAt = completed ? addDays(scheduledAt, 0) : null;
@@ -307,6 +308,7 @@ async function main() {
           { milestone: 'Day1', status: 'Completed', dueOffset: 1, completedOffset: 1, review: false },
           { milestone: 'Week1', status: surgeryLocalIndex % 3 === 0 ? 'Overdue' : surgeryLocalIndex % 3 === 1 ? 'Due' : 'Completed', dueOffset: 7, completedOffset: 8, review: surgeryLocalIndex % 3 === 0 },
           { milestone: 'Month1', status: surgeryLocalIndex % 4 === 0 ? 'Pending' : 'Completed', dueOffset: 30, completedOffset: 31, review: surgeryLocalIndex % 5 === 0 },
+          { milestone: 'Month3', status: 'Pending', dueOffset: 90, completedOffset: 91, review: false },
         ] as const;
 
         for (const pattern of followUpPatterns) {

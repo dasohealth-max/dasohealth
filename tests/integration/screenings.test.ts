@@ -20,6 +20,10 @@ vi.mock('@/lib/prisma', () => ({
       create: vi.fn(),
       update: vi.fn(),
     },
+    screening: {
+      findUnique: vi.fn(),
+      count: vi.fn(),
+    },
   },
 }));
 
@@ -31,7 +35,7 @@ vi.mock('@/lib/api/screenings', () => ({
   fromPrisma: vi.fn(),
 }));
 
-import { actionCreateScreening } from '@/app/actions/screenings';
+import { actionCreateScreening, actionDeleteScreening } from '@/app/actions/screenings';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as screeningApi from '@/lib/api/screenings';
@@ -147,15 +151,33 @@ describe('actionCreateScreening', () => {
   it('does not create surgery for non-surgery recommendations', async () => {
     vi.mocked(screeningApi.createScreening).mockResolvedValue({
       ...createdScreening,
-      recommendation: 'No Surgery - Release',
+      recommendation: 'Discharge',
     });
 
     const result = await actionCreateScreening({
       ...screeningInput,
-      recommendation: 'No Surgery - Release',
+      recommendation: 'Discharge',
     });
 
     expect(result.ok).toBe(true);
+    expect(prisma.surgery.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts Discharge as the canonical no-surgery recommendation', async () => {
+    vi.mocked(screeningApi.createScreening).mockResolvedValue({
+      ...createdScreening,
+      recommendation: 'Discharge',
+    });
+
+    const result = await actionCreateScreening({
+      ...screeningInput,
+      recommendation: 'Discharge',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(screeningApi.createScreening).toHaveBeenCalledWith(
+      expect.objectContaining({ recommendation: 'Discharge' }),
+    );
     expect(prisma.surgery.create).not.toHaveBeenCalled();
   });
 
@@ -171,5 +193,52 @@ describe('actionCreateScreening', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/region access denied/);
     expect(screeningApi.createScreening).not.toHaveBeenCalled();
+  });
+});
+
+describe('actionDeleteScreening', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
+    vi.mocked(prisma.screening.findUnique).mockResolvedValue({
+      id: 'screening-1',
+      patientId: 'patient-1',
+      campaignId: 'camp-galmudug-1',
+      region: 'Galmudug',
+    } as never);
+    vi.mocked(prisma.patient.update).mockResolvedValue({} as never);
+    vi.mocked(screeningApi.deleteScreening).mockResolvedValue(undefined);
+  });
+
+  it('returns patient to awaiting screening when deleting their last screening', async () => {
+    vi.mocked(prisma.screening.count).mockResolvedValue(0);
+
+    const result = await actionDeleteScreening('screening-1');
+
+    expect(result.ok).toBe(true);
+    expect(prisma.patient.update).toHaveBeenCalledWith({
+      where: { id: 'patient-1' },
+      data: { screeningStatus: 'Awaiting Screening' },
+    });
+    if (result.ok) {
+      expect(result.data).toEqual({
+        patientId: 'patient-1',
+        screeningStatus: 'Awaiting Screening',
+      });
+    }
+  });
+
+  it('keeps patient screened when other screenings remain', async () => {
+    vi.mocked(prisma.screening.count).mockResolvedValue(1);
+
+    const result = await actionDeleteScreening('screening-1');
+
+    expect(result.ok).toBe(true);
+    expect(prisma.patient.update).toHaveBeenCalledWith({
+      where: { id: 'patient-1' },
+      data: { screeningStatus: 'Screened' },
+    });
   });
 });

@@ -26,7 +26,7 @@ export const vaGradeFromApp = (v: string) => VA_FROM_APP[v] ?? v;
 // ─── ScreeningRecommendation ──────────────────────────────────────────────────
 const SR_TO_APP: Record<string, string> = {
   // Active values shown in UI
-  Discharge:            'No Surgery - Release',   // rebranded display name
+  Discharge:            'Discharge',
   ReferForSurgery:      'Refer for Surgery',
   Positive:             'Positive',
   // Legacy values — keep for existing records display
@@ -40,7 +40,7 @@ export const screeningRecFromApp = (v: string) => SR_FROM_APP[v] ?? v;
 
 // ─── SurgeryStatus ────────────────────────────────────────────────────────────
 const SS_TO_APP: Record<string, string> = {
-  Scheduled: 'Scheduled', InTheatre: 'In-Theatre', Completed: 'Completed',
+  Scheduled: 'Scheduled', Completed: 'Completed',
   Cancelled: 'Cancelled', Postponed: 'Postponed',
 };
 const SS_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(SS_TO_APP).map(([k, v]) => [v, k]));

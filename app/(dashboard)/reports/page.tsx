@@ -86,7 +86,6 @@ export default function ReportsPage() {
 
       const surgeryTarget = campaigns.reduce((sum, c) => sum + campaignTargetSurgeries(c), 0);
       const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
-      const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
       const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
       const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
       const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
@@ -102,7 +101,7 @@ export default function ReportsPage() {
       const funnelExport = [
         { step: 'Registered', count: registered },
         { step: 'Screened', count: screenings.length },
-        { step: 'Surgery Booked', count: surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted },
+        { step: 'Surgery Booked', count: surgeriesScheduled + surgeriesCompleted },
         { step: 'Surg. Completed', count: surgeriesCompleted },
         { step: 'Follow-up Done', count: completedFollowUps },
       ];
@@ -123,7 +122,6 @@ export default function ReportsPage() {
         { Metric: 'Screenings Completed', Value: screenings.length },
         { Metric: 'Surgery Target', Value: surgeryTarget },
         { Metric: 'Surgeries Scheduled', Value: surgeriesScheduled },
-        { Metric: 'Surgeries In-Theatre', Value: surgeriesInTheatre },
         { Metric: 'Surgeries Completed', Value: surgeriesCompleted },
         { Metric: 'Surgeries Postponed', Value: surgeriesPostponed },
         { Metric: 'Surgeries Cancelled', Value: surgeriesCancelled },
@@ -145,7 +143,6 @@ export default function ReportsPage() {
         'Patients Registered': r.patients,
         Screenings: r.screenings,
         'Surgeries Scheduled': r.scheduled,
-        'In-Theatre': r.inTheatre,
         Completed: r.completed,
         Postponed: r.postponed,
         Cancelled: r.cancelled,
@@ -196,7 +193,6 @@ export default function ReportsPage() {
       // 5. Surgery Status
       const surgeryStatusExport = [
         { name: 'Scheduled', value: surgeriesScheduled },
-        { name: 'In-Theatre', value: surgeriesInTheatre },
         { name: 'Completed', value: surgeriesCompleted },
         { name: 'Postponed', value: surgeriesPostponed },
         { name: 'Cancelled', value: surgeriesCancelled },
@@ -356,7 +352,6 @@ export default function ReportsPage() {
       const surgeryTarget = campaigns.reduce((sum, c) => sum + campaignTargetSurgeries(c), 0);
       const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
       const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
-      const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
       const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
       const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
       const completedFollowUps = followUps.filter((fu) => fu.status === 'Completed').length;
@@ -367,13 +362,12 @@ export default function ReportsPage() {
       const workflowChartData = [
         { label: 'Registered', value: registered, color: [0, 46, 99] as Rgb },
         { label: 'Screened', value: screenings.length, color: [36, 115, 181] as Rgb },
-        { label: 'Surgery Booked', value: surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted, color: [245, 158, 11] as Rgb },
+        { label: 'Surgery Booked', value: surgeriesScheduled + surgeriesCompleted, color: [245, 158, 11] as Rgb },
         { label: 'Surgery Completed', value: surgeriesCompleted, color: [44, 153, 66] as Rgb },
         { label: 'Follow-up Done', value: completedFollowUps, color: [69, 176, 102] as Rgb },
       ];
       const surgeryStatusChartData = [
         { label: 'Scheduled', value: surgeriesScheduled, color: [245, 158, 11] as Rgb },
-        { label: 'In-Theatre', value: surgeriesInTheatre, color: [36, 115, 181] as Rgb },
         { label: 'Completed', value: surgeriesCompleted, color: [44, 153, 66] as Rgb },
         { label: 'Postponed', value: surgeriesPostponed, color: [100, 113, 132] as Rgb },
         { label: 'Cancelled', value: surgeriesCancelled, color: [229, 57, 53] as Rgb },
@@ -402,8 +396,8 @@ export default function ReportsPage() {
         body: [
           ['Campaigns', campaigns.length, 'Patients Registered', registered],
           ['Screenings', screenings.length, 'Surgery Target', surgeryTarget],
-          ['Surgeries Scheduled', surgeriesScheduled, 'Surgeries In-Theatre', surgeriesInTheatre],
-          ['Surgeries Completed', surgeriesCompleted, 'Completion Rate', `${completionRate(surgeriesCompleted, surgeryTarget)}%`],
+          ['Surgeries Scheduled', surgeriesScheduled, 'Surgeries Completed', surgeriesCompleted],
+          ['Completion Rate', `${completionRate(surgeriesCompleted, surgeryTarget)}%`, '', ''],
           ['Surgeries Postponed', surgeriesPostponed, 'Surgeries Cancelled', surgeriesCancelled],
           ['Follow-ups Completed', completedFollowUps, 'Follow-ups Overdue', overdueFollowUps],
           ['Dr. Review Pending', doctorReviewPending, 'Dr. Review Completed', doctorReviewCompleted],
@@ -495,7 +489,7 @@ export default function ReportsPage() {
         body: [
           ['Registered', registered, registered ? '100%' : '0%'],
           ['Screened', screenings.length, registered ? `${Math.round((screenings.length / registered) * 100)}%` : '0%'],
-          ['Surgery Booked', surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted, registered ? `${Math.round(((surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted) / registered) * 100)}%` : '0%'],
+          ['Surgery Booked', surgeriesScheduled + surgeriesCompleted, registered ? `${Math.round(((surgeriesScheduled + surgeriesCompleted) / registered) * 100)}%` : '0%'],
           ['Surgery Completed', surgeriesCompleted, registered ? `${Math.round((surgeriesCompleted / registered) * 100)}%` : '0%'],
           ['Follow-up Done', completedFollowUps, registered ? `${Math.round((completedFollowUps / registered) * 100)}%` : '0%'],
         ],
@@ -824,7 +818,7 @@ export default function ReportsPage() {
                   <tr>
                     {[
                       'Region', 'Status', 'Campaigns', 'Target', 'Patients', 'Screened',
-                      'Scheduled', 'In-Theatre', 'Completed', 'Rate',
+                      'Scheduled', 'Completed', 'Rate',
                       'FU Done', 'FU Overdue', 'Dr. Pending', 'Dr. Done',
                     ].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">
@@ -843,7 +837,6 @@ export default function ReportsPage() {
                       <td className="px-4 py-3 text-[#4B5666]">{row.patients}</td>
                       <td className="px-4 py-3 text-[#4B5666]">{row.screenings}</td>
                       <td className="px-4 py-3 text-[#4B5666]">{row.scheduled}</td>
-                      <td className="px-4 py-3 text-[#4B5666]">{row.inTheatre}</td>
                       <td className="px-4 py-3 text-[#4B5666]">{row.completed}</td>
                       <td className="px-4 py-3">
                         <span className={`font-semibold ${

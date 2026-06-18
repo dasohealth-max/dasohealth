@@ -22,13 +22,13 @@ const VA_GRADES: VAGrade[] = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/6
 // Only active recommendations shown in new/edit screening forms; legacy values stay displayable for existing records.
 const ACTIVE_RECOMMENDATIONS: Screening['recommendation'][] = [
   'Refer for Surgery',
-  'No Surgery - Release',
+  'Discharge',
 ];
 
 // Recommendation badge styles
 const REC_STYLE: Record<string, string> = {
   'Refer for Surgery':   'bg-[#FDECEB] text-[#E53935]',
-  'No Surgery - Release':'bg-[#EAEEF3] text-[#4B5666]',
+  'Discharge':           'bg-[#EAEEF3] text-[#4B5666]',
   'Positive':            'bg-[#EBF7EE] text-[#2C9942]',
 };
 
@@ -201,6 +201,15 @@ export default function ScreeningPage() {
     if (result.ok) {
       setScreenings((rows) => rows.filter((r) => r.id !== deleteTarget.id));
       setScreeningsTotal((n) => Math.max(0, n - 1));
+      if (result.data) {
+        setPatients((rows) =>
+          rows.map((patient) =>
+            patient.id === result.data?.patientId
+              ? { ...patient, screeningStatus: result.data.screeningStatus }
+              : patient,
+          ),
+        );
+      }
       if (screenings.length === 1 && screeningsPage > 1) setScreeningsPage((p) => p - 1);
     }
     setDeleteTarget(null);
@@ -285,22 +294,23 @@ export default function ScreeningPage() {
             <table className="w-full min-w-170 text-sm">
               <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
-                  {['Code', 'Patient', 'Phone', 'Region / City', 'Registered By', ''].map((h) => (
+                  {['#', 'Code', 'Patient', 'Phone', 'Region / City', 'Registered By', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={6} className="py-10 text-center text-sm text-[#647184]">Loading...</td></tr>
+                  <tr><td colSpan={7} className="py-10 text-center text-sm text-[#647184]">Loading...</td></tr>
                 )}
                 {!isLoading && filteredQueue.length === 0 && (
-                  <tr><td colSpan={6} className="py-10 text-center text-sm text-[#647184]">
+                  <tr><td colSpan={7} className="py-10 text-center text-sm text-[#647184]">
                     {queueSearch ? 'No patients match the search.' : 'No patients waiting — the queue is clear.'}
                   </td></tr>
                 )}
-                {!isLoading && filteredQueue.map((patient) => (
+                {!isLoading && filteredQueue.map((patient, index) => (
                   <tr key={patient.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                    <td className="px-4 py-3.5 text-xs text-[#647184]">{index + 1}</td>
                     <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{patient.fullName}</p>
@@ -374,20 +384,21 @@ export default function ScreeningPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                     <tr>
-                      {['Patient', 'Region', 'VA R / L', 'Finding', 'Recommendation', 'Screened By', 'Date', ''].map((h) => (
+                      {['#', 'Patient', 'Region', 'VA R / L', 'Finding', 'Recommendation', 'Screened By', 'Date', ''].map((h) => (
                         <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {histLoading && (
-                      <tr><td colSpan={8} className="py-8 text-center text-sm text-[#647184]">Loading…</td></tr>
+                      <tr><td colSpan={9} className="py-8 text-center text-sm text-[#647184]">Loading…</td></tr>
                     )}
                     {!histLoading && screenings.length === 0 && (
-                      <tr><td colSpan={8} className="py-8 text-center text-sm text-[#647184]">No screenings found.</td></tr>
+                      <tr><td colSpan={9} className="py-8 text-center text-sm text-[#647184]">No screenings found.</td></tr>
                     )}
-                    {!histLoading && screenings.map((screening) => (
+                    {!histLoading && screenings.map((screening, index) => (
                       <tr key={screening.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                        <td className="px-4 py-3.5 text-xs text-[#647184]">{(screeningsPage - 1) * PAGE_SIZE + index + 1}</td>
                         <td className="px-4 py-3.5 font-medium text-[#141920]">{screening.patientName}</td>
                         <td className="px-4 py-3.5 text-[#4B5666]">{screening.region}</td>
                         <td className="px-4 py-3.5 font-mono text-xs">{screening.vaRightUnaided} / {screening.vaLeftUnaided}</td>
@@ -625,4 +636,3 @@ function ScreeningFormBody({
     </div>
   );
 }
-

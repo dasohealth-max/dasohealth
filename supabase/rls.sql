@@ -1,146 +1,333 @@
 -- =============================================================================
--- EyeCare Pro — Row Level Security Policies
+-- EyeCare Pro - Row Level Security Policies
 --
--- Philosophy (Phase 1 — app-layer RBAC):
---   • RLS acts as a security boundary: unauthenticated callers get nothing.
---   • Fine-grained role checks (who can edit what) live in the Next.js app
---     (lib/permissions.ts), not in PostgreSQL — this keeps SQL simple and
---     keeps business logic in one place while the schema matures.
---   • The server-side Supabase client (createServerClient) uses the
---     service-role key which bypasses RLS. Only use it in Server Actions /
---     Route Handlers where the app layer already enforces permissions.
+-- RLS model:
+--   - Browser clients use the public anon key and may authenticate as a user.
+--   - Authenticated browser access may read only rows allowed by the user's
+--     Supabase JWT app metadata.
+--   - Browser/anon/authenticated clients are not allowed to write clinical data.
+--   - Server Actions, route handlers, Prisma, and Supabase service-role flows
+--     remain the write path. The Supabase service-role bypasses RLS by design.
 --
--- To tighten in Phase 2, replace `USING (true)` with expressions like:
---   USING (auth.uid() = created_by)   -- owner-only rows
---   USING (auth.jwt() ->> 'role' = 'Super Administrator')   -- role check
+-- Required JWT app_metadata maintained by the app:
+--   - role: one of "Super Administrator", "Project Manager", "Data Clerk",
+--     "Screening Officer"
+--   - assignedRegion: regional scope for non-super-admin users
+--
+-- Apply this file in the Supabase SQL editor or through a migration after
+-- validating against a staging project.
 -- =============================================================================
 
 -- =============================================================================
--- Helper: list all tables so we don't miss one
--- =============================================================================
--- Tables covered:
---   users, campaigns, locations, campaign_locations,
---   patients, screenings, referrals, surgeries,
---   follow_ups, inventory_items, outreach_activities,
---   transport_jobs, audit_logs
-
--- =============================================================================
--- ENABLE RLS ON ALL TABLES
+-- Helpers
 -- =============================================================================
 
-ALTER TABLE users                ENABLE ROW LEVEL SECURITY;
-ALTER TABLE campaigns            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE locations            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE campaign_locations   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE patients             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE screenings           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE referrals            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE surgeries            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE follow_ups           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory_items      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE outreach_activities  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transport_jobs       ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs           ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION public.current_app_role()
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    auth.jwt() -> 'app_metadata' ->> 'role',
+    auth.jwt() -> 'user_metadata' ->> 'role',
+    ''
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.current_assigned_region()
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    auth.jwt() -> 'app_metadata' ->> 'assignedRegion',
+    auth.jwt() -> 'user_metadata' ->> 'assignedRegion',
+    ''
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT public.current_app_role() = 'Super Administrator';
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_read_region(row_region text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT public.is_super_admin()
+    OR (
+      public.current_app_role() IN ('Project Manager', 'Data Clerk', 'Screening Officer')
+      AND public.current_assigned_region() <> ''
+      AND row_region = public.current_assigned_region()
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.deny_browser_write()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT false;
+$$;
 
 -- =============================================================================
--- MACRO: for each table we create four policies (SELECT / INSERT / UPDATE / DELETE)
--- Authenticated = any logged-in Supabase Auth user.
--- Anon callers (unauthenticated) are blocked by the absence of anon policies.
+-- Enable RLS on current application tables
 -- =============================================================================
 
--- ─── users ───────────────────────────────────────────────────────────────────
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campaign_regions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE screenings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE surgeries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE follow_ups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE follow_up_medications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users_select"  ON users FOR SELECT TO authenticated USING (true);
-CREATE POLICY "users_insert"  ON users FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "users_update"  ON users FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "users_delete"  ON users FOR DELETE TO authenticated USING (true);
+-- =============================================================================
+-- Drop previous broad policies
+-- =============================================================================
 
--- ─── campaigns ───────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "users_select" ON users;
+DROP POLICY IF EXISTS "users_insert" ON users;
+DROP POLICY IF EXISTS "users_update" ON users;
+DROP POLICY IF EXISTS "users_delete" ON users;
 
-CREATE POLICY "campaigns_select"  ON campaigns FOR SELECT TO authenticated USING (true);
-CREATE POLICY "campaigns_insert"  ON campaigns FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "campaigns_update"  ON campaigns FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "campaigns_delete"  ON campaigns FOR DELETE TO authenticated USING (true);
+DROP POLICY IF EXISTS "campaigns_select" ON campaigns;
+DROP POLICY IF EXISTS "campaigns_insert" ON campaigns;
+DROP POLICY IF EXISTS "campaigns_update" ON campaigns;
+DROP POLICY IF EXISTS "campaigns_delete" ON campaigns;
 
--- ─── locations ───────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "campaign_regions_select" ON campaign_regions;
+DROP POLICY IF EXISTS "campaign_regions_insert" ON campaign_regions;
+DROP POLICY IF EXISTS "campaign_regions_update" ON campaign_regions;
+DROP POLICY IF EXISTS "campaign_regions_delete" ON campaign_regions;
 
-CREATE POLICY "locations_select"  ON locations FOR SELECT TO authenticated USING (true);
-CREATE POLICY "locations_insert"  ON locations FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "locations_update"  ON locations FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "locations_delete"  ON locations FOR DELETE TO authenticated USING (true);
+DROP POLICY IF EXISTS "patients_select" ON patients;
+DROP POLICY IF EXISTS "patients_insert" ON patients;
+DROP POLICY IF EXISTS "patients_update" ON patients;
+DROP POLICY IF EXISTS "patients_delete" ON patients;
 
--- ─── campaign_locations ───────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "screenings_select" ON screenings;
+DROP POLICY IF EXISTS "screenings_insert" ON screenings;
+DROP POLICY IF EXISTS "screenings_update" ON screenings;
+DROP POLICY IF EXISTS "screenings_delete" ON screenings;
 
-CREATE POLICY "campaign_locations_select"  ON campaign_locations FOR SELECT TO authenticated USING (true);
-CREATE POLICY "campaign_locations_insert"  ON campaign_locations FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "campaign_locations_update"  ON campaign_locations FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "campaign_locations_delete"  ON campaign_locations FOR DELETE TO authenticated USING (true);
+DROP POLICY IF EXISTS "surgeries_select" ON surgeries;
+DROP POLICY IF EXISTS "surgeries_insert" ON surgeries;
+DROP POLICY IF EXISTS "surgeries_update" ON surgeries;
+DROP POLICY IF EXISTS "surgeries_delete" ON surgeries;
 
--- ─── patients ─────────────────────────────────────────────────────────────────
--- NOTE: Donor Users should not see PII (name / phone). This is currently
--- enforced in the app via maskPatient() in lib/permissions.ts.
--- In Phase 2, add a column-level mask or a separate view for donor access.
+DROP POLICY IF EXISTS "follow_ups_select" ON follow_ups;
+DROP POLICY IF EXISTS "follow_ups_insert" ON follow_ups;
+DROP POLICY IF EXISTS "follow_ups_update" ON follow_ups;
+DROP POLICY IF EXISTS "follow_ups_delete" ON follow_ups;
 
-CREATE POLICY "patients_select"  ON patients FOR SELECT TO authenticated USING (true);
-CREATE POLICY "patients_insert"  ON patients FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "patients_update"  ON patients FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "patients_delete"  ON patients FOR DELETE TO authenticated USING (true);
+DROP POLICY IF EXISTS "follow_up_medications_select" ON follow_up_medications;
+DROP POLICY IF EXISTS "follow_up_medications_insert" ON follow_up_medications;
+DROP POLICY IF EXISTS "follow_up_medications_update" ON follow_up_medications;
+DROP POLICY IF EXISTS "follow_up_medications_delete" ON follow_up_medications;
 
--- ─── screenings ───────────────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
+DROP POLICY IF EXISTS "audit_logs_insert" ON audit_logs;
+DROP POLICY IF EXISTS "audit_logs_update" ON audit_logs;
+DROP POLICY IF EXISTS "audit_logs_delete" ON audit_logs;
 
-CREATE POLICY "screenings_select"  ON screenings FOR SELECT TO authenticated USING (true);
-CREATE POLICY "screenings_insert"  ON screenings FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "screenings_update"  ON screenings FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "screenings_delete"  ON screenings FOR DELETE TO authenticated USING (true);
+-- =============================================================================
+-- Users
+-- Authenticated users may read themselves. Super admins may read all users.
+-- Browser writes are denied; user management must go through server actions.
+-- =============================================================================
 
--- ─── referrals ────────────────────────────────────────────────────────────────
+CREATE POLICY "users_select"
+  ON users FOR SELECT TO authenticated
+  USING (public.is_super_admin() OR id = auth.uid());
 
-CREATE POLICY "referrals_select"  ON referrals FOR SELECT TO authenticated USING (true);
-CREATE POLICY "referrals_insert"  ON referrals FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "referrals_update"  ON referrals FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "referrals_delete"  ON referrals FOR DELETE TO authenticated USING (true);
+CREATE POLICY "users_insert"
+  ON users FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
 
--- ─── surgeries ────────────────────────────────────────────────────────────────
+CREATE POLICY "users_update"
+  ON users FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
 
-CREATE POLICY "surgeries_select"  ON surgeries FOR SELECT TO authenticated USING (true);
-CREATE POLICY "surgeries_insert"  ON surgeries FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "surgeries_update"  ON surgeries FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "surgeries_delete"  ON surgeries FOR DELETE TO authenticated USING (true);
+CREATE POLICY "users_delete"
+  ON users FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
 
--- ─── follow_ups ───────────────────────────────────────────────────────────────
+-- =============================================================================
+-- Campaign configuration
+-- Region-scoped users may read their assigned region. Super admins read all.
+-- Browser writes are denied; campaign changes must go through server actions.
+-- =============================================================================
 
-CREATE POLICY "follow_ups_select"  ON follow_ups FOR SELECT TO authenticated USING (true);
-CREATE POLICY "follow_ups_insert"  ON follow_ups FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "follow_ups_update"  ON follow_ups FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "follow_ups_delete"  ON follow_ups FOR DELETE TO authenticated USING (true);
+CREATE POLICY "campaigns_select"
+  ON campaigns FOR SELECT TO authenticated
+  USING (
+    public.is_super_admin()
+    OR public.can_read_region(region)
+    OR EXISTS (
+      SELECT 1
+      FROM campaign_regions cr
+      WHERE cr.campaign_id = campaigns.id
+        AND public.can_read_region(cr.region)
+    )
+  );
 
--- ─── inventory_items ──────────────────────────────────────────────────────────
+CREATE POLICY "campaigns_insert"
+  ON campaigns FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
 
-CREATE POLICY "inventory_items_select"  ON inventory_items FOR SELECT TO authenticated USING (true);
-CREATE POLICY "inventory_items_insert"  ON inventory_items FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "inventory_items_update"  ON inventory_items FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "inventory_items_delete"  ON inventory_items FOR DELETE TO authenticated USING (true);
+CREATE POLICY "campaigns_update"
+  ON campaigns FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
 
--- ─── outreach_activities ──────────────────────────────────────────────────────
+CREATE POLICY "campaigns_delete"
+  ON campaigns FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
 
-CREATE POLICY "outreach_activities_select"  ON outreach_activities FOR SELECT TO authenticated USING (true);
-CREATE POLICY "outreach_activities_insert"  ON outreach_activities FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "outreach_activities_update"  ON outreach_activities FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "outreach_activities_delete"  ON outreach_activities FOR DELETE TO authenticated USING (true);
+CREATE POLICY "campaign_regions_select"
+  ON campaign_regions FOR SELECT TO authenticated
+  USING (public.can_read_region(region));
 
--- ─── transport_jobs ───────────────────────────────────────────────────────────
+CREATE POLICY "campaign_regions_insert"
+  ON campaign_regions FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
 
-CREATE POLICY "transport_jobs_select"  ON transport_jobs FOR SELECT TO authenticated USING (true);
-CREATE POLICY "transport_jobs_insert"  ON transport_jobs FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "transport_jobs_update"  ON transport_jobs FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "transport_jobs_delete"  ON transport_jobs FOR DELETE TO authenticated USING (true);
+CREATE POLICY "campaign_regions_update"
+  ON campaign_regions FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
 
--- ─── audit_logs ───────────────────────────────────────────────────────────────
--- Audit logs are append-only in production: UPDATE and DELETE are intentionally
--- left open here to match the task spec, but consider removing them in production
--- to make the audit trail tamper-resistant.
+CREATE POLICY "campaign_regions_delete"
+  ON campaign_regions FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
 
-CREATE POLICY "audit_logs_select"  ON audit_logs FOR SELECT TO authenticated USING (true);
-CREATE POLICY "audit_logs_insert"  ON audit_logs FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "audit_logs_update"  ON audit_logs FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "audit_logs_delete"  ON audit_logs FOR DELETE TO authenticated USING (true);
+-- =============================================================================
+-- Clinical workflow data
+-- Authenticated browser users may read only their allowed region. They cannot
+-- insert, update, or delete patient clinical records directly. Server Actions
+-- remain responsible for validation, audit logging, and RBAC before writing.
+-- =============================================================================
+
+CREATE POLICY "patients_select"
+  ON patients FOR SELECT TO authenticated
+  USING (public.can_read_region(region));
+
+CREATE POLICY "patients_insert"
+  ON patients FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "patients_update"
+  ON patients FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "patients_delete"
+  ON patients FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
+
+CREATE POLICY "screenings_select"
+  ON screenings FOR SELECT TO authenticated
+  USING (public.can_read_region(region));
+
+CREATE POLICY "screenings_insert"
+  ON screenings FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "screenings_update"
+  ON screenings FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "screenings_delete"
+  ON screenings FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
+
+CREATE POLICY "surgeries_select"
+  ON surgeries FOR SELECT TO authenticated
+  USING (public.can_read_region(region));
+
+CREATE POLICY "surgeries_insert"
+  ON surgeries FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "surgeries_update"
+  ON surgeries FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "surgeries_delete"
+  ON surgeries FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
+
+CREATE POLICY "follow_ups_select"
+  ON follow_ups FOR SELECT TO authenticated
+  USING (public.can_read_region(region));
+
+CREATE POLICY "follow_ups_insert"
+  ON follow_ups FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "follow_ups_update"
+  ON follow_ups FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "follow_ups_delete"
+  ON follow_ups FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
+
+CREATE POLICY "follow_up_medications_select"
+  ON follow_up_medications FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM follow_ups fu
+      WHERE fu.id = follow_up_medications.follow_up_id
+        AND public.can_read_region(fu.region)
+    )
+  );
+
+CREATE POLICY "follow_up_medications_insert"
+  ON follow_up_medications FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "follow_up_medications_update"
+  ON follow_up_medications FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "follow_up_medications_delete"
+  ON follow_up_medications FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
+
+-- =============================================================================
+-- Audit logs
+-- Browser users do not write audit logs. Super admins may read the audit trail.
+-- Server Actions write audit logs through the trusted server/database path.
+-- =============================================================================
+
+CREATE POLICY "audit_logs_select"
+  ON audit_logs FOR SELECT TO authenticated
+  USING (public.is_super_admin());
+
+CREATE POLICY "audit_logs_insert"
+  ON audit_logs FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "audit_logs_update"
+  ON audit_logs FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "audit_logs_delete"
+  ON audit_logs FOR DELETE TO authenticated
+  USING (public.deny_browser_write());

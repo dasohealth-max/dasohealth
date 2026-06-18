@@ -8,7 +8,7 @@ import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetch
 import { getAllCampaigns as fetchAllCampaigns } from '@/lib/api/campaigns';
 import { auditLog, ensureRegionAccess, isSuperAdmin, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Campaign, Patient } from '@/types';
-import type { Sex, DisabilityStatus, Prisma } from '@/lib/generated/prisma/client';
+import { Prisma, type Sex, type DisabilityStatus } from '@/lib/generated/prisma/client';
 
 export async function getAllPatients(): Promise<Patient[]> {
   const actor = await requireActor('patients', 'view');
@@ -129,21 +129,39 @@ async function getCampaignScope(campaignId: string, campaignRegionId: string) {
   });
 }
 
+const REGION_PREFIX: Record<string, string> = {
+  'Banadir / Mogadishu':    'B',
+  'Koofur Galbeed Somalia': 'KF',
+  'Hiiraan State':          'HI',
+  'Hirshabelle State':      'HS',
+  'Jubaland':               'J',
+  'Galmudug':               'G',
+  'Puntland':               'P',
+  'Khatumo State':          'KH',
+  'Somaliland':             'S',
+};
+
+function regionCodePrefix(region: string): string {
+  return REGION_PREFIX[region] ?? (region[0]?.toUpperCase() ?? 'X');
+}
+
 async function createPatientWithCode(data: Omit<Parameters<typeof prisma.patient.create>[0]['data'], 'patientCode'>): Promise<Patient> {
+  const prefix = regionCodePrefix((data as { region?: string }).region ?? '');
+  const startPos = Prisma.raw(String(prefix.length + 1));
   const MAX_RETRIES = 5;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const last = await prisma.patient.findFirst({
-        select: { patientCode: true },
-        orderBy: { patientCode: 'desc' },
-      });
-      const year = new Date().getFullYear();
-      const lastNum = last ? parseInt(last.patientCode.split('-')[2] || '0', 10) : 0;
-      const patientCode = `EC-${year}-${String(lastNum + 1).padStart(4, '0')}`;
+      const result = await prisma.$queryRaw<[{ max: bigint | number }]>`
+        SELECT COALESCE(MAX(CAST(SUBSTRING(patient_code, ${startPos}) AS INTEGER)), 0) AS max
+        FROM patients
+        WHERE patient_code ~ ${`^${prefix}[0-9]+$`}
+      `;
+      const lastNum = Number(result[0]?.max ?? 0);
+      const patientCode = `${prefix}${lastNum + 1}`;
       const row = await prisma.patient.create({ data: { ...(data as Parameters<typeof prisma.patient.create>[0]['data']), patientCode } });
       return fromPrisma(row);
     } catch (e: unknown) {
-      const isUniqueViolation = e instanceof Error && 'code' in e && (e as { code: string }).code === 'P2002';
+      const isUniqueViolation = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
       if (isUniqueViolation && attempt < MAX_RETRIES - 1) continue;
       throw e;
     }

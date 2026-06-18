@@ -22,7 +22,7 @@ import type { Prisma } from '@/lib/generated/prisma/client';
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
-const CAMPAIGN_TYPES = ['Cataract Surgery Outreach', 'Eye Vision Outreach', 'General Eye Screening', 'Mixed Outreach'] as const;
+const CAMPAIGN_TYPES = ['Cataract Surgery Outreach', 'General Eye Screening', 'Mixed Outreach'] as const;
 const CAMPAIGN_STATUSES = ['Planned', 'Active', 'Completed', 'Suspended'] as const;
 const REGIONAL_PLAN_STATUSES = ['On Track', 'Behind', 'Completed', 'Suspended'] as const;
 

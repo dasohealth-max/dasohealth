@@ -8,6 +8,7 @@ import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllPatients } from '@/app/actions/patients';
 import { signOut, usePermissions } from '@/lib/auth';
+import { formatDate } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,13 +26,16 @@ interface TopbarProps {
 
 export default function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
-  const { user } = usePermissions();
+  const { user, role } = usePermissions();
+  const isSuperAdmin = role === 'Super Administrator';
   const [search, setSearch] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof document === 'undefined') return 'light';
     return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
   });
   const [showResults, setShowResults] = useState(false);
+  const [hoveredPatient, setHoveredPatient] = useState<Patient | null>(null);
+  const hoverClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -39,13 +43,14 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
     Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps()])
       .then(([p, c, f]) => {
         setPatients(p);
         setCampaigns(c);
         setFollowUps(f);
       });
-  }, []);
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -96,102 +101,157 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         <Menu size={20} />
       </button>
 
-      <div ref={searchRef} className="relative max-w-sm flex-1">
-        <div className="flex h-10 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-sunken)] px-3 shadow-[var(--shadow-xs)] transition-colors focus-within:border-[var(--border-focus)] focus-within:ring-3 focus-within:ring-[var(--ring-soft)]">
-          <Search className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setShowResults(true);
-            }}
-            onFocus={() => search.length >= 2 && setShowResults(true)}
-            placeholder="Search patients, campaigns..."
-            className="w-full bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-subtle)]"
-          />
-          {search && (
-            <button
-              onClick={() => {
-                setSearch('');
-                setShowResults(false);
+      {isSuperAdmin && (
+        <div ref={searchRef} className="relative max-w-sm flex-1">
+          <div className="flex h-10 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--surface-sunken)] px-3 shadow-[var(--shadow-xs)] transition-colors focus-within:border-[var(--border-focus)] focus-within:ring-3 focus-within:ring-[var(--ring-soft)]">
+            <Search className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setShowResults(true);
               }}
-              className="shrink-0 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-strong)]"
-              aria-label="Clear search"
+              onFocus={() => search.length >= 2 && setShowResults(true)}
+              placeholder="Search patients, campaigns..."
+              className="w-full bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-subtle)]"
+            />
+            {search && (
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setShowResults(false);
+                }}
+                className="shrink-0 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-strong)]"
+                aria-label="Clear search"
+              >
+                x
+              </button>
+            )}
+          </div>
+
+          {showResults && hasResults && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)]">
+              {patientResults.length > 0 && (
+                <div>
+                  <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Patients</p>
+                  {patientResults.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setShowResults(false);
+                        setSearch('');
+                        setHoveredPatient(null);
+                        router.push('/patients?highlight=' + p.patientCode);
+                      }}
+                      onMouseEnter={() => {
+                        if (hoverClearRef.current) clearTimeout(hoverClearRef.current);
+                        setHoveredPatient(p);
+                      }}
+                      onMouseLeave={() => {
+                        hoverClearRef.current = setTimeout(() => setHoveredPatient(null), 150);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-[var(--text-strong)] transition-colors hover:bg-[var(--surface-hover)]"
+                    >
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-brand-soft)] text-[10px] font-bold text-[var(--text-brand)]">
+                        {p.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold leading-tight text-[var(--text-strong)]">{p.fullName}</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">{p.patientCode} · {p.phone}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {campaignResults.length > 0 && (
+                <div className="border-t border-[var(--border-subtle)]">
+                  <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Campaigns</p>
+                  {campaignResults.map((c) => (
+                    <Link
+                      key={c.id}
+                      href="/campaigns"
+                      onClick={() => {
+                        setShowResults(false);
+                        setSearch('');
+                      }}
+                      className="flex items-center gap-3 px-3 py-2 text-[var(--text-strong)] transition-colors hover:bg-[var(--surface-hover)]"
+                    >
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-brand-soft)]">
+                        <span className="text-[10px] font-bold text-[var(--text-brand)]">C</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold leading-tight text-[var(--text-strong)]">{c.name}</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">{c.type} - {c.status}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              <div className="border-t border-[var(--border-subtle)] px-3 py-2">
+                <p className="text-[10px] text-[var(--text-muted)]">Showing top results - go to module for full list</p>
+              </div>
+            </div>
+          )}
+
+          {showResults && q.length >= 2 && !hasResults && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] px-3 py-3 shadow-[var(--shadow-lg)]">
+              <p className="text-center text-sm text-[var(--text-muted)]">No results for &quot;{q}&quot;</p>
+            </div>
+          )}
+
+          {hoveredPatient && showResults && (
+            <div
+              onMouseEnter={() => { if (hoverClearRef.current) clearTimeout(hoverClearRef.current); }}
+              onMouseLeave={() => { hoverClearRef.current = setTimeout(() => setHoveredPatient(null), 150); }}
+              className="absolute left-full top-12 z-50 ml-2 w-72 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)]"
             >
-              x
-            </button>
+              <div className="flex items-center gap-3 border-b border-[var(--border-subtle)] p-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-brand-soft)] text-sm font-bold text-[var(--text-brand)]">
+                  {hoveredPatient.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                </div>
+                <div>
+                  <p className="font-semibold text-[var(--text-strong)]">{hoveredPatient.fullName}</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">{hoveredPatient.patientCode}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5 p-3 text-xs">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--text-muted)]">Phone</span>
+                  <span className="font-medium text-[var(--text-strong)]">{hoveredPatient.phone}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--text-muted)]">Region</span>
+                  <span className="truncate font-medium text-[var(--text-strong)]">{hoveredPatient.region}</span>
+                </div>
+                {hoveredPatient.operationDistrict && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-[var(--text-muted)]">District</span>
+                    <span className="font-medium text-[var(--text-strong)]">{hoveredPatient.operationDistrict}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--text-muted)]">Sex</span>
+                  <span className="font-medium text-[var(--text-strong)]">{hoveredPatient.sex}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--text-muted)]">Date of Birth</span>
+                  <span className="font-medium text-[var(--text-strong)]">{formatDate(hoveredPatient.dateOfBirth)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--text-muted)]">Status</span>
+                  <span className="font-medium text-[#2C9942]">{hoveredPatient.screeningStatus}</span>
+                </div>
+              </div>
+              <div className="border-t border-[var(--border-subtle)] px-3 py-2">
+                <p className="text-[10px] text-[var(--text-muted)]">Click to navigate and highlight this patient</p>
+              </div>
+            </div>
           )}
         </div>
-
-        {showResults && hasResults && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)]">
-            {patientResults.length > 0 && (
-              <div>
-                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Patients</p>
-                {patientResults.map((p) => (
-                  <Link
-                    key={p.id}
-                    href="/patients"
-                    onClick={() => {
-                      setShowResults(false);
-                      setSearch('');
-                    }}
-                    className="flex items-center gap-3 px-3 py-2 text-[var(--text-strong)] transition-colors hover:bg-[var(--surface-hover)]"
-                  >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-brand-soft)] text-[10px] font-bold text-[var(--text-brand)]">
-                      {p.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold leading-tight text-[var(--text-strong)]">{p.fullName}</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">{p.patientCode} - {p.phone}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {campaignResults.length > 0 && (
-              <div className="border-t border-[var(--border-subtle)]">
-                <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Campaigns</p>
-                {campaignResults.map((c) => (
-                  <Link
-                    key={c.id}
-                    href="/campaigns"
-                    onClick={() => {
-                      setShowResults(false);
-                      setSearch('');
-                    }}
-                    className="flex items-center gap-3 px-3 py-2 text-[var(--text-strong)] transition-colors hover:bg-[var(--surface-hover)]"
-                  >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--surface-brand-soft)]">
-                      <span className="text-[10px] font-bold text-[var(--text-brand)]">C</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold leading-tight text-[var(--text-strong)]">{c.name}</p>
-                      <p className="text-[10px] text-[var(--text-muted)]">{c.type} - {c.status}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-[var(--border-subtle)] px-3 py-2">
-              <p className="text-[10px] text-[var(--text-muted)]">Showing top results - go to module for full list</p>
-            </div>
-          </div>
-        )}
-
-        {showResults && q.length >= 2 && !hasResults && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-raised)] px-3 py-3 shadow-[var(--shadow-lg)]">
-            <p className="text-center text-sm text-[var(--text-muted)]">No results for &quot;{q}&quot;</p>
-          </div>
-        )}
-      </div>
-
-      <div className="hidden shrink-0 items-center gap-2 rounded-full border border-[var(--border-brand-soft)] bg-[var(--surface-brand-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--text-brand)] sm:flex">
-        <span className="h-2 w-2 rounded-full bg-[#2C9942]" />
-        Direct Aid Somalia
-      </div>
+      )}
 
       <div className="flex-1" />
 

@@ -130,7 +130,6 @@ enum LensType {
 
 enum SurgeryStatus {
   Scheduled
-  InTheatre @map("In-Theatre")
   Completed
   Cancelled
   Postponed
@@ -421,6 +420,7 @@ model FollowUp {
 
   @@index([patientId], map: "idx_follow_ups_patient_id")
   @@index([surgeryId], map: "idx_follow_ups_surgery_id")
+  @@unique([surgeryId, milestone], map: "follow_ups_surgery_id_milestone_key")
   @@index([surgeryId, milestone], map: "idx_follow_ups_surgery_milestone")
   @@index([campaignId], map: "idx_follow_ups_campaign_id")
   @@index([campaignRegionId], map: "idx_follow_ups_campaign_region_id")

@@ -22,7 +22,7 @@ import { defaultOperationDistrict, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions
 import { usePermissions } from '@/lib/auth';
 import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2 } from 'lucide-react';
 
-const TYPES: CampaignType[] = ['Cataract Surgery Outreach', 'Eye Vision Outreach'];
+const TYPES: CampaignType[] = ['Cataract Surgery Outreach'];
 const CAMPAIGN_STATUSES: CampaignStatus[] = ['Planned', 'Active', 'Completed', 'Suspended'];
 const PLAN_STATUSES: RegionalPlanStatus[] = ['On Track', 'Behind', 'Completed', 'Suspended'];
 
@@ -789,6 +789,9 @@ function PlanFields({ form, selected, regionalManagers, setForm, chooseRegion, c
         </Field>
         <Field label="Operation District *">
           <input value={form.operationDistrict} onChange={(e) => setForm((p) => ({ ...p, operationDistrict: e.target.value }))} className={F.input} />
+        </Field>
+        <Field label="Target Screenings *">
+          <input type="number" value={form.targetScreenings} min={0} onChange={(e) => setForm((p) => ({ ...p, targetScreenings: Number(e.target.value) }))} className={F.input} />
         </Field>
         <Field label="Target Surgeries *">
           <input type="number" value={form.targetSurgeries} min={0} onChange={(e) => setForm((p) => ({ ...p, targetSurgeries: Number(e.target.value) }))} className={F.input} />

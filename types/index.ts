@@ -129,14 +129,14 @@ export interface Screening {
   otherFindings: string;
   medicalHistory: string;
   currentMedications: string;
-  recommendation: 'No Surgery - Release' | 'Refer for Surgery' | 'Positive' | 'Further Investigation' | 'Glasses' | 'Follow-up';
+  recommendation: 'Discharge' | 'Refer for Surgery' | 'Positive' | 'Further Investigation' | 'Glasses' | 'Follow-up';
   notes: string;
   createdAt: string;
 }
 
 export type SurgeryEye = 'Right' | 'Left' | 'Both';
 export type LensType = 'PMMA' | 'Foldable Acrylic' | 'Hydrophilic' | 'Hydrophobic';
-export type SurgeryStatus = 'Scheduled' | 'In-Theatre' | 'Completed' | 'Cancelled' | 'Postponed';
+export type SurgeryStatus = 'Scheduled' | 'Completed' | 'Cancelled' | 'Postponed';
 
 export interface Surgery {
   id: string;

@@ -15,7 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     patient: { findUnique: vi.fn() },
     surgery: { findUnique: vi.fn() },
-    followUp: { findFirst: vi.fn(), create: vi.fn() },
+    followUp: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   },
 }));
 
@@ -36,6 +36,7 @@ import { actionCreateSurgery, actionUpdateSurgery } from '@/app/actions/surgerie
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as surgeryApi from '@/lib/api/surgeries';
+import { Prisma } from '@/lib/generated/prisma/client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,13 @@ const surgeryData = {
   performedAt: undefined,
 };
 
+const allFollowUpMilestoneRows = [
+  { milestone: 'Day1' },
+  { milestone: 'Week1' },
+  { milestone: 'Month1' },
+  { milestone: 'Month3' },
+];
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('actionCreateSurgery', () => {
@@ -85,6 +93,7 @@ describe('actionCreateSurgery', () => {
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
     vi.mocked(surgeryApi.createSurgery).mockResolvedValue(galmudugSurgery);
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue(allFollowUpMilestoneRows as never);
   });
 
   it('creates a scheduled surgery successfully', async () => {
@@ -125,8 +134,19 @@ describe('actionCreateSurgery', () => {
       performedAt: '2025-03-01T10:00:00.000Z',
     });
     expect(result.ok).toBe(true);
-    // Day 1, Week 1, Month 1 follow-ups should be created
-    expect(prisma.followUp.create).toHaveBeenCalledTimes(3);
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(4);
+    expect(prisma.followUp.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ milestone: 'Day1' }),
+    });
+    expect(prisma.followUp.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ milestone: 'Week1' }),
+    });
+    expect(prisma.followUp.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ milestone: 'Month1' }),
+    });
+    expect(prisma.followUp.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ milestone: 'Month3' }),
+    });
   });
 
   it('does not create duplicate follow-ups if they already exist', async () => {
@@ -175,6 +195,7 @@ describe('actionUpdateSurgery', () => {
     vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
     vi.mocked(surgeryApi.updateSurgery).mockResolvedValue(galmudugSurgery);
     vi.mocked(surgeryApi.fromPrisma).mockReturnValue(galmudugSurgery);
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue(allFollowUpMilestoneRows as never);
   });
 
   it('rejects Completed update without performedAt', async () => {
@@ -202,11 +223,10 @@ describe('actionUpdateSurgery', () => {
       performedAt: '2025-03-01T10:00:00.000Z',
     });
     expect(result.ok).toBe(true);
-    expect(prisma.followUp.create).toHaveBeenCalledTimes(3);
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(4);
   });
 
-  it('does not re-create follow-ups when already Completed', async () => {
-    // Before row is already Completed
+  it('fills missing follow-ups idempotently when already Completed', async () => {
     vi.mocked(prisma.surgery.findUnique).mockResolvedValue({
       ...rawSurgeryRow,
       status: 'Completed',
@@ -216,6 +236,33 @@ describe('actionUpdateSurgery', () => {
       status: 'Completed',
       performedAt: '2025-03-01T10:00:00.000Z',
     });
+    vi.mocked(prisma.followUp.findFirst).mockImplementation(async ({ where }) => {
+      return where.milestone === 'Month3' ? null : ({ id: `existing-${where.milestone}` } as never);
+    });
+    vi.mocked(prisma.followUp.create).mockResolvedValue({} as never);
+
+    await actionUpdateSurgery('surgery-1', {
+      ...surgeryData,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(1);
+    expect(prisma.followUp.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ milestone: 'Month3' }),
+    });
+  });
+
+  it('does not duplicate follow-ups when already Completed and all milestones exist', async () => {
+    vi.mocked(prisma.surgery.findUnique).mockResolvedValue({
+      ...rawSurgeryRow,
+      status: 'Completed',
+    } as never);
+    vi.mocked(surgeryApi.updateSurgery).mockResolvedValue({
+      ...galmudugSurgery,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+    vi.mocked(prisma.followUp.findFirst).mockResolvedValue({ id: 'existing-fu' } as never);
 
     await actionUpdateSurgery('surgery-1', {
       ...surgeryData,
@@ -223,5 +270,58 @@ describe('actionUpdateSurgery', () => {
       performedAt: '2025-03-01T10:00:00.000Z',
     });
     expect(prisma.followUp.create).not.toHaveBeenCalled();
+  });
+
+  it('treats unique milestone conflicts as idempotent under concurrent completion', async () => {
+    vi.mocked(surgeryApi.updateSurgery).mockResolvedValue({
+      ...galmudugSurgery,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+    vi.mocked(prisma.followUp.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.followUp.create).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue(allFollowUpMilestoneRows as never);
+
+    const result = await actionUpdateSurgery('surgery-1', {
+      ...surgeryData,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.followUp.create).toHaveBeenCalledTimes(4);
+    expect(prisma.followUp.findMany).toHaveBeenCalledWith({
+      where: { surgeryId: 'surgery-1' },
+      select: { milestone: true },
+    });
+  });
+
+  it('fails completion if the four required follow-up milestones cannot be verified', async () => {
+    vi.mocked(surgeryApi.updateSurgery).mockResolvedValue({
+      ...galmudugSurgery,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+    vi.mocked(prisma.followUp.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.followUp.create).mockResolvedValue({} as never);
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue([
+      { milestone: 'Day1' },
+      { milestone: 'Week1' },
+      { milestone: 'Month1' },
+    ] as never);
+
+    const result = await actionUpdateSurgery('surgery-1', {
+      ...surgeryData,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Month3/);
   });
 });

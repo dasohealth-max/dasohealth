@@ -31,7 +31,7 @@ export async function getAllMedications(): Promise<FollowUpMedication[]> {
 export async function checkAndMarkOverdue(): Promise<void> {
   const actor = await requireActor('followups', 'edit');
   if ('error' in actor) throw new Error(actor.error);
-  return apiCheckAndMarkOverdue(scopedRegionWhere(actor));
+  await apiCheckAndMarkOverdue(scopedRegionWhere(actor));
 }
 
 export async function getMedicationsForFollowUp(followUpId: string): Promise<FollowUpMedication[]> {
@@ -89,6 +89,7 @@ export async function getFollowUpsPaginated(params: {
       OR: [
         { patientName: { contains: params.search, mode: 'insensitive' } },
         { region: { contains: params.search, mode: 'insensitive' } },
+        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
       ],
     }),
   };

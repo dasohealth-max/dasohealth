@@ -85,11 +85,30 @@ export default function PatientsPage() {
   const [showForm,     setShowForm]     = useState(false);
   const [saveError,    setSaveError]    = useState('');
   const [isLoading,    setIsLoading]    = useState(true);
-  const [search,       setSearch]       = useState('');
+  const [search,       setSearch]       = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('highlight') ?? '';
+  });
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null);
+  const [highlightCode, setHighlightCode] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('highlight') ?? '';
+  });
+
+  // On mount: clear the one-time highlight state and clean up the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('highlight');
+    if (!code) return;
+    const timer = setTimeout(() => {
+      setHighlightCode('');
+      window.history.replaceState({}, '', '/patients');
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Debounce search → reset to page 1 when it fires
   useEffect(() => {
@@ -335,7 +354,7 @@ export default function PatientsPage() {
             <table className="w-full text-sm">
               <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
-                  {['Code', 'Patient', 'Phone', 'Region / City', 'Status', 'Registered By', ''].map((h) => (
+                  {['#', 'Code', 'Patient', 'Phone', 'Region / City', 'Status', 'Registered By', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">
                       {h}
                     </th>
@@ -345,18 +364,19 @@ export default function PatientsPage() {
               <tbody>
                 {isLoading && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-sm text-[#647184]">Loading patients...</td>
+                    <td colSpan={8} className="py-12 text-center text-sm text-[#647184]">Loading patients...</td>
                   </tr>
                 )}
                 {!isLoading && patients.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-sm text-[#647184]">
+                    <td colSpan={8} className="py-12 text-center text-sm text-[#647184]">
                       {hasFilters ? 'No patients match the current filters.' : 'No patients registered yet.'}
                     </td>
                   </tr>
                 )}
-                {!isLoading && patients.map((patient) => (
-                  <tr key={patient.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                {!isLoading && patients.map((patient, index) => (
+                  <tr key={patient.id} className={`border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA] ${patient.patientCode === highlightCode ? 'animate-row-highlight' : ''}`}>
+                    <td className="px-4 py-3.5 text-xs text-[#647184]">{(page - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{patient.fullName}</p>
@@ -620,4 +640,3 @@ function applyRegionalPlanContext(form: PatientForm, campaign: Campaign, plan: N
     district:          plan.operationDistrict,
   };
 }
-

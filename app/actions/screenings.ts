@@ -27,7 +27,7 @@ const ScreeningSchema = z.object({
   otherFindings: z.string(),
   medicalHistory: z.string(),
   currentMedications: z.string(),
-  recommendation: z.enum(['No Surgery - Release', 'Refer for Surgery', 'Positive', 'Further Investigation', 'Glasses', 'Follow-up']),
+  recommendation: z.enum(['Discharge', 'Refer for Surgery', 'Positive', 'Further Investigation', 'Glasses', 'Follow-up']),
   notes: z.string(),
   patientName: z.string().optional(),
   region: z.string().optional(),
@@ -57,6 +57,7 @@ export async function getScreeningHistoryPaginated(params: {
       OR: [
         { patientName: { contains: params.search, mode: 'insensitive' } },
         { region: { contains: params.search, mode: 'insensitive' } },
+        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
       ],
     }),
   };
@@ -232,7 +233,10 @@ export async function actionUpdateScreening(
   }
 }
 
-export async function actionDeleteScreening(id: string): Promise<ActionResult> {
+export async function actionDeleteScreening(id: string): Promise<ActionResult<{
+  patientId: string;
+  screeningStatus: 'Awaiting Screening' | 'Screened';
+} | null>> {
   const actor = await requireActor('screening', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
 
@@ -243,7 +247,19 @@ export async function actionDeleteScreening(id: string): Promise<ActionResult> {
       if (denied) return denied;
     }
     await deleteScreening(id);
+    let patientStatus: 'Awaiting Screening' | 'Screened' | null = null;
+    if (before?.patientId) {
+      const remainingScreenings = await prisma.screening.count({
+        where: { patientId: before.patientId },
+      });
+      patientStatus = remainingScreenings > 0 ? 'Screened' : 'Awaiting Screening';
+      await prisma.patient.update({
+        where: { id: before.patientId },
+        data: { screeningStatus: patientStatus },
+      });
+    }
     updateTag('screenings');
+    updateTag('patients');
     after(() => auditLog({
       actor,
       action: 'delete',
@@ -254,7 +270,12 @@ export async function actionDeleteScreening(id: string): Promise<ActionResult> {
       details: 'Deleted screening',
       before,
     }));
-    return { ok: true, data: null };
+    return {
+      ok: true,
+      data: before?.patientId && patientStatus
+        ? { patientId: before.patientId, screeningStatus: patientStatus }
+        : null,
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

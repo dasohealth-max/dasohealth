@@ -14,6 +14,7 @@ vi.mock('@/lib/auth-server', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn(),
     campaignRegion: { findFirst: vi.fn() },
     patient: {
       findFirst: vi.fn(),
@@ -116,9 +117,13 @@ describe('getPatientRegistrationCampaigns', () => {
 describe('actionCreatePatient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.patient.findFirst).mockReset();
+    vi.mocked(prisma.patient.create).mockReset();
+    vi.mocked(prisma.$queryRaw).mockReset();
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.campaignRegion.findFirst).mockResolvedValue(campaignScope as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ max: 0 }] as never);
     vi.mocked(prisma.patient.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.patient.create).mockResolvedValue(rawPatientRow as never);
     vi.mocked(patientApi.fromPrisma).mockReturnValue(galmudugPatient);
@@ -189,7 +194,7 @@ describe('actionCreatePatient', () => {
     expect(prisma.patient.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          patientCode: `EC-${new Date().getFullYear()}-0001`,
+          patientCode: 'G1',
         }),
       }),
     );
@@ -200,13 +205,14 @@ describe('actionCreatePatient', () => {
     vi.mocked(prisma.patient.findFirst)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
-      patientCode: `EC-${new Date().getFullYear()}-0042`,
+      patientCode: 'G42',
     } as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ max: 42 }] as never);
     await actionCreatePatient(patientInput);
     expect(prisma.patient.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          patientCode: `EC-${new Date().getFullYear()}-0043`,
+          patientCode: 'G43',
         }),
       }),
     );
@@ -223,7 +229,7 @@ describe('actionCreatePatient', () => {
   it('rejects duplicate patient name and phone inside the same campaign', async () => {
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
     vi.mocked(prisma.patient.findFirst).mockResolvedValueOnce({
-      patientCode: 'EC-2026-0007',
+      patientCode: 'G7',
       fullName: 'Amina Hassan',
     } as never);
 

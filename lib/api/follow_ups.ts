@@ -169,13 +169,14 @@ export async function deleteFollowUp(id: string): Promise<void> {
   await prisma.followUp.delete({ where: { id } });
 }
 
-export async function checkAndMarkOverdue(where: { region?: string } = {}): Promise<void> {
+export async function checkAndMarkOverdue(where: { region?: string } = {}): Promise<number> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  await prisma.followUp.updateMany({
+  const result = await prisma.followUp.updateMany({
     where: { ...where, status: { in: ['Pending', 'Due'] as never[] }, dueDate: { lt: today } },
     data: { status: 'Overdue' as never },
   });
+  return result.count;
 }
 
 export async function createMedication(

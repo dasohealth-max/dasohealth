@@ -61,7 +61,6 @@ export type RegionPerformanceItem = {
   patients: number;
   screenings: number;
   scheduled: number;
-  inTheatre: number;
   completed: number;
   postponed: number;
   cancelled: number;
@@ -98,7 +97,6 @@ export type ReportAggregation = {
     screeningCount: number;
     surgeryTarget: number;
     surgeriesScheduled: number;
-    surgeriesInTheatre: number;
     surgeriesCompleted: number;
     surgeriesPostponed: number;
     surgeriesCancelled: number;
@@ -190,7 +188,6 @@ function computeRegionPerf(
     patients: rp.length,
     screenings: rs.length,
     scheduled: rsu.filter((s) => s.status === 'Scheduled').length,
-    inTheatre: rsu.filter((s) => s.status === 'In-Theatre').length,
     completed: done,
     postponed: rsu.filter((s) => s.status === 'Postponed').length,
     cancelled: rsu.filter((s) => s.status === 'Cancelled').length,
@@ -255,7 +252,6 @@ export async function getReportAggregation(params: {
     0,
   );
   const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
-  const surgeriesInTheatre = surgeries.filter((s) => s.status === 'In-Theatre').length;
   const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
   const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
   const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
@@ -315,7 +311,6 @@ export async function getReportAggregation(params: {
       screeningCount: screenings.length,
       surgeryTarget,
       surgeriesScheduled,
-      surgeriesInTheatre,
       surgeriesCompleted,
       surgeriesPostponed,
       surgeriesCancelled,
@@ -331,13 +326,12 @@ export async function getReportAggregation(params: {
     funnelData: [
       { step: 'Registered', count: patients.length },
       { step: 'Screened', count: screenings.length },
-      { step: 'Surgery Booked', count: surgeriesScheduled + surgeriesInTheatre + surgeriesCompleted },
+      { step: 'Surgery Booked', count: surgeriesScheduled + surgeriesCompleted },
       { step: 'Surg. Completed', count: surgeriesCompleted },
       { step: 'Follow-up Done', count: completedFollowUps },
     ],
     surgeryStatusData: [
       { name: 'Scheduled', value: surgeriesScheduled, fill: '#4B5666' },
-      { name: 'In-Theatre', value: surgeriesInTheatre, fill: '#6FC587' },
       { name: 'Completed', value: surgeriesCompleted, fill: '#2C9942' },
       { name: 'Postponed', value: surgeriesPostponed, fill: '#F59E0B' },
       { name: 'Cancelled', value: surgeriesCancelled, fill: '#E53935' },

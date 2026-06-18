@@ -244,7 +244,7 @@ export default function FollowUpsPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-[#141920]">Follow-ups</h1>
-          <p className="text-sm text-[#4B5666]">Day 1, Week 1 and Month 1 follow-ups after completed surgery</p>
+          <p className="text-sm text-[#4B5666]">Day 1, Week 1, Month 1, and Month 3 follow-ups after completed surgery</p>
         </div>
         {showForm && (
           <Button variant="outline" onClick={closeForm} className="gap-2 rounded-xl">

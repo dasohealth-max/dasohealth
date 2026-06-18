@@ -24,8 +24,17 @@ const ROUTE_MODULES: { path: string; module: AppModule }[] = [
   { path: '/settings', module: 'settings' },
 ];
 
+function matches(pathname: string, path: string): boolean {
+  return pathname === path || pathname.startsWith(path + '/');
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
+
+  const isProtected = PROTECTED.some((path) => matches(pathname, path));
+  const shouldCheckUser = isProtected || pathname === '/login';
+  if (!shouldCheckUser) return response;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -49,11 +58,6 @@ export async function proxy(request: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-  const { pathname } = request.nextUrl;
-
-  const isProtected = PROTECTED.some(
-    (path) => pathname === path || pathname.startsWith(path + '/')
-  );
 
   if (isProtected && !user) {
     const loginUrl = new URL('/login', request.url);
@@ -63,9 +67,7 @@ export async function proxy(request: NextRequest) {
 
   if (isProtected && user) {
     const role = String(user.app_metadata?.role ?? user.user_metadata?.role ?? '');
-    const current = ROUTE_MODULES.find(
-      (route) => pathname === route.path || pathname.startsWith(route.path + '/')
-    );
+    const current = ROUTE_MODULES.find((route) => matches(pathname, route.path));
 
     if (current && !canAccess(role, current.module)) {
       return NextResponse.redirect(new URL(defaultPathForRole(role), request.url));

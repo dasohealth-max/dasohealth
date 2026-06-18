@@ -17,16 +17,15 @@ const PAGE_SIZE = 50;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUSES: SurgeryStatus[] = ['Scheduled', 'In-Theatre', 'Completed', 'Cancelled', 'Postponed'];
+const STATUSES: SurgeryStatus[] = ['Scheduled', 'Completed', 'Cancelled', 'Postponed'];
 const EYES: SurgeryEye[]        = ['Right', 'Left', 'Both'];
 const LENSES: LensType[]        = ['PMMA', 'Foldable Acrylic', 'Hydrophilic', 'Hydrophobic'];
 
 const STATUS_STYLE: Record<SurgeryStatus, string> = {
-  Scheduled:    'bg-[#EBF7EE] text-[#4B5666]',
-  'In-Theatre': 'bg-[#A6DCB5] text-[#002E63]',
-  Completed:    'bg-[#EBF7EE] text-[#2C9942]',
-  Cancelled:    'bg-[#FDECEB] text-[#E53935]',
-  Postponed:    'bg-[#FFF5E6] text-[#F59E0B]',
+  Scheduled: 'bg-[#EBF7EE] text-[#4B5666]',
+  Completed: 'bg-[#EBF7EE] text-[#2C9942]',
+  Cancelled: 'bg-[#FDECEB] text-[#E53935]',
+  Postponed: 'bg-[#FFF5E6] text-[#F59E0B]',
 };
 
 // Shared field styles
@@ -169,7 +168,7 @@ export default function SurgeriesPage() {
         open={!!completeTarget}
         title="Mark Surgery as Completed"
         description={completeTarget
-          ? `Mark "${completeTarget.patientName}"'s surgery as completed? This will automatically create Day 1 and Week 1 follow-up records.`
+          ? `Mark "${completeTarget.patientName}"'s surgery as completed? This will automatically create Day 1, Week 1, Month 1, and Month 3 follow-up records.`
           : ''}
         confirmLabel="Mark Completed"
         danger={false}
@@ -276,22 +275,23 @@ export default function SurgeriesPage() {
             <table className="w-full min-w-200 text-sm">
               <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
-                  {['Patient', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''].map((h) => (
+                  {['#', 'Patient', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={9} className="py-12 text-center text-sm text-[#647184]">Loading surgeries...</td></tr>
+                  <tr><td colSpan={10} className="py-12 text-center text-sm text-[#647184]">Loading surgeries...</td></tr>
                 )}
                 {!isLoading && surgeries.length === 0 && (
-                  <tr><td colSpan={9} className="py-12 text-center text-sm text-[#647184]">
+                  <tr><td colSpan={10} className="py-12 text-center text-sm text-[#647184]">
                     {hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}
                   </td></tr>
                 )}
-                {!isLoading && surgeries.map((surgery) => (
+                {!isLoading && surgeries.map((surgery, index) => (
                   <tr key={surgery.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+                    <td className="px-4 py-3.5 text-xs text-[#647184]">{(page - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{surgery.patientName}</p>
                       {surgery.completedByName && <p className="text-xs text-[#647184]">by {surgery.completedByName}</p>}
@@ -491,4 +491,3 @@ function SurgeryFormBody({
     </div>
   );
 }
-
