@@ -9,6 +9,7 @@ import { surgeryStatusFromApp } from '@/lib/prisma-enums';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
 import { Prisma } from '@/lib/generated/prisma/client';
+import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays as addScheduleDays } from '@/lib/follow-up-schedule';
 
 const SurgerySchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
@@ -57,6 +58,7 @@ export async function getSurgeriesPaginated(params: {
         { region: { contains: params.search, mode: 'insensitive' } },
         { surgeonName: { contains: params.search, mode: 'insensitive' } },
         { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
+        { patient: { phone: { contains: params.search } } },
       ],
     }),
   };
@@ -69,7 +71,7 @@ export async function getSurgeriesPaginated(params: {
       where,
       skip,
       take: pageSize,
-      include: { patient: { select: { patientCode: true } } },
+      include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
       orderBy: { scheduledAt: 'desc' },
     }),
     prisma.surgery.count({ where }),
@@ -79,12 +81,6 @@ export async function getSurgeriesPaginated(params: {
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
-const REQUIRED_FOLLOW_UP_MILESTONES = [
-  ['Day1', 1],
-  ['Week1', 7],
-  ['Month1', 30],
-] as const;
-
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
@@ -108,9 +104,9 @@ async function deriveScope(data: Omit<Surgery, 'id' | 'createdAt'>) {
 
 async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
   const base = new Date(performedAt);
-  for (const [milestone, days] of REQUIRED_FOLLOW_UP_MILESTONES) {
+  for (const rule of ACTIVE_FOLLOW_UP_SCHEDULE) {
     const exists = await prisma.followUp.findFirst({
-      where: { surgeryId: surgery.id, milestone: milestone as never },
+      where: { surgeryId: surgery.id, milestone: rule.prismaMilestone as never },
       select: { id: true },
     });
     if (exists) continue;
@@ -123,8 +119,8 @@ async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
           campaignId: surgery.campaignId,
           campaignRegionId: surgery.campaignRegionId,
           region: surgery.region,
-          milestone: milestone as never,
-          dueDate: new Date(base.getTime() + days * 86400_000),
+          milestone: rule.prismaMilestone as never,
+          dueDate: addScheduleDays(base, rule.dueOffsetDays),
           status: 'Pending' as never,
           needsDoctorReview: false,
           doctorReviewStatus: 'NotNeeded' as never,
@@ -146,8 +142,8 @@ async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
     select: { milestone: true },
   });
   const existingMilestones = new Set(rows.map((row) => String(row.milestone)));
-  const missing = REQUIRED_FOLLOW_UP_MILESTONES
-    .map(([milestone]) => milestone)
+  const missing = ACTIVE_FOLLOW_UP_SCHEDULE
+    .map((rule) => rule.prismaMilestone)
     .filter((milestone) => !existingMilestones.has(milestone));
   if (missing.length > 0) {
     throw new Error(`Missing follow-up milestones after surgery completion: ${missing.join(', ')}`);

@@ -23,8 +23,9 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { ACTIVE_FOLLOW_UP_MILESTONES } from '@/lib/follow-up-schedule';
 
-const MILESTONES = ['Day 1', 'Week 1', 'Month 1'] as const;
+const MILESTONES = ACTIVE_FOLLOW_UP_MILESTONES;
 
 export default function ReportsPage() {
   const { user, role } = usePermissions();

@@ -146,6 +146,8 @@ export interface Surgery {
   id: string;
   patientId: string;
   patientCode?: string;
+  patientPhone?: string;
+  patientEmergencyPhone?: string;
   patientName: string;
   campaignId: string;
   campaignRegionId?: string;

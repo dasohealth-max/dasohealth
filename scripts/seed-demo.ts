@@ -142,7 +142,7 @@ async function main() {
         endDate: campaign.endDate,
         targetScreenings: 56,
         targetSurgeries: 44,
-        targetFollowUps: 54,
+        targetFollowUps: 36,
         description: campaign.description,
         notes: campaign.notes,
       },
@@ -307,7 +307,6 @@ async function main() {
         const followUpPatterns = [
           { milestone: 'Day1', status: 'Completed', dueOffset: 1, completedOffset: 1, review: false },
           { milestone: 'Week1', status: surgeryLocalIndex % 3 === 0 ? 'Overdue' : surgeryLocalIndex % 3 === 1 ? 'Due' : 'Completed', dueOffset: 7, completedOffset: 8, review: surgeryLocalIndex % 3 === 0 },
-          { milestone: 'Month1', status: surgeryLocalIndex % 4 === 0 ? 'Pending' : 'Completed', dueOffset: 30, completedOffset: 31, review: surgeryLocalIndex % 5 === 0 },
         ] as const;
 
         for (const pattern of followUpPatterns) {
@@ -339,7 +338,7 @@ async function main() {
               doctorDiagnosis: reviewCompleted ? 'Expected post-operative inflammation.' : '',
               doctorTreatmentPlan: reviewCompleted ? 'Continue drops and review at next milestone.' : '',
               doctorNotes: reviewCompleted ? 'No urgent intervention required.' : '',
-              nextAppointmentDate: pattern.milestone === 'Month1' ? addDays(TODAY, 45) : null,
+              nextAppointmentDate: null,
               completedById: isCompleted ? plan.screenerId : '',
               completedByName: isCompleted ? plan.screenerName : '',
               createdAt: addDays(performedAt ?? TODAY, 0),

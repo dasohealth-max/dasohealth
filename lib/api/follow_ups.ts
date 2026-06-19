@@ -3,6 +3,7 @@ import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { followUpMilestoneToApp, followUpMilestoneFromApp, doctorReviewStatusToApp, doctorReviewStatusFromApp, medicationStatusToApp, medicationStatusFromApp } from '@/lib/prisma-enums';
 import type { FollowUp, FollowUpMedication } from '@/types';
+import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays, startOfDay } from '@/lib/follow-up-schedule';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.followUp.findFirst>>> & {
   patient?: { patientCode: string } | null;
@@ -194,13 +195,57 @@ export async function deleteFollowUp(id: string): Promise<void> {
 }
 
 export async function checkAndMarkOverdue(where: { region?: string } = {}): Promise<number> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const result = await prisma.followUp.updateMany({
-    where: { ...where, status: { in: ['Pending', 'Due'] as never[] }, dueDate: { lt: today } },
-    data: { status: 'Overdue' as never },
-  });
-  return result.count;
+  const today = startOfDay(new Date());
+  const mutableStatuses = ['Pending', 'Due', 'Overdue'] as never[];
+  let updated = 0;
+
+  for (const rule of ACTIVE_FOLLOW_UP_SCHEDULE) {
+    const dueStart = addDays(today, -(rule.dueWindowDays - 1));
+    const overdueStart = addDays(today, -(rule.missedAfterDueDays - 1));
+
+    const [pending, due, overdue, missed] = await Promise.all([
+      prisma.followUp.updateMany({
+        where: {
+          ...where,
+          milestone: rule.prismaMilestone as never,
+          status: { in: mutableStatuses },
+          dueDate: { gt: today },
+        },
+        data: { status: 'Pending' as never },
+      }),
+      prisma.followUp.updateMany({
+        where: {
+          ...where,
+          milestone: rule.prismaMilestone as never,
+          status: { in: mutableStatuses },
+          dueDate: { lte: today, gte: dueStart },
+        },
+        data: { status: 'Due' as never },
+      }),
+      prisma.followUp.updateMany({
+        where: {
+          ...where,
+          milestone: rule.prismaMilestone as never,
+          status: { in: mutableStatuses },
+          dueDate: { lt: dueStart, gte: overdueStart },
+        },
+        data: { status: 'Overdue' as never },
+      }),
+      prisma.followUp.updateMany({
+        where: {
+          ...where,
+          milestone: rule.prismaMilestone as never,
+          status: { in: mutableStatuses },
+          dueDate: { lt: overdueStart },
+        },
+        data: { status: 'Missed' as never },
+      }),
+    ]);
+
+    updated += pending.count + due.count + overdue.count + missed.count;
+  }
+
+  return updated;
 }
 
 export async function createMedication(

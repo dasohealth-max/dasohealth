@@ -6,7 +6,7 @@ import type { Surgery } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.surgery.findFirst>>> & {
-  patient?: { patientCode: string } | null;
+  patient?: { patientCode: string; phone: string; emergencyPhone: string } | null;
 };
 type ScreeningSnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>>;
 type SurgeryScreeningResult = NonNullable<Surgery['screeningResult']>;
@@ -16,6 +16,8 @@ export function fromPrisma(row: Row): Surgery {
     id: row.id,
     patientId: row.patientId,
     patientCode: row.patient?.patientCode,
+    patientPhone: row.patient?.phone,
+    patientEmergencyPhone: row.patient?.emergencyPhone,
     patientName: row.patientName,
     campaignId: row.campaignId,
     campaignRegionId: row.campaignRegionId ?? undefined,
@@ -43,7 +45,7 @@ export const getAllSurgeries = unstable_cache(
   async (where: { region?: string } = {}): Promise<Surgery[]> => {
     const rows = await prisma.surgery.findMany({
       where,
-      include: { patient: { select: { patientCode: true } } },
+      include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
       orderBy: { scheduledAt: 'desc' },
     });
     return rows.map(fromPrisma);
@@ -91,7 +93,7 @@ export async function attachScreeningResults(rows: Row[]): Promise<Surgery[]> {
 export async function getSurgeriesWithScreeningResults(where: Prisma.SurgeryWhereInput = {}): Promise<Surgery[]> {
   const rows = await prisma.surgery.findMany({
     where,
-    include: { patient: { select: { patientCode: true } } },
+    include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
     orderBy: { scheduledAt: 'desc' },
   });
   return attachScreeningResults(rows);
@@ -126,6 +128,7 @@ export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Pr
       completedById: data.completedById,
       completedByName: data.completedByName,
     },
+    include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
   });
   return fromPrisma(row);
 }
@@ -154,6 +157,7 @@ export async function updateSurgery(id: string, data: Omit<Surgery, 'id' | 'crea
       completedById: data.completedById,
       completedByName: data.completedByName,
     },
+    include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
   });
   return fromPrisma(row);
 }

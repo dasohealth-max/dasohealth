@@ -15,6 +15,7 @@ import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@
 import { prisma } from '@/lib/prisma';
 import type { FollowUp, FollowUpMedication } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
+import { ACTIVE_FOLLOW_UP_PRISMA_MILESTONES } from '@/lib/follow-up-schedule';
 
 export async function getAllFollowUps(): Promise<FollowUp[]> {
   const actor = await requireActor('followups', 'view');
@@ -61,12 +62,13 @@ export type FollowUpGroup = {
 };
 
 function tabWhere(tab: FollowUpTab): Prisma.FollowUpWhereInput {
-  if (tab === 'due') return { status: { in: ['Pending', 'Due'] as never[] } };
-  if (tab === 'overdue') return { status: 'Overdue' as never };
-  if (tab === 'missed') return { status: 'Missed' as never };
-  if (tab === 'needs-review') return { needsDoctorReview: true, doctorReviewStatus: 'Pending' as never };
-  if (tab === 'review-completed') return { doctorReviewStatus: 'Completed' as never };
-  return {};
+  const activeMilestones = { milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] } };
+  if (tab === 'due') return { ...activeMilestones, status: 'Due' as never };
+  if (tab === 'overdue') return { ...activeMilestones, status: 'Overdue' as never };
+  if (tab === 'missed') return { ...activeMilestones, status: 'Missed' as never };
+  if (tab === 'needs-review') return { ...activeMilestones, needsDoctorReview: true, doctorReviewStatus: 'Pending' as never };
+  if (tab === 'review-completed') return { ...activeMilestones, doctorReviewStatus: 'Completed' as never };
+  return activeMilestones;
 }
 
 export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number>> {
@@ -128,6 +130,7 @@ export async function getFollowUpsPaginated(params: {
     where: {
       ...scopedRegionWhere(actor),
       surgeryId: { in: surgeryIds },
+      milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] },
     },
     include: { patient: { select: { patientCode: true } } },
     orderBy: [{ surgeryId: 'asc' }, { dueDate: 'asc' }],

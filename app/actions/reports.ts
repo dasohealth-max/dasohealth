@@ -21,6 +21,7 @@ import {
 } from '@/lib/reporting';
 import type { Campaign, Patient, Screening, Surgery, FollowUp, FollowUpMedication } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
+import { ACTIVE_FOLLOW_UP_MILESTONES } from '@/lib/follow-up-schedule';
 
 type ActionResult<T = null> =
   | { ok: true; data: T }
@@ -241,7 +242,8 @@ export async function getReportAggregation(params: {
   const patients = filterRowsByRegisteredCampaign(patientRows.map(patientFromPrisma), scopedCampaignIds);
   const screenings = filterRowsByRegisteredCampaign(screeningRows.map(screeningFromPrisma), scopedCampaignIds);
   const surgeries = filterRowsByRegisteredCampaign(surgeryRows.map(surgeryFromPrisma), scopedCampaignIds);
-  const followUps = filterRowsByRegisteredCampaign(followUpRows.map(followUpFromPrisma), scopedCampaignIds);
+  const followUps = filterRowsByRegisteredCampaign(followUpRows.map(followUpFromPrisma), scopedCampaignIds)
+    .filter((followUp) => (ACTIVE_FOLLOW_UP_MILESTONES as readonly string[]).includes(followUp.milestone));
   const followUpIds = new Set(followUps.map((followUp) => followUp.id));
   const medications = medRows
     .map(medFromPrisma)
@@ -260,8 +262,7 @@ export async function getReportAggregation(params: {
   const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
   const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
 
-  const MILESTONES = ['Day 1', 'Week 1', 'Month 1'] as const;
-  const followUpByMilestone = MILESTONES.map((m) => {
+  const followUpByMilestone = ACTIVE_FOLLOW_UP_MILESTONES.map((m) => {
     const mFu = followUps.filter((fu) => fu.milestone === m);
     return {
       milestone: m,

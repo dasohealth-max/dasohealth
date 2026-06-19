@@ -21,6 +21,7 @@ import { toast } from '@/components/ui/toast';
 import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
+import { ACTIVE_FOLLOW_UP_SCHEDULE } from '@/lib/follow-up-schedule';
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Trash2, UserX, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
@@ -33,7 +34,7 @@ const MED_STATUSES: MedicationStatus[] = ['Prescribed', 'Taking', 'Completed', '
 type Tab = 'due' | 'overdue' | 'missed' | 'needs-review' | 'review-completed' | 'all';
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'due', label: 'Due Follow-ups' },
+  { id: 'due', label: 'Due Now' },
   { id: 'overdue', label: 'Overdue' },
   { id: 'missed', label: 'Missed' },
   { id: 'needs-review', label: 'Needs Doctor Review' },
@@ -41,11 +42,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'all', label: 'All Follow-ups' },
 ];
 
-const MILESTONE_FLOW = [
-  { milestone: 'Day 1', timing: '24 hours', focus: 'Early recovery check' },
-  { milestone: 'Week 1', timing: '7 days', focus: 'Healing and medicines' },
-  { milestone: 'Month 1', timing: '30 days', focus: 'Vision and complications' },
-] as const;
+const MILESTONE_FLOW = ACTIVE_FOLLOW_UP_SCHEDULE;
 
 const BLANK: Omit<FollowUp, 'id' | 'createdAt'> = {
   patientId: '', patientCode: '', patientName: '', surgeryId: '', campaignId: '', region: '',
@@ -85,12 +82,12 @@ function drBadge(status: DoctorReviewStatus) {
 }
 
 function milestoneBadge(m: string) {
-  const c = m === 'Day 1' ? 'bg-[#EBF7EE] text-[#002E63]' : m === 'Week 1' ? 'bg-[#A6DCB5] text-[#2C9942]' : 'bg-[#FFF5E6] text-[#F59E0B]';
+  const c = m === 'Day 1' ? 'bg-[#EBF7EE] text-[#002E63]' : 'bg-[#A6DCB5] text-[#2C9942]';
   return `rounded-full px-2 py-1 text-xs font-medium ${c}`;
 }
 
 function followUpBelongsToTab(followUp: FollowUp, target: Tab) {
-  if (target === 'due') return ['Pending', 'Due'].includes(followUp.status);
+  if (target === 'due') return followUp.status === 'Due';
   if (target === 'overdue') return followUp.status === 'Overdue';
   if (target === 'missed') return followUp.status === 'Missed';
   if (target === 'needs-review') return followUp.needsDoctorReview && followUp.doctorReviewStatus === 'Pending';
@@ -106,8 +103,9 @@ function groupSummary(group: FollowUpGroup) {
   const completed = group.followUps.filter((fu) => fu.status === 'Completed').length;
   const missed = group.followUps.filter((fu) => fu.status === 'Missed').length;
   const overdue = group.followUps.filter((fu) => fu.status === 'Overdue').length;
-  const pending = group.followUps.filter((fu) => ['Pending', 'Due'].includes(fu.status)).length;
-  return { completed, missed, overdue, pending, total: group.followUps.length };
+  const due = group.followUps.filter((fu) => fu.status === 'Due').length;
+  const pending = group.followUps.filter((fu) => fu.status === 'Pending').length;
+  return { completed, due, missed, overdue, pending, total: group.followUps.length };
 }
 
 function mostUrgentFollowUp(group: FollowUpGroup, target: Tab) {
@@ -139,7 +137,7 @@ function nextActionForCounts(counts: Record<Tab, number>) {
       tab: 'due' as Tab,
       title: 'Follow-ups due',
       count: counts.due,
-      detail: 'Complete today and keep the patient schedule current.',
+      detail: 'Patients are inside the active visit window.',
       tone: 'amber' as const,
       Icon: Clock,
     };
@@ -187,6 +185,9 @@ export default function FollowUpsPage() {
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
+  const [completeTarget, setCompleteTarget] = useState<FollowUp | null>(null);
+  const [missedTarget, setMissedTarget] = useState<FollowUp | null>(null);
 
   // Medications state
   const [medications, setMedications] = useState<FollowUpMedication[]>([]);
@@ -198,7 +199,12 @@ export default function FollowUpsPage() {
 
   // Mark overdue + load tab counts on mount
   useEffect(() => {
-    checkAndMarkOverdue().then(() => getFollowUpTabCounts()).then(setCounts);
+    checkAndMarkOverdue()
+      .then(() => getFollowUpTabCounts())
+      .then((nextCounts) => {
+        setCounts(nextCounts);
+        setStatusRefreshKey((current) => current + 1);
+      });
   }, []);
 
   // Debounce search, reset page
@@ -216,7 +222,7 @@ export default function FollowUpsPage() {
       })
       .catch(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
-  }, [tab, debouncedSearch, page]);
+  }, [tab, debouncedSearch, page, statusRefreshKey]);
 
   function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
     setForm((current) => {
@@ -305,8 +311,9 @@ export default function FollowUpsPage() {
     closeForm();
   }
 
-  async function complete(followUp: FollowUp) {
-    if (!confirm(`Mark ${followUp.milestone} follow-up for "${patientDisplayName(followUp.patientName, followUp.patientCode)}" as completed?`)) return;
+  async function confirmComplete() {
+    if (!completeTarget) return;
+    const followUp = completeTarget;
     const result = await actionUpdateFollowUp(followUp.id, {
       ...followUp,
       status: 'Completed',
@@ -323,10 +330,12 @@ export default function FollowUpsPage() {
     } else {
       toast({ title: 'Could not complete follow-up', description: result.error, variant: 'error' });
     }
+    setCompleteTarget(null);
   }
 
-  async function markMissed(followUp: FollowUp) {
-    if (!confirm(`Mark ${followUp.milestone} follow-up for "${patientDisplayName(followUp.patientName, followUp.patientCode)}" as missed?`)) return;
+  async function confirmMissed() {
+    if (!missedTarget) return;
+    const followUp = missedTarget;
     const result = await actionUpdateFollowUp(followUp.id, {
       ...followUp,
       status: 'Missed',
@@ -343,6 +352,7 @@ export default function FollowUpsPage() {
     } else {
       toast({ title: 'Could not mark follow-up missed', description: result.error, variant: 'error' });
     }
+    setMissedTarget(null);
   }
 
   // Medication handlers
@@ -424,12 +434,29 @@ export default function FollowUpsPage() {
         onConfirm={confirmDeleteMed}
         onCancel={() => setDeleteMedTarget(null)}
       />
+      <ConfirmDialog
+        open={!!completeTarget}
+        title="Complete Follow-up"
+        description={completeTarget ? `Mark ${completeTarget.milestone} follow-up for "${patientDisplayName(completeTarget.patientName, completeTarget.patientCode)}" as completed?` : ''}
+        confirmLabel="Mark Completed"
+        danger={false}
+        onConfirm={confirmComplete}
+        onCancel={() => setCompleteTarget(null)}
+      />
+      <ConfirmDialog
+        open={!!missedTarget}
+        title="Mark Follow-up as Missed"
+        description={missedTarget ? `Mark ${missedTarget.milestone} follow-up for "${patientDisplayName(missedTarget.patientName, missedTarget.patientCode)}" as missed?` : ''}
+        confirmLabel="Mark Missed"
+        onConfirm={confirmMissed}
+        onCancel={() => setMissedTarget(null)}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-[#141920]">Follow-ups</h1>
-          <p className="text-sm text-[#4B5666]">Day 1, Week 1, and Month 1 follow-ups after completed surgery</p>
+          <p className="text-sm text-[#4B5666]">Day 1 and Week 1 follow-ups after completed surgery</p>
         </div>
       </div>
 
@@ -441,10 +468,10 @@ export default function FollowUpsPage() {
               <p className="text-xs text-[#647184]">Completed surgery creates the follow-up schedule automatically.</p>
             </div>
             <span className="rounded-full bg-[#EBF7EE] px-2.5 py-1 text-xs font-semibold text-[#238038]">
-              3 required milestones
+              2 required milestones
             </span>
           </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {MILESTONE_FLOW.map((step, index) => (
               <div key={step.milestone} className="relative rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -452,7 +479,8 @@ export default function FollowUpsPage() {
                   <span className="text-[11px] font-semibold text-[#647184]">{step.timing}</span>
                 </div>
                 <p className="mt-3 text-sm font-semibold text-[#141920]">{step.focus}</p>
-                <p className="mt-1 text-xs text-[#647184]">Step {index + 1} of 3</p>
+                <p className="mt-1 text-xs text-[#647184]">{step.windowLabel}</p>
+                <p className="mt-1 text-xs text-[#647184]">Step {index + 1} of 2</p>
               </div>
             ))}
           </div>
@@ -821,9 +849,10 @@ export default function FollowUpsPage() {
                       </div>
                       <span className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="rounded-full bg-[#EBF7EE] px-2 py-1 font-semibold text-[#2C9942]">{summary.completed}/{summary.total} completed</span>
+                        {summary.due > 0 && <span className="rounded-full bg-[#FFF5E6] px-2 py-1 font-semibold text-[#A16207]">{summary.due} due</span>}
                         {summary.overdue > 0 && <span className="rounded-full bg-[#FDECEB] px-2 py-1 font-semibold text-[#E53935]">{summary.overdue} overdue</span>}
                         {summary.missed > 0 && <span className="rounded-full bg-[#FDECEB] px-2 py-1 font-semibold text-[#8A1F1D]">{summary.missed} missed</span>}
-                        {summary.pending > 0 && <span className="rounded-full bg-[#FFF5E6] px-2 py-1 font-semibold text-[#A16207]">{summary.pending} pending</span>}
+                        {summary.pending > 0 && <span className="rounded-full bg-[#EAEEF3] px-2 py-1 font-semibold text-[#4B5666]">{summary.pending} upcoming</span>}
                         <span className="rounded-full bg-[#EAEEF3] px-2 py-1 font-medium text-[#4B5666]">
                           Next: {urgent.milestone} · {urgent.status === 'Completed' ? 'done' : urgentDays < 0 ? `${Math.abs(urgentDays)}d overdue` : urgentDays === 0 ? 'today' : `${urgentDays}d`}
                         </span>
@@ -860,12 +889,12 @@ export default function FollowUpsPage() {
                             {can('followups', 'edit') && (
                               <div className="mt-3 flex justify-end gap-1">
                                 {!['Completed', 'Missed'].includes(fu.status) && (
-                                  <button onClick={() => complete(fu)} title="Mark complete" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
+                                  <button onClick={() => setCompleteTarget(fu)} title="Mark complete" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
                                     <CheckCircle size={14} />
                                   </button>
                                 )}
                                 {!['Completed', 'Missed'].includes(fu.status) && (
-                                  <button onClick={() => markMissed(fu)} title="Mark missed" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]">
+                                  <button onClick={() => setMissedTarget(fu)} title="Mark missed" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]">
                                     <UserX size={14} />
                                   </button>
                                 )}

@@ -141,7 +141,7 @@ The `updated` value may be greater than `0` if overdue follow-ups exist.
 - [ ] Screening Officer can create a screening.
 - [ ] A `Discharge` screening result saves without validation errors.
 - [ ] A surgery can be completed for a referred patient.
-- [ ] Completed surgery creates exactly Day 1, Week 1, and Month 1 follow-ups.
+- [ ] Completed surgery creates exactly Day 1 and Week 1 follow-ups.
 - [ ] Re-running completion or follow-up generation does not create duplicate milestones.
 - [ ] Follow-up Coordinator can complete a follow-up.
 - [ ] Reports page loads and exports expected report files.

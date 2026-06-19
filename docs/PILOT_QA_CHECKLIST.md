@@ -58,14 +58,13 @@ Use this checklist before and during the 1-week internal pilot. Run it in a stag
 - Open Surgeries.
 - Mark a scheduled surgery as `Completed` with a performed date.
 - Open Follow-ups.
-- Confirm exactly three milestones exist for that surgery:
+- Confirm exactly two milestones exist for that surgery:
   - Day 1
   - Week 1
-  - Month 1
 - Complete a Day 1 follow-up.
 - Mark a follow-up as needing doctor review.
 - Complete a doctor review.
-- Run the cron endpoint manually and confirm past-due pending follow-ups become `Overdue`.
+- Run the cron endpoint manually and confirm follow-ups move through `Due`, `Overdue`, and `Missed` based on their milestone windows.
 
 ## Reports And Export Flow
 

@@ -14,7 +14,7 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { CheckCircle, Pencil, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Search, Trash2, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -67,6 +67,21 @@ function screeningFindingLabel(screening: NonNullable<Surgery['screeningResult']
   return 'No major finding selected';
 }
 
+function sortScheduledQueue(surgeries: Surgery[]) {
+  return [...surgeries].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+}
+
+function sortHistory(surgeries: Surgery[]) {
+  return [...surgeries].sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+}
+
+function historySummary(surgeries: Surgery[]) {
+  const completed = surgeries.filter((surgery) => surgery.status === 'Completed').length;
+  const postponed = surgeries.filter((surgery) => surgery.status === 'Postponed').length;
+  const cancelled = surgeries.filter((surgery) => surgery.status === 'Cancelled').length;
+  return `${completed} completed, ${postponed} postponed, ${cancelled} cancelled`;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SurgeriesPage() {
@@ -87,6 +102,8 @@ export default function SurgeriesPage() {
   const [isLoading,      setIsLoading]      = useState(true);
   const [deleteTarget,   setDeleteTarget]   = useState<Surgery | null>(null);
   const [completeTarget, setCompleteTarget] = useState<Surgery | null>(null);
+  const [viewing,        setViewing]        = useState<Surgery | null>(null);
+  const [historyOpen,    setHistoryOpen]    = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
@@ -183,6 +200,10 @@ export default function SurgeriesPage() {
 
   const formInvalid = !form.patientId || !form.campaignId || !form.scheduledAt ||
     (form.status === 'Completed' && !form.performedAt);
+  const filteredMode = !!statusFilter;
+  const scheduledSurgeries = sortScheduledQueue(surgeries.filter((surgery) => surgery.status === 'Scheduled'));
+  const otherSurgeries = sortHistory(surgeries.filter((surgery) => surgery.status !== 'Scheduled'));
+  const visibleSurgeries = filteredMode ? sortHistory(surgeries) : scheduledSurgeries;
 
   return (
     <div className="space-y-5">
@@ -191,7 +212,7 @@ export default function SurgeriesPage() {
         open={!!completeTarget}
         title="Mark Surgery as Completed"
         description={completeTarget
-          ? `Mark "${patientDisplayName(completeTarget.patientName, completeTarget.patientCode)}"'s surgery as completed? This will automatically create Day 1, Week 1, and Month 1 follow-up records.`
+          ? `Mark "${patientDisplayName(completeTarget.patientName, completeTarget.patientCode)}"'s surgery as completed? This will automatically create Day 1 and Week 1 follow-up records.`
           : ''}
         confirmLabel="Mark Completed"
         danger={false}
@@ -211,6 +232,59 @@ export default function SurgeriesPage() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {viewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setViewing(null)} />
+          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-[#141920]">{patientDisplayName(viewing.patientName, viewing.patientCode)}</h2>
+                <p className="text-sm text-[#647184]">{viewing.region} · {viewing.operationDistrict}</p>
+              </div>
+              <button
+                onClick={() => setViewing(null)}
+                className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#141920]"
+                aria-label="Close surgery details"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <DetailValue label="Phone" value={viewing.patientPhone || '—'} />
+              <DetailValue label="Emergency Phone" value={viewing.patientEmergencyPhone || '—'} />
+              <DetailValue label="Status" value={viewing.status} />
+              <DetailValue label="Scheduled" value={formatDateTime(viewing.scheduledAt)} />
+              <DetailValue label="Performed" value={viewing.performedAt ? formatDateTime(viewing.performedAt) : '—'} />
+              <DetailValue label="Surgeon" value={viewing.surgeonName || '—'} />
+              <DetailValue label="Eye" value={viewing.eye} />
+              <DetailValue label="Lens" value={viewing.lensType} />
+              <DetailValue label="Pre-op VA" value={viewing.preOpVA || '—'} />
+              <DetailValue label="Post-op VA" value={viewing.postOpVA || '—'} />
+              <DetailValue label="Complications" value={viewing.complications || '—'} wide />
+              <DetailValue label="Surgery Notes" value={viewing.intraopNotes || '—'} wide />
+            </div>
+
+            {viewing.screeningResult && (
+              <div className="mt-4 rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#647184]">Screening Snapshot</p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <DetailValue label="Finding" value={screeningFindingLabel(viewing.screeningResult)} />
+                  <DetailValue label="Recommendation" value={viewing.screeningResult.recommendation} />
+                  <DetailValue label="Screened By" value={viewing.screeningResult.screenedByName || '—'} />
+                  <DetailValue label="VA Right / Left" value={`${viewing.screeningResult.vaRightUnaided} / ${viewing.screeningResult.vaLeftUnaided}`} />
+                  <DetailValue label="IOP Right / Left" value={`${viewing.screeningResult.iopRight ?? '—'} / ${viewing.screeningResult.iopLeft ?? '—'}`} />
+                  <DetailValue label="Screening Eye" value={viewing.screeningResult.eye} />
+                  <DetailValue label="Medical History" value={viewing.screeningResult.medicalHistory || '—'} wide />
+                  <DetailValue label="Current Medications" value={viewing.screeningResult.currentMedications || '—'} wide />
+                  <DetailValue label="Screening Notes" value={viewing.screeningResult.notes || '—'} wide />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Edit modal */}
       {showForm && editing && (
@@ -293,91 +367,485 @@ export default function SurgeriesPage() {
         </span>
       </div>
 
-      {/* Table */}
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-200 text-sm">
-              <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
-                <tr>
-                  {['#', 'Patient', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && (
-                  <TableSkeletonRows rows={8} columns={10} />
-                )}
-                {!isLoading && surgeries.length === 0 && (
-                  <tr><td colSpan={10} className="py-12 text-center text-sm text-[#647184]">
-                    {hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}
-                  </td></tr>
-                )}
-                {!isLoading && surgeries.map((surgery, index) => (
-                  <tr key={surgery.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
-                    <td className="px-4 py-3.5 text-xs text-[#647184]">{(page - 1) * PAGE_SIZE + index + 1}</td>
-                    <td className="px-4 py-3.5">
-                      <p className="font-medium text-[#141920]">{surgery.patientName}</p>
-                      <p className="font-mono text-xs text-[#647184]">
-                        {surgery.patientCode ?? 'No code'}{surgery.completedByName ? ` - by ${surgery.completedByName}` : ''}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <p className="text-[#141920]">{surgery.region}</p>
-                      <p className="text-xs text-[#647184]">{surgery.operationDistrict}</p>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[surgery.status]}`}>
-                        {surgery.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-[#4B5666]">
-                      <p>{surgery.eye}</p>
-                      <p className="text-xs text-[#647184]">{surgery.lensType}</p>
-                    </td>
-                    <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(surgery.scheduledAt)}</td>
-                    <td className="px-4 py-3.5 text-xs text-[#4B5666]">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '—'}</td>
-                    <td className="px-4 py-3.5 text-[#4B5666]">{surgery.surgeonName || '—'}</td>
-                    <td className="max-w-48 truncate px-4 py-3.5 text-xs text-[#4B5666]" title={surgery.intraopNotes || surgery.complications || undefined}>
-                      {surgery.intraopNotes || surgery.complications || '—'}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1">
-                        {surgery.status !== 'Completed' && can('surgeries', 'edit') && (
-                          <button
-                            onClick={() => setCompleteTarget(surgery)}
-                            className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
-                          >
-                            <CheckCircle size={11} /> Complete
-                          </button>
-                        )}
-                        {can('surgeries', 'edit') && (
-                          <button
-                            onClick={() => openEdit(surgery)}
-                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                        )}
-                        {can('surgeries', 'delete') && (
-                          <button
-                            onClick={() => setDeleteTarget(surgery)}
-                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
-        </CardContent>
-      </Card>
+      {filteredMode ? (
+        <SurgeryTable
+          title={`${statusFilter} Surgeries`}
+          subtitle={`${visibleSurgeries.length} matching ${statusFilter.toLowerCase()} record${visibleSurgeries.length === 1 ? '' : 's'}`}
+          rows={visibleSurgeries}
+          isLoading={isLoading}
+          emptyMessage={hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}
+          page={page}
+          canEdit={can('surgeries', 'edit')}
+          canDelete={can('surgeries', 'delete')}
+          onView={setViewing}
+          onComplete={setCompleteTarget}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+          compactScheduled
+        />
+      ) : (
+        <>
+          <SurgeryTable
+            title="Scheduled Surgery Queue"
+            subtitle="Patients waiting for surgery, sorted by nearest scheduled time"
+            rows={scheduledSurgeries}
+            isLoading={isLoading}
+            emptyMessage={hasFilters ? 'No scheduled surgeries match the current filters.' : 'No scheduled surgeries waiting.'}
+            page={page}
+            canEdit={can('surgeries', 'edit')}
+            canDelete={can('surgeries', 'delete')}
+          onView={setViewing}
+          onComplete={setCompleteTarget}
+          onEdit={openEdit}
+          onDelete={setDeleteTarget}
+          compactScheduled
+        />
+
+          <Card className="overflow-hidden border-0 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-3 border-b border-[#EAEEF3] bg-white px-4 py-3 text-left transition hover:bg-[#F8FAFC]"
+            >
+              <span>
+                <span className="block text-sm font-bold text-[#141920]">Other Surgeries</span>
+                <span className="mt-0.5 block text-xs text-[#647184]">{historySummary(otherSurgeries)}</span>
+              </span>
+              <span className="flex items-center gap-2 text-xs font-semibold text-[#4B5666]">
+                {otherSurgeries.length} record{otherSurgeries.length === 1 ? '' : 's'}
+                {historyOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              </span>
+            </button>
+            {historyOpen && (
+              <CardContent className="p-0">
+                <SurgeryTableBody
+                  rows={otherSurgeries}
+                  isLoading={false}
+                  emptyMessage="No completed, postponed, or cancelled surgeries on this page."
+                  page={page}
+                  canEdit={can('surgeries', 'edit')}
+                  canDelete={can('surgeries', 'delete')}
+                  onView={setViewing}
+                  onComplete={setCompleteTarget}
+                  onEdit={openEdit}
+                  onDelete={setDeleteTarget}
+                  compactHistory
+                />
+              </CardContent>
+            )}
+          </Card>
+        </>
+      )}
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+    </div>
+  );
+}
+
+function SurgeryTable({
+  title,
+  subtitle,
+  rows,
+  isLoading,
+  emptyMessage,
+  page,
+  canEdit,
+  canDelete,
+  onView,
+  onComplete,
+  onEdit,
+  onDelete,
+  compactScheduled = false,
+}: {
+  title: string;
+  subtitle: string;
+  rows: Surgery[];
+  isLoading: boolean;
+  emptyMessage: string;
+  page: number;
+  canEdit: boolean;
+  canDelete: boolean;
+  onView: (surgery: Surgery) => void;
+  onComplete: (surgery: Surgery) => void;
+  onEdit: (surgery: Surgery) => void;
+  onDelete: (surgery: Surgery) => void;
+  compactScheduled?: boolean;
+}) {
+  return (
+    <Card className="overflow-hidden border-0 shadow-sm">
+      <div className="border-b border-[#EAEEF3] bg-white px-4 py-3">
+        <h2 className="text-sm font-bold text-[#141920]">{title}</h2>
+        <p className="mt-0.5 text-xs text-[#647184]">{subtitle}</p>
+      </div>
+      <CardContent className="p-0">
+        <SurgeryTableBody
+          rows={rows}
+          isLoading={isLoading}
+          emptyMessage={emptyMessage}
+          page={page}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onView={onView}
+          onComplete={onComplete}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          compactScheduled={compactScheduled}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SurgeryTableBody({
+  rows,
+  isLoading,
+  emptyMessage,
+  page,
+  canEdit,
+  canDelete,
+  onView,
+  onComplete,
+  onEdit,
+  onDelete,
+  compactScheduled = false,
+  compactHistory = false,
+}: {
+  rows: Surgery[];
+  isLoading: boolean;
+  emptyMessage: string;
+  page: number;
+  canEdit: boolean;
+  canDelete: boolean;
+  onView: (surgery: Surgery) => void;
+  onComplete: (surgery: Surgery) => void;
+  onEdit: (surgery: Surgery) => void;
+  onDelete: (surgery: Surgery) => void;
+  compactScheduled?: boolean;
+  compactHistory?: boolean;
+}) {
+  const headers = compactScheduled
+    ? ['Patient', 'Phone', 'Region / City', 'Eye · Lens', 'Scheduled', 'Actions']
+    : compactHistory
+      ? ['Patient', 'Status', 'Region / City', 'Scheduled', 'Performed', 'Actions']
+    : ['#', 'Patient', 'Phone', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''];
+
+  return (
+    <div className="overflow-x-auto">
+      <table className={`w-full text-sm ${compactScheduled ? 'min-w-0' : 'min-w-220'}`}>
+        <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
+          <tr>
+            {headers.map((h) => (
+              <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading && <TableSkeletonRows rows={8} columns={headers.length} />}
+          {!isLoading && rows.length === 0 && (
+            <tr><td colSpan={headers.length} className="py-12 text-center text-sm text-[#647184]">{emptyMessage}</td></tr>
+          )}
+          {!isLoading && rows.map((surgery, index) => (
+            compactScheduled ? (
+              <ScheduledSurgeryRow
+                key={surgery.id}
+                surgery={surgery}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                onView={onView}
+                onComplete={onComplete}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ) : compactHistory ? (
+              <HistorySurgeryRow
+                key={surgery.id}
+                surgery={surgery}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                onView={onView}
+                onComplete={onComplete}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ) : (
+              <SurgeryRow
+                key={surgery.id}
+                surgery={surgery}
+                rowNumber={(page - 1) * PAGE_SIZE + index + 1}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                onView={onView}
+                onComplete={onComplete}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            )
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ScheduledSurgeryRow({
+  surgery,
+  canEdit,
+  canDelete,
+  onView,
+  onComplete,
+  onEdit,
+  onDelete,
+}: {
+  surgery: Surgery;
+  canEdit: boolean;
+  canDelete: boolean;
+  onView: (surgery: Surgery) => void;
+  onComplete: (surgery: Surgery) => void;
+  onEdit: (surgery: Surgery) => void;
+  onDelete: (surgery: Surgery) => void;
+}) {
+  return (
+    <tr className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+      <td className="px-4 py-3.5">
+        <p className="font-medium text-[#141920]">{surgery.patientName}</p>
+        <p className="font-mono text-xs text-[#647184]">{surgery.patientCode ?? 'No code'}</p>
+      </td>
+      <td className="px-4 py-3.5 text-[#4B5666]">
+        {surgery.patientPhone ? (
+          <a href={`tel:${surgery.patientPhone}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#002E63] hover:text-[#2C9942]">
+            <Phone size={12} /> {surgery.patientPhone}
+          </a>
+        ) : (
+          <span className="text-xs text-[#647184]">-</span>
+        )}
+      </td>
+      <td className="px-4 py-3.5">
+        <p className="text-[#141920]">{surgery.region}</p>
+        <p className="text-xs text-[#647184]">{surgery.operationDistrict}</p>
+      </td>
+      <td className="px-4 py-3.5 text-[#4B5666]">
+        <p>{surgery.eye}</p>
+        <p className="text-xs text-[#647184]">{surgery.lensType}</p>
+      </td>
+      <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(surgery.scheduledAt)}</td>
+      <td className="px-4 py-3.5">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => onView(surgery)}
+            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]"
+            title="View patient and surgery details"
+          >
+            <Eye size={13} />
+          </button>
+          {canEdit && (
+            <button
+              onClick={() => onComplete(surgery)}
+              className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
+            >
+              <CheckCircle size={11} /> Complete
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => onEdit(surgery)}
+              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
+              title="Edit surgery"
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => onDelete(surgery)}
+              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
+              title="Delete surgery"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function HistorySurgeryRow({
+  surgery,
+  canEdit,
+  canDelete,
+  onView,
+  onComplete,
+  onEdit,
+  onDelete,
+}: {
+  surgery: Surgery;
+  canEdit: boolean;
+  canDelete: boolean;
+  onView: (surgery: Surgery) => void;
+  onComplete: (surgery: Surgery) => void;
+  onEdit: (surgery: Surgery) => void;
+  onDelete: (surgery: Surgery) => void;
+}) {
+  return (
+    <tr className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+      <td className="px-4 py-3.5">
+        <p className="font-medium text-[#141920]">{surgery.patientName}</p>
+        <p className="font-mono text-xs text-[#647184]">{surgery.patientCode ?? 'No code'}</p>
+      </td>
+      <td className="px-4 py-3.5">
+        <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[surgery.status]}`}>
+          {surgery.status}
+        </span>
+      </td>
+      <td className="px-4 py-3.5">
+        <p className="text-[#141920]">{surgery.region}</p>
+        <p className="text-xs text-[#647184]">{surgery.operationDistrict}</p>
+      </td>
+      <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(surgery.scheduledAt)}</td>
+      <td className="px-4 py-3.5 text-xs text-[#4B5666]">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '-'}</td>
+      <td className="px-4 py-3.5">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => onView(surgery)}
+            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]"
+            title="View patient and surgery details"
+          >
+            <Eye size={13} />
+          </button>
+          {surgery.status !== 'Completed' && canEdit && (
+            <button
+              onClick={() => onComplete(surgery)}
+              className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
+            >
+              <CheckCircle size={11} /> Complete
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => onEdit(surgery)}
+              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
+              title="Edit surgery"
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => onDelete(surgery)}
+              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
+              title="Delete surgery"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SurgeryRow({
+  surgery,
+  rowNumber,
+  canEdit,
+  canDelete,
+  onView,
+  onComplete,
+  onEdit,
+  onDelete,
+}: {
+  surgery: Surgery;
+  rowNumber: number;
+  canEdit: boolean;
+  canDelete: boolean;
+  onView: (surgery: Surgery) => void;
+  onComplete: (surgery: Surgery) => void;
+  onEdit: (surgery: Surgery) => void;
+  onDelete: (surgery: Surgery) => void;
+}) {
+  return (
+    <tr className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
+      <td className="px-4 py-3.5 text-xs text-[#647184]">{rowNumber}</td>
+      <td className="px-4 py-3.5">
+        <p className="font-medium text-[#141920]">{surgery.patientName}</p>
+        <p className="font-mono text-xs text-[#647184]">
+          {surgery.patientCode ?? 'No code'}{surgery.completedByName ? ` - by ${surgery.completedByName}` : ''}
+        </p>
+      </td>
+      <td className="px-4 py-3.5 text-[#4B5666]">
+        {surgery.patientPhone ? (
+          <a href={`tel:${surgery.patientPhone}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#002E63] hover:text-[#2C9942]">
+            <Phone size={12} /> {surgery.patientPhone}
+          </a>
+        ) : (
+          <span className="text-xs text-[#647184]">-</span>
+        )}
+      </td>
+      <td className="px-4 py-3.5">
+        <p className="text-[#141920]">{surgery.region}</p>
+        <p className="text-xs text-[#647184]">{surgery.operationDistrict}</p>
+      </td>
+      <td className="px-4 py-3.5">
+        <span className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[surgery.status]}`}>
+          {surgery.status}
+        </span>
+      </td>
+      <td className="px-4 py-3.5 text-[#4B5666]">
+        <p>{surgery.eye}</p>
+        <p className="text-xs text-[#647184]">{surgery.lensType}</p>
+      </td>
+      <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(surgery.scheduledAt)}</td>
+      <td className="px-4 py-3.5 text-xs text-[#4B5666]">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '-'}</td>
+      <td className="px-4 py-3.5 text-[#4B5666]">{surgery.surgeonName || '-'}</td>
+      <td className="max-w-48 truncate px-4 py-3.5 text-xs text-[#4B5666]" title={surgery.intraopNotes || surgery.complications || undefined}>
+        {surgery.intraopNotes || surgery.complications || '-'}
+      </td>
+      <td className="px-4 py-3.5">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onView(surgery)}
+            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]"
+            title="View patient and surgery details"
+          >
+            <Eye size={13} />
+          </button>
+          {surgery.status !== 'Completed' && canEdit && (
+            <button
+              onClick={() => onComplete(surgery)}
+              className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
+            >
+              <CheckCircle size={11} /> Complete
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => onEdit(surgery)}
+              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
+              title="Edit surgery"
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => onDelete(surgery)}
+              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
+              title="Delete surgery"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function DetailValue({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={wide ? 'md:col-span-3' : ''}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{label}</p>
+      <p className="mt-1 whitespace-pre-wrap text-sm text-[#141920]">{value}</p>
     </div>
   );
 }
