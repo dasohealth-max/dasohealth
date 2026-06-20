@@ -296,8 +296,6 @@ export default function SurgeriesPage() {
           saveLabel="Save Changes"
           saveDisabled={formInvalid}
           wide
-          panelClassName="max-h-[calc(100vh-2rem)]"
-          bodyClassName="overflow-y-auto"
         >
           {saveError && (
             <div className="mb-5 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">

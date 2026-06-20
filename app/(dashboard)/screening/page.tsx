@@ -102,10 +102,35 @@ export default function ScreeningPage() {
 
   // Load region-scoped patients for queue and form
   useEffect(() => {
-    getAllPatients().then((patientRows) => {
-      setPatients(patientRows);
-      setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+    let cancelled = false;
+
+    async function loadPatients(showInitialLoading = false) {
+      if (showInitialLoading) setIsLoading(true);
+      try {
+        const patientRows = await getAllPatients();
+        if (!cancelled) setPatients(patientRows);
+      } finally {
+        if (!cancelled && showInitialLoading) setIsLoading(false);
+      }
+    }
+
+    loadPatients(true);
+    const refreshId = window.setInterval(() => {
+      loadPatients();
+    }, 5000);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) loadPatients();
+    };
+
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshId);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, []);
 
   // Debounce history search, reset page
