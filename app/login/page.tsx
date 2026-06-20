@@ -108,8 +108,9 @@ function LoginForm() {
 
           <form onSubmit={submit} className="space-y-5">
             <div>
-              <Label className="mb-2 block text-sm font-semibold text-[#141920]">Email address</Label>
+              <Label htmlFor="login-email" className="mb-2 block text-sm font-semibold text-[#141920]">Email address</Label>
               <Input
+                id="login-email"
                 type="email"
                 autoComplete="username"
                 suppressHydrationWarning
@@ -122,7 +123,7 @@ function LoginForm() {
             </div>
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <Label className="text-sm font-semibold text-[#141920]">Password</Label>
+                <Label htmlFor="login-password" className="text-sm font-semibold text-[#141920]">Password</Label>
                 <Link
                   href="/forgot-password"
                   className="text-xs text-[#647184] transition-colors hover:text-[#2C9942]"
@@ -132,6 +133,7 @@ function LoginForm() {
               </div>
               <div className="relative">
                 <Input
+                  id="login-password"
                   type={showPass ? 'text' : 'password'}
                   autoComplete="current-password"
                   suppressHydrationWarning
@@ -145,7 +147,7 @@ function LoginForm() {
                   type="button"
                   onClick={() => setShowPass((v) => !v)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-[#647184] hover:text-[#141920]"
-                  aria-label={showPass ? 'Hide password' : 'Show password'}
+                  aria-label={showPass ? 'Hide typed characters' : 'Show typed characters'}
                 >
                   {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>

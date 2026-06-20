@@ -301,7 +301,7 @@ export default function CampaignsPage() {
       <ConfirmDialog
         open={!!deleteCampaignTarget}
         title="Delete Campaign"
-        description={deleteCampaignTarget ? `This will delete "${deleteCampaignTarget.name}" and its sub-regions.` : ''}
+        description={deleteCampaignTarget ? `Delete "${deleteCampaignTarget.name}"? Campaigns with linked patients, screenings, surgeries, or follow-ups cannot be deleted. Use Suspended or Completed for campaigns already in operation.` : ''}
         confirmLabel="Delete Campaign"
         confirmationText="DELETE"
         onConfirm={confirmDeleteCampaign}
@@ -310,7 +310,7 @@ export default function CampaignsPage() {
       <ConfirmDialog
         open={!!deletePlanTarget}
         title="Remove Sub-region"
-        description={deletePlanTarget ? `Remove ${deletePlanTarget.region} from this campaign?` : ''}
+        description={deletePlanTarget ? `Remove ${deletePlanTarget.region} from this campaign? Sub-regions with linked clinical records cannot be removed. Use Suspended or Completed for operational plans.` : ''}
         confirmLabel="Remove Sub-region"
         confirmationText="REMOVE"
         onConfirm={confirmDeletePlan}

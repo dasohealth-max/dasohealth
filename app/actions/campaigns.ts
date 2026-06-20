@@ -19,7 +19,7 @@ import { prisma } from '@/lib/prisma';
 import { campaignTypeFromApp } from '@/lib/prisma-enums';
 import { isCampaignRegion } from '@/lib/regions';
 import type { AuditLog, Campaign, CampaignRegion } from '@/types';
-import type { Prisma } from '@/lib/generated/prisma/client';
+import { Prisma } from '@/lib/generated/prisma/client';
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -58,9 +58,57 @@ const CampaignRegionSchema = z.object({
   notes: z.string().optional().default(''),
 });
 
+type ClinicalDependencyCounts = {
+  patients: number;
+  screenings: number;
+  surgeries: number;
+  followUps: number;
+};
+
 function dateMs(value: string) {
   const time = new Date(`${value}T00:00:00.000Z`).getTime();
   return Number.isNaN(time) ? null : time;
+}
+
+function clinicalDependencyMessage(entityName: string, counts: ClinicalDependencyCounts): string | null {
+  const dependencies = [
+    formatCount(counts.patients, 'patient'),
+    formatCount(counts.screenings, 'screening'),
+    formatCount(counts.surgeries, 'surgery'),
+    formatCount(counts.followUps, 'follow-up'),
+  ].filter(Boolean);
+
+  if (dependencies.length === 0) return null;
+  return `Cannot delete ${entityName} because it already has ${dependencies.join(', ')} linked. Keep it for audit history, or mark it Suspended/Completed instead.`;
+}
+
+function formatCount(count: number, label: string): string | null {
+  if (count <= 0) return null;
+  return `${count} ${label}${count === 1 ? '' : 's'}`;
+}
+
+function isForeignKeyConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003';
+}
+
+async function getCampaignClinicalDependencies(campaignId: string): Promise<ClinicalDependencyCounts> {
+  const [patients, screenings, surgeries, followUps] = await Promise.all([
+    prisma.patient.count({ where: { campaignId } }),
+    prisma.screening.count({ where: { campaignId } }),
+    prisma.surgery.count({ where: { campaignId } }),
+    prisma.followUp.count({ where: { campaignId } }),
+  ]);
+  return { patients, screenings, surgeries, followUps };
+}
+
+async function getCampaignRegionClinicalDependencies(campaignRegionId: string): Promise<ClinicalDependencyCounts> {
+  const [patients, screenings, surgeries, followUps] = await Promise.all([
+    prisma.patient.count({ where: { campaignRegionId } }),
+    prisma.screening.count({ where: { campaignRegionId } }),
+    prisma.surgery.count({ where: { campaignRegionId } }),
+    prisma.followUp.count({ where: { campaignRegionId } }),
+  ]);
+  return { patients, screenings, surgeries, followUps };
 }
 
 function validateDateRange(startDate: string, endDate: string): string | null {
@@ -302,6 +350,9 @@ export async function actionDeleteCampaign(id: string): Promise<ActionResult> {
       const denied = canAccessCampaign(actor, before);
       if (denied) return denied;
     }
+    const dependencyMessage = clinicalDependencyMessage('this campaign', await getCampaignClinicalDependencies(id));
+    if (dependencyMessage) return { ok: false, error: dependencyMessage };
+
     await deleteCampaign(id);
     updateTag('campaigns');
     after(() => auditLog({
@@ -315,6 +366,9 @@ export async function actionDeleteCampaign(id: string): Promise<ActionResult> {
     }));
     return { ok: true, data: null };
   } catch (e) {
+    if (isForeignKeyConstraintError(e)) {
+      return { ok: false, error: 'Cannot delete this campaign because clinical records are linked to it. Keep it for audit history, or mark it Suspended/Completed instead.' };
+    }
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -428,6 +482,9 @@ export async function actionDeleteCampaignRegion(id: string): Promise<ActionResu
     const denied = ensureRegionAccess(actor, before.region);
     if (denied) return denied;
 
+    const dependencyMessage = clinicalDependencyMessage('this sub-region', await getCampaignRegionClinicalDependencies(id));
+    if (dependencyMessage) return { ok: false, error: dependencyMessage };
+
     await deleteCampaignRegion(id);
     updateTag('campaigns');
     after(() => auditLog({
@@ -442,6 +499,9 @@ export async function actionDeleteCampaignRegion(id: string): Promise<ActionResu
     }));
     return { ok: true, data: null };
   } catch (e) {
+    if (isForeignKeyConstraintError(e)) {
+      return { ok: false, error: 'Cannot remove this sub-region because clinical records are linked to it. Keep it for audit history, or mark it Suspended/Completed instead.' };
+    }
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }

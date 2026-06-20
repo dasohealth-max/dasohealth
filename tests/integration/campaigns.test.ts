@@ -19,6 +19,18 @@ vi.mock('@/lib/prisma', () => ({
       findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
+    patient: {
+      count: vi.fn(),
+    },
+    screening: {
+      count: vi.fn(),
+    },
+    surgery: {
+      count: vi.fn(),
+    },
+    followUp: {
+      count: vi.fn(),
+    },
     auditLog: {
       findMany: vi.fn(),
     },
@@ -37,7 +49,14 @@ vi.mock('@/lib/api/campaigns', () => ({
   deleteCampaignRegion: vi.fn(),
 }));
 
-import { actionCreateCampaign, actionCreateCampaignRegion, actionUpdateCampaign, getAllCampaigns } from '@/app/actions/campaigns';
+import {
+  actionCreateCampaign,
+  actionCreateCampaignRegion,
+  actionDeleteCampaign,
+  actionDeleteCampaignRegion,
+  actionUpdateCampaign,
+  getAllCampaigns,
+} from '@/app/actions/campaigns';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as campaignApi from '@/lib/api/campaigns';
@@ -74,6 +93,10 @@ const galmudugPlan: CampaignRegion = {
 describe('getAllCampaigns', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.patient.count).mockResolvedValue(0);
+    vi.mocked(prisma.screening.count).mockResolvedValue(0);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(prisma.followUp.count).mockResolvedValue(0);
   });
 
   it('scopes returned campaign sub-regions to the Project Manager assignment', async () => {
@@ -142,6 +165,10 @@ describe('getAllCampaigns', () => {
 describe('actionCreateCampaign', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.patient.count).mockResolvedValue(0);
+    vi.mocked(prisma.screening.count).mockResolvedValue(0);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(prisma.followUp.count).mockResolvedValue(0);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
@@ -215,6 +242,10 @@ describe('actionCreateCampaign', () => {
 describe('actionUpdateCampaign', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.patient.count).mockResolvedValue(0);
+    vi.mocked(prisma.screening.count).mockResolvedValue(0);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(prisma.followUp.count).mockResolvedValue(0);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
@@ -251,6 +282,10 @@ describe('actionUpdateCampaign', () => {
 describe('actionCreateCampaignRegion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.patient.count).mockResolvedValue(0);
+    vi.mocked(prisma.screening.count).mockResolvedValue(0);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(prisma.followUp.count).mockResolvedValue(0);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
@@ -305,5 +340,72 @@ describe('actionCreateCampaignRegion', () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/not Galmudug/);
+  });
+});
+
+describe('campaign deletion safeguards', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
+    vi.mocked(campaignApi.getCampaignById).mockResolvedValue(galmudugCampaign);
+    vi.mocked(campaignApi.deleteCampaign).mockResolvedValue(undefined);
+    vi.mocked(campaignApi.deleteCampaignRegion).mockResolvedValue(undefined);
+    vi.mocked(prisma.campaignRegion.findUnique).mockResolvedValue({
+      id: 'plan-galmudug-1',
+      campaignId: 'camp-galmudug-1',
+      region: 'Galmudug',
+      operationDistrict: 'Dhuusamareeb',
+      type: 'CataractSurgeryOutreach',
+      regionalManagerId: 'actor-pm-1',
+      regionalManagerName: 'PM Galmudug',
+      doctorName: 'Dr. Galmudug',
+      doctorNameKey: 'dr. galmudug',
+      targetPatients: 600,
+      targetScreenings: 500,
+      targetSurgeries: 400,
+      startDate: new Date('2025-01-01T00:00:00.000Z'),
+      endDate: new Date('2025-12-31T00:00:00.000Z'),
+      status: 'OnTrack',
+      notes: '',
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+    } as never);
+    vi.mocked(prisma.patient.count).mockResolvedValue(0);
+    vi.mocked(prisma.screening.count).mockResolvedValue(0);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(prisma.followUp.count).mockResolvedValue(0);
+  });
+
+  it('blocks campaign deletion when clinical records are linked', async () => {
+    mockRequireActor(superAdmin);
+    vi.mocked(prisma.screening.count).mockResolvedValue(2);
+
+    const result = await actionDeleteCampaign('camp-galmudug-1');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Cannot delete this campaign.*2 screenings.*Suspended\/Completed/);
+    expect(campaignApi.deleteCampaign).not.toHaveBeenCalled();
+  });
+
+  it('deletes campaign when no clinical records are linked', async () => {
+    mockRequireActor(superAdmin);
+
+    const result = await actionDeleteCampaign('camp-galmudug-1');
+
+    expect(result.ok).toBe(true);
+    expect(campaignApi.deleteCampaign).toHaveBeenCalledWith('camp-galmudug-1');
+  });
+
+  it('blocks sub-region removal when clinical records are linked', async () => {
+    mockRequireActor(superAdmin);
+    vi.mocked(prisma.patient.count).mockResolvedValue(1);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(1);
+
+    const result = await actionDeleteCampaignRegion('plan-galmudug-1');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Cannot delete this sub-region.*1 patient.*1 surgery/);
+    expect(campaignApi.deleteCampaignRegion).not.toHaveBeenCalled();
   });
 });
