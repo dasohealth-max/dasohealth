@@ -117,12 +117,24 @@ async function validateDoctorAssignment(doctorName: string, currentRegionId?: st
 function campaignWhereForActor(actor: Awaited<ReturnType<typeof requireActor>>): Prisma.CampaignWhereInput {
   if ('error' in actor) return { id: '__forbidden__' };
   if (isSuperAdmin(actor)) return {};
+  if (actor.role === 'Project Manager') {
+    return {
+      OR: [
+        { projectManagerId: actor.id },
+        { regions: { some: { regionalManagerId: actor.id } } },
+      ],
+    };
+  }
   const region = actor.assignedRegion ?? '__no_region__';
   return { OR: [{ region }, { regions: { some: { region } } }] };
 }
 
 function canAccessCampaign(actor: Exclude<Awaited<ReturnType<typeof requireActor>>, { error: string }>, campaign: Campaign): { ok: false; error: string } | null {
   if (isSuperAdmin(actor)) return null;
+  if (actor.role === 'Project Manager') {
+    if (campaign.projectManagerId === actor.id || campaign.regions?.some((plan) => plan.regionalManagerId === actor.id)) return null;
+    return { ok: false, error: 'Forbidden: campaign access denied' };
+  }
   const region = actor.assignedRegion;
   if (!region) return { ok: false, error: 'User is not assigned to a region' };
   if (campaign.region === region || campaign.regions?.some((plan) => plan.region === region)) return null;
@@ -134,6 +146,12 @@ function scopeCampaignForActor(
   campaign: Campaign,
 ): Campaign {
   if (isSuperAdmin(actor)) return campaign;
+  if (actor.role === 'Project Manager') {
+    return {
+      ...campaign,
+      regions: (campaign.regions ?? []).filter((plan) => plan.regionalManagerId === actor.id),
+    };
+  }
   const region = actor.assignedRegion;
   if (!region) return { ...campaign, regions: [] };
   return {

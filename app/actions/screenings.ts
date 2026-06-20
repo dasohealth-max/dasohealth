@@ -36,7 +36,14 @@ const ScreeningSchema = z.object({
   screenedBy: z.string().optional(),
   screenedById: z.string().optional(),
   screenedByName: z.string().optional(),
+  surgeryConsentGiven: z.boolean().optional(),
+  surgeryConsentDate: z.string().optional(),
 });
+
+type ScreeningInput = Omit<Screening, 'id' | 'createdAt'> & {
+  surgeryConsentGiven?: boolean;
+  surgeryConsentDate?: string;
+};
 
 export async function getAllScreenings(): Promise<Screening[]> {
   const actor = await requireActor('screening', 'view');
@@ -86,7 +93,7 @@ function hasMultipleFindings(data: Pick<Screening, 'cataractSuspected' | 'glauco
   return [data.cataractSuspected, data.glaucomaSuspected, data.diabeticRetinopathy].filter(Boolean).length > 1;
 }
 
-async function deriveScope(data: Omit<Screening, 'id' | 'createdAt'>) {
+async function deriveScope(data: ScreeningInput) {
   const patient = await prisma.patient.findUnique({
     where: { id: data.patientId },
     select: {
@@ -97,6 +104,8 @@ async function deriveScope(data: Omit<Screening, 'id' | 'createdAt'>) {
       campaignRegionId: true,
       region: true,
       operationDistrict: true,
+      consentGiven: true,
+      consentDate: true,
     },
   });
   if (!patient?.campaignId) return null;
@@ -114,7 +123,7 @@ async function routeSurgery(screening: Screening) {
   const [existing, campaignRegion] = await Promise.all([
     prisma.surgery.findFirst({
       where: { createdFromScreeningId: screening.id },
-      select: { id: true },
+      select: { id: true, status: true },
     }),
     screening.campaignRegionId
       ? prisma.campaignRegion.findUnique({
@@ -143,14 +152,16 @@ async function routeSurgery(screening: Screening) {
   };
 
   if (existing) {
-    await prisma.surgery.update({ where: { id: existing.id }, data });
+    if (String(existing.status) !== 'Completed') {
+      await prisma.surgery.update({ where: { id: existing.id }, data });
+    }
   } else {
     await prisma.surgery.create({ data });
   }
 }
 
 export async function actionCreateScreening(
-  data: Omit<Screening, 'id' | 'createdAt'>,
+  data: ScreeningInput,
 ): Promise<ActionResult<Screening>> {
   const actor = await requireActor('screening', 'create');
   if ('error' in actor) return { ok: false, error: actor.error };
@@ -167,6 +178,13 @@ export async function actionCreateScreening(
     if (!scope) return { ok: false, error: 'Patient campaign not found' };
     const denied = ensureRegionAccess(actor, scope.region);
     if (denied) return denied;
+    const surgeryConsentGiven = parsed.data.surgeryConsentGiven ?? scope.consentGiven;
+    const surgeryConsentDate = surgeryConsentGiven
+      ? (parsed.data.surgeryConsentDate || new Date().toISOString().split('T')[0])
+      : '';
+    if (parsed.data.recommendation === 'Refer for Surgery' && !surgeryConsentGiven) {
+      return { ok: false, error: 'Patient consent is required before referring for surgery' };
+    }
 
     const screening = {
       ...(await createScreening({
@@ -186,7 +204,11 @@ export async function actionCreateScreening(
     };
     await prisma.patient.update({
       where: { id: data.patientId },
-      data: { screeningStatus: 'Screened' },
+      data: {
+        screeningStatus: 'Screened',
+        consentGiven: surgeryConsentGiven,
+        consentDate: surgeryConsentDate ? new Date(surgeryConsentDate) : null,
+      },
     });
     await routeSurgery(screening);
     updateTag('screenings');
@@ -210,7 +232,7 @@ export async function actionCreateScreening(
 
 export async function actionUpdateScreening(
   id: string,
-  data: Omit<Screening, 'id' | 'createdAt'>,
+  data: ScreeningInput,
 ): Promise<ActionResult<Screening>> {
   const actor = await requireActor('screening', 'edit');
   if ('error' in actor) return { ok: false, error: actor.error };
@@ -232,6 +254,13 @@ export async function actionUpdateScreening(
     if (!scope) return { ok: false, error: 'Patient campaign not found' };
     const denied = ensureRegionAccess(actor, scope.region);
     if (denied) return denied;
+    const surgeryConsentGiven = parsed.data.surgeryConsentGiven ?? scope.consentGiven;
+    const surgeryConsentDate = surgeryConsentGiven
+      ? (parsed.data.surgeryConsentDate || new Date().toISOString().split('T')[0])
+      : '';
+    if (parsed.data.recommendation === 'Refer for Surgery' && !surgeryConsentGiven) {
+      return { ok: false, error: 'Patient consent is required before referring for surgery' };
+    }
 
     const screening = {
       ...(await updateScreening(id, {
@@ -249,6 +278,13 @@ export async function actionUpdateScreening(
       })),
       patientCode: scope.patientCode,
     };
+    await prisma.patient.update({
+      where: { id: data.patientId },
+      data: {
+        consentGiven: surgeryConsentGiven,
+        consentDate: surgeryConsentDate ? new Date(surgeryConsentDate) : null,
+      },
+    });
     await routeSurgery(screening);
     updateTag('screenings');
     updateTag('patients');

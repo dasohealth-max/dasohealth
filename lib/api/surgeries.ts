@@ -67,8 +67,13 @@ export async function attachScreeningResults(rows: Row[]): Promise<Surgery[]> {
   return surgeries.map((surgery) => {
     const screening = surgery.createdFromScreeningId ? byId.get(surgery.createdFromScreeningId) : undefined;
     if (!screening) return surgery;
+    const screeningEye = screening.eye as Surgery['eye'];
+    const syncedPreOpVA = preOpVaForScreeningEye(screening);
+    const shouldSyncDisplay = surgery.status !== 'Completed';
     return {
       ...surgery,
+      eye: shouldSyncDisplay ? screeningEye : surgery.eye,
+      preOpVA: shouldSyncDisplay ? syncedPreOpVA : surgery.preOpVA,
       screeningResult: {
         screenedAt: (screening.screenedAt as Date).toISOString(),
         screenedByName: screening.screenedByName,
@@ -79,7 +84,7 @@ export async function attachScreeningResults(rows: Row[]): Promise<Surgery[]> {
         cataractSuspected: screening.cataractSuspected,
         glaucomaSuspected: screening.glaucomaSuspected,
         diabeticRetinopathy: screening.diabeticRetinopathy,
-        eye: screening.eye as Surgery['eye'],
+        eye: screeningEye,
         recommendation: screeningRecToApp(screening.recommendation) as SurgeryScreeningResult['recommendation'],
         otherFindings: screening.otherFindings,
         medicalHistory: screening.medicalHistory,
@@ -88,6 +93,14 @@ export async function attachScreeningResults(rows: Row[]): Promise<Surgery[]> {
       },
     };
   });
+}
+
+function preOpVaForScreeningEye(screening: ScreeningSnapshotRow): string {
+  const right = vaGradeToApp(screening.vaRightUnaided) as string;
+  const left = vaGradeToApp(screening.vaLeftUnaided) as string;
+  if (screening.eye === 'Right') return right;
+  if (screening.eye === 'Left') return left;
+  return `Right: ${right} / Left: ${left}`;
 }
 
 export async function getSurgeriesWithScreeningResults(where: Prisma.SurgeryWhereInput = {}): Promise<Surgery[]> {

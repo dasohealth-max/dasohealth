@@ -14,6 +14,7 @@ vi.mock('@/lib/auth-server', () => ({
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     patient: { findUnique: vi.fn() },
+    screening: { findUnique: vi.fn() },
     surgery: { findUnique: vi.fn() },
     followUp: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   },
@@ -29,6 +30,7 @@ vi.mock('@/lib/api/surgeries', () => ({
 
 vi.mock('@/lib/prisma-enums', () => ({
   surgeryStatusFromApp: vi.fn((s: string) => s),
+  vaGradeToApp: vi.fn((s: string) => s),
 }));
 
 // Imports after mocks
@@ -56,6 +58,7 @@ const rawSurgeryRow = {
   region: 'Galmudug',
   status: 'Scheduled',
   performedAt: null,
+  createdFromScreeningId: 'screening-1',
   eye: 'Left',
   surgeonName: 'Dr. Galmudug',
 };
@@ -189,6 +192,7 @@ describe('actionUpdateSurgery', () => {
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.surgery.findUnique).mockResolvedValue(rawSurgeryRow as never);
+    vi.mocked(prisma.screening.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
     vi.mocked(surgeryApi.updateSurgery).mockResolvedValue(galmudugSurgery);
     vi.mocked(surgeryApi.fromPrisma).mockReturnValue(galmudugSurgery);
@@ -221,6 +225,69 @@ describe('actionUpdateSurgery', () => {
     });
     expect(result.ok).toBe(true);
     expect(prisma.followUp.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the current linked screening eye when stale surgery edit data is saved', async () => {
+    vi.mocked(prisma.screening.findUnique).mockResolvedValue({
+      id: 'screening-1',
+      eye: 'Both',
+      vaRightUnaided: 'CF',
+      vaLeftUnaided: '6/12',
+    } as never);
+
+    const result = await actionUpdateSurgery('surgery-1', {
+      ...surgeryData,
+      createdFromScreeningId: 'screening-1',
+      eye: 'Left',
+      preOpVA: '6/12',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(surgeryApi.updateSurgery).toHaveBeenCalledWith(
+      'surgery-1',
+      expect.objectContaining({
+        createdFromScreeningId: 'screening-1',
+        eye: 'Both',
+        preOpVA: 'Right: CF / Left: 6/12',
+      }),
+    );
+  });
+
+  it('keeps completed surgery eye stable even when a linked screening exists', async () => {
+    vi.mocked(prisma.surgery.findUnique).mockResolvedValue({
+      ...rawSurgeryRow,
+      status: 'Completed',
+      eye: 'Left',
+    } as never);
+    vi.mocked(prisma.screening.findUnique).mockResolvedValue({
+      id: 'screening-1',
+      eye: 'Both',
+      vaRightUnaided: 'CF',
+      vaLeftUnaided: '6/12',
+    } as never);
+    vi.mocked(surgeryApi.updateSurgery).mockResolvedValue({
+      ...galmudugSurgery,
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+    });
+
+    const result = await actionUpdateSurgery('surgery-1', {
+      ...surgeryData,
+      createdFromScreeningId: 'screening-1',
+      status: 'Completed',
+      performedAt: '2025-03-01T10:00:00.000Z',
+      eye: 'Both',
+      preOpVA: 'Right: CF / Left: 6/12',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(surgeryApi.updateSurgery).toHaveBeenCalledWith(
+      'surgery-1',
+      expect.objectContaining({
+        eye: 'Left',
+        preOpVA: 'Right: CF / Left: 6/12',
+      }),
+    );
   });
 
   it('fills missing follow-ups idempotently when already Completed', async () => {

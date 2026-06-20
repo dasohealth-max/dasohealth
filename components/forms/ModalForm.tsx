@@ -12,6 +12,8 @@ interface ModalFormProps {
   saveDisabled?: boolean;
   children: React.ReactNode;
   wide?: boolean;
+  panelClassName?: string;
+  bodyClassName?: string;
 }
 
 export default function ModalForm({
@@ -23,6 +25,8 @@ export default function ModalForm({
   saveDisabled,
   children,
   wide = false,
+  panelClassName = '',
+  bodyClassName = '',
 }: ModalFormProps) {
   // Lock body scroll while modal is open
   useEffect(() => {
@@ -36,7 +40,7 @@ export default function ModalForm({
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className={`relative my-auto flex w-full flex-col rounded-xl bg-white shadow-2xl ${wide ? 'max-w-7xl' : 'max-w-2xl'}`}>
+      <div className={`relative my-auto flex w-full flex-col rounded-xl bg-white shadow-2xl ${wide ? 'max-w-7xl' : 'max-w-2xl'} ${panelClassName}`}>
         {/* Header â€” sticky */}
         <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-xl border-b border-[#DDE3EA] bg-white px-6 py-4">
           <div>
@@ -52,7 +56,7 @@ export default function ModalForm({
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5">
+        <div className={`min-h-0 px-6 py-5 ${bodyClassName}`}>
           {children}
         </div>
 

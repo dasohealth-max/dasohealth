@@ -76,7 +76,7 @@ describe('getAllCampaigns', () => {
     vi.clearAllMocks();
   });
 
-  it('scopes returned campaign sub-regions to the Project Manager assigned region', async () => {
+  it('scopes returned campaign sub-regions to the Project Manager assignment', async () => {
     mockRequireActor(galmudugPM);
     const sharedCampaign: Campaign = {
       ...galmudugCampaign,
@@ -103,10 +103,39 @@ describe('getAllCampaigns', () => {
     const rows = await getAllCampaigns();
 
     expect(campaignApi.getAllCampaigns).toHaveBeenCalledWith({
-      OR: [{ region: 'Galmudug' }, { regions: { some: { region: 'Galmudug' } } }],
+      OR: [
+        { projectManagerId: 'actor-pm-1' },
+        { regions: { some: { regionalManagerId: 'actor-pm-1' } } },
+      ],
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].regions?.map((plan) => plan.region)).toEqual(['Galmudug']);
+  });
+
+  it('hides same-region sub-regions that are not assigned to the Project Manager', async () => {
+    mockRequireActor(galmudugPM);
+    const sharedCampaign: Campaign = {
+      ...galmudugCampaign,
+      projectManagerId: '',
+      projectManagerName: '',
+      regions: [
+        galmudugPlan,
+        {
+          ...galmudugPlan,
+          id: 'plan-galmudug-other',
+          regionalManagerId: 'actor-pm-other',
+          regionalManagerName: 'Other PM',
+          doctorName: 'Dr. Other',
+          doctorNameKey: 'dr. other',
+        },
+      ],
+    };
+    vi.mocked(campaignApi.getAllCampaigns).mockResolvedValue([sharedCampaign]);
+
+    const rows = await getAllCampaigns();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].regions?.map((plan) => plan.id)).toEqual(['plan-galmudug-1']);
   });
 });
 

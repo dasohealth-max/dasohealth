@@ -5,7 +5,7 @@ import { updateTag } from 'next/cache';
 import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, deleteSurgery, fromPrisma, attachScreeningResults } from '@/lib/api/surgeries';
-import { surgeryStatusFromApp } from '@/lib/prisma-enums';
+import { surgeryStatusFromApp, vaGradeToApp } from '@/lib/prisma-enums';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
 import { Prisma } from '@/lib/generated/prisma/client';
@@ -100,6 +100,26 @@ async function deriveScope(data: Omit<Surgery, 'id' | 'createdAt'>) {
     },
   });
   return patient?.campaignId ? { ...patient, campaignId: patient.campaignId } : null;
+}
+
+function preOpVaForScreeningEye(screening: {
+  eye: string;
+  vaRightUnaided: unknown;
+  vaLeftUnaided: unknown;
+}) {
+  const right = vaGradeToApp(String(screening.vaRightUnaided));
+  const left = vaGradeToApp(String(screening.vaLeftUnaided));
+  if (screening.eye === 'Right') return right;
+  if (screening.eye === 'Left') return left;
+  return `Right: ${right} / Left: ${left}`;
+}
+
+async function getLinkedScreeningForSurgery(screeningId?: string | null) {
+  if (!screeningId) return null;
+  return prisma.screening.findUnique({
+    where: { id: screeningId },
+    select: { id: true, eye: true, vaRightUnaided: true, vaLeftUnaided: true },
+  });
 }
 
 async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
@@ -233,6 +253,15 @@ export async function actionUpdateSurgery(
     if (newStatusKey === 'Completed' && !data.performedAt) {
       return { ok: false, error: 'Actual surgery completion date is required' };
     }
+    const linkedScreeningId = data.createdFromScreeningId || beforeRow.createdFromScreeningId;
+    const linkedScreening = await getLinkedScreeningForSurgery(linkedScreeningId);
+    const shouldSyncFromScreening = linkedScreening && String(beforeRow.status) !== 'Completed';
+    const eye = shouldSyncFromScreening
+      ? (linkedScreening.eye as Surgery['eye'])
+      : (beforeRow.eye as Surgery['eye']);
+    const preOpVA = shouldSyncFromScreening
+      ? preOpVaForScreeningEye(linkedScreening)
+      : data.preOpVA;
 
     const updated = {
       ...(await updateSurgery(id, {
@@ -244,8 +273,10 @@ export async function actionUpdateSurgery(
       campaignRegionId: scope.campaignRegionId ?? undefined,
       region: scope.region,
       operationDistrict: scope.operationDistrict,
+      createdFromScreeningId: linkedScreeningId ?? undefined,
       surgeonName: scope.campaignRegion?.doctorName || beforeRow.surgeonName || data.surgeonName.trim() || '',
-      eye: beforeRow.eye as Surgery['eye'],
+      eye,
+      preOpVA,
       completedById: newStatusKey === 'Completed' ? actor.id : data.completedById,
       completedByName: newStatusKey === 'Completed' ? actor.name : data.completedByName,
       })),

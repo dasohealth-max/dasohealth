@@ -222,7 +222,15 @@ describe('actionCreatePatient', () => {
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
     const result = await actionCreatePatient({ ...patientInput, phone: 'abc' });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/Phone must be/);
+    if (!result.ok) expect(result.error).toMatch(/Phone must start with 252/);
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid emergency phone numbers before creating a patient', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
+    const result = await actionCreatePatient({ ...patientInput, emergencyPhone: '612345679' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Emergency phone must start with 252/);
     expect(prisma.patient.create).not.toHaveBeenCalled();
   });
 

@@ -114,9 +114,13 @@ function normalizePhone(value: string): string {
   return value.trim().replace(/[^\d+]/g, '');
 }
 
-function isValidPhone(value: string): boolean {
-  const normalized = normalizePhone(value);
-  return /^\+?\d{7,15}$/.test(normalized);
+function normalizeSomaliaPhone(value: string): string {
+  return normalizePhone(value).replace(/^\+/, '');
+}
+
+function isValidSomaliaPhone(value: string): boolean {
+  const normalized = normalizeSomaliaPhone(value);
+  return /^252\d{6,12}$/.test(normalized);
 }
 
 function normalizeName(value: string): string {
@@ -162,8 +166,10 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
   const fullName = normalizeName(d.fullName);
-  const phone = normalizePhone(d.phone);
-  if (!isValidPhone(phone)) return { ok: false, error: 'Phone must be 7-15 digits and may start with +' };
+  const phone = normalizeSomaliaPhone(d.phone);
+  const emergencyPhone = normalizeSomaliaPhone(d.emergencyPhone);
+  if (!isValidSomaliaPhone(phone)) return { ok: false, error: 'Phone must start with 252 and contain 9-15 digits total' };
+  if (emergencyPhone && !isValidSomaliaPhone(emergencyPhone)) return { ok: false, error: 'Emergency phone must start with 252 and contain 9-15 digits total' };
 
   try {
     const campaign = await getCampaignScope(d.campaignId, d.campaignRegionId);
@@ -198,7 +204,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
       disabilityStatus: d.disabilityStatus as DisabilityStatus,
       insuranceStatus: d.insuranceStatus,
       emergencyContact: d.emergencyContact,
-      emergencyPhone: d.emergencyPhone,
+      emergencyPhone,
       consentGiven: d.consentGiven,
       consentDate: d.consentDate ? new Date(d.consentDate) : null,
       campaignId: d.campaignId,
@@ -234,8 +240,10 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
   const d = parsed.data;
   const fullName = normalizeName(d.fullName);
-  const phone = normalizePhone(d.phone);
-  if (!isValidPhone(phone)) return { ok: false, error: 'Phone must be 7-15 digits and may start with +' };
+  const phone = normalizeSomaliaPhone(d.phone);
+  const emergencyPhone = normalizeSomaliaPhone(d.emergencyPhone);
+  if (!isValidSomaliaPhone(phone)) return { ok: false, error: 'Phone must start with 252 and contain 9-15 digits total' };
+  if (emergencyPhone && !isValidSomaliaPhone(emergencyPhone)) return { ok: false, error: 'Emergency phone must start with 252 and contain 9-15 digits total' };
 
   try {
     const before = await fetchPatientById(id);
@@ -278,7 +286,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
         disabilityStatus: d.disabilityStatus as DisabilityStatus,
         insuranceStatus: d.insuranceStatus,
         emergencyContact: d.emergencyContact,
-        emergencyPhone: d.emergencyPhone,
+        emergencyPhone,
         consentGiven: d.consentGiven,
         consentDate: d.consentDate ? new Date(d.consentDate) : null,
         campaignId: d.campaignId,

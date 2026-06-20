@@ -839,10 +839,24 @@ function PlanFields({ form, selected, regionalManagers, setForm, chooseRegion, c
           <input value={form.operationDistrict} onChange={(e) => setForm((p) => ({ ...p, operationDistrict: e.target.value }))} className={F.input} />
         </Field>
         <Field label="Target Screenings *">
-          <input type="number" value={form.targetScreenings} min={0} onChange={(e) => setForm((p) => ({ ...p, targetScreenings: Number(e.target.value) }))} className={F.input} />
+          <input
+            type="number"
+            value={targetInputValue(form.targetScreenings)}
+            min={0}
+            placeholder="0"
+            onChange={(e) => setForm((p) => ({ ...p, targetScreenings: parseTargetInput(e.target.value) }))}
+            className={F.input}
+          />
         </Field>
         <Field label="Target Surgeries *">
-          <input type="number" value={form.targetSurgeries} min={0} onChange={(e) => setForm((p) => ({ ...p, targetSurgeries: Number(e.target.value) }))} className={F.input} />
+          <input
+            type="number"
+            value={targetInputValue(form.targetSurgeries)}
+            min={0}
+            placeholder="0"
+            onChange={(e) => setForm((p) => ({ ...p, targetSurgeries: parseTargetInput(e.target.value) }))}
+            className={F.input}
+          />
         </Field>
         <Field label="Status *">
           <Select value={form.status} onValueChange={(v) => { if (v) setForm((p) => ({ ...p, status: v as RegionalPlanStatus })); }}>
@@ -888,6 +902,17 @@ function PlanFields({ form, selected, regionalManagers, setForm, chooseRegion, c
 
 function Field({ label, className = '', children }: { label: string; className?: string; children: ReactNode }) {
   return <div className={className}><label className={F.label}>{label}</label>{children}</div>;
+}
+
+function targetInputValue(value: number): string {
+  return value === 0 ? '' : String(value);
+}
+
+function parseTargetInput(value: string): number {
+  if (!value) return 0;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.trunc(parsed));
 }
 
 function RegionsTab({ regions, canEdit, canDelete, onEdit, onDelete }: {

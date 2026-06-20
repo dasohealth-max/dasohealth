@@ -31,6 +31,7 @@ const SEXES: Sex[] = ['Female', 'Male'];
 const DISABILITIES: DisabilityStatus[] = ['None', 'Visual', 'Hearing', 'Mobility', 'Cognitive', 'Multiple'];
 const REFERRAL_SOURCES = ['Campaign walk-in', 'Community health worker', 'Self-referral', 'Doctor referral', 'NGO partner', 'Radio / TV campaign', 'Mosque / community leader'];
 const SCREENING_STATUSES = ['Awaiting Screening', 'Screened'] as const;
+const SOMALIA_PHONE_PREFIX = '252';
 
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
@@ -59,8 +60,8 @@ const BLANK = {
   insuranceStatus:  'None',
   emergencyContact: '',
   emergencyPhone:   '',
-  consentGiven:     true,
-  consentDate:      new Date().toISOString().split('T')[0],
+  consentGiven:     false,
+  consentDate:      '',
   campaignId:       '',
   campaignRegionId: '',
   referralSource:   'Campaign walk-in',
@@ -563,13 +564,14 @@ function PatientRegistrationForm({
 
       <section>
         <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-[#647184]">Contact Details</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label className={F.label}>Phone Number *</label>
             <input
               value={form.phone}
-              onChange={(e) => set('phone', e.target.value)}
-              placeholder="252 61 234 5678"
+              onChange={(e) => set('phone', normalizeSomaliaPhoneInput(e.target.value, true))}
+              placeholder={SOMALIA_PHONE_PREFIX}
+              inputMode="tel"
               className={F.input}
             />
           </div>
@@ -578,7 +580,7 @@ function PatientRegistrationForm({
             <input
               value={form.emergencyContact}
               onChange={(e) => set('emergencyContact', e.target.value)}
-              placeholder="e.g. Mohamed Ali (Father)"
+              placeholder="Enter contact name"
               className={F.input}
             />
           </div>
@@ -586,8 +588,9 @@ function PatientRegistrationForm({
             <label className={F.label}>Emergency Phone</label>
             <input
               value={form.emergencyPhone}
-              onChange={(e) => set('emergencyPhone', e.target.value)}
-              placeholder="252 61 234 5678"
+              onChange={(e) => set('emergencyPhone', normalizeSomaliaPhoneInput(e.target.value, false))}
+              placeholder={SOMALIA_PHONE_PREFIX}
+              inputMode="tel"
               className={F.input}
             />
           </div>
@@ -612,18 +615,6 @@ function PatientRegistrationForm({
               <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
               <SelectContent>{REFERRAL_SOURCES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
             </Select>
-          </div>
-          <div>
-            <label className={F.label}>Consent Given</label>
-            <div className="flex min-h-10 items-center gap-3 rounded-md border border-[#DDE3EA] bg-white px-3 py-2">
-              <input
-                type="checkbox"
-                checked={form.consentGiven}
-                onChange={(e) => set('consentGiven', e.target.checked)}
-                className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
-              />
-              <span className="text-sm leading-tight text-[#4B5666]">Patient has consented to treatment</span>
-            </div>
           </div>
         </div>
       </section>
@@ -653,4 +644,11 @@ function applyRegionalPlanContext(form: PatientForm, campaign: Campaign, plan: N
     operationDistrict: plan.operationDistrict,
     district:          plan.operationDistrict,
   };
+}
+
+function normalizeSomaliaPhoneInput(value: string, required: boolean): string {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return required ? SOMALIA_PHONE_PREFIX : '';
+  if (digits.startsWith(SOMALIA_PHONE_PREFIX)) return digits;
+  return `${SOMALIA_PHONE_PREFIX}${digits}`;
 }

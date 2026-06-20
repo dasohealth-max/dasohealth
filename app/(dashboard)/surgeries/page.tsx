@@ -34,7 +34,7 @@ const STATUS_STYLE: Record<SurgeryStatus, string> = {
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
   input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
-  sel:   'rounded-md',
+  sel:   'w-full rounded-md',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -296,6 +296,8 @@ export default function SurgeriesPage() {
           saveLabel="Save Changes"
           saveDisabled={formInvalid}
           wide
+          panelClassName="max-h-[calc(100vh-2rem)]"
+          bodyClassName="overflow-y-auto"
         >
           {saveError && (
             <div className="mb-5 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
@@ -859,12 +861,12 @@ function SurgeryFormBody({
   set: <K extends keyof SurgeryForm>(key: K, value: SurgeryForm[K]) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4">
       {/* Section 1: Patient (locked) */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Patient</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="md:col-span-2">
             <label className={F.label}>Patient Name</label>
             <input value={patientDisplayName(form.patientName, form.patientCode)} disabled className={F.input} />
           </div>
@@ -882,8 +884,8 @@ function SurgeryFormBody({
       {/* Section 2: Surgery Details */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Surgery Details</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="col-span-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="md:col-span-2">
             <label className={F.label}>Surgeon / Doctor Name</label>
             <input
               value={form.surgeonName}
@@ -939,9 +941,9 @@ function SurgeryFormBody({
       </section>
 
       {form.screeningResult && (
-        <section className="rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3 xl:col-span-2">
+        <section className="rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-3">
           <p className={`${F.label} mb-3`}>Previous Screening Result</p>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <ReadOnlyValue label="Screened At" value={formatDateTime(form.screeningResult.screenedAt)} />
             <ReadOnlyValue label="Screened By" value={form.screeningResult.screenedByName || '—'} />
             <ReadOnlyValue label="Finding" value={screeningFindingLabel(form.screeningResult)} />
@@ -987,9 +989,9 @@ function SurgeryFormBody({
 
 function ReadOnlyValue({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return (
-    <div className={wide ? 'md:col-span-2 xl:col-span-3' : undefined}>
+    <div className={wide ? 'md:col-span-2 xl:col-span-2' : undefined}>
       <p className={F.label}>{label}</p>
-      <p className="min-h-10 rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#4B5666]">
+      <p className="min-h-10 break-words rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#4B5666]">
         {value}
       </p>
     </div>

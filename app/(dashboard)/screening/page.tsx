@@ -54,7 +54,16 @@ function nowLocal(): string {
 
 // ─── Blank form ───────────────────────────────────────────────────────────────
 
-function blankForm(): Omit<Screening, 'id' | 'createdAt'> {
+type ScreeningForm = Omit<Screening, 'id' | 'createdAt'> & {
+  surgeryConsentGiven: boolean;
+  surgeryConsentDate: string;
+};
+
+function todayDate(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function blankForm(): ScreeningForm {
   return {
     patientId: '', patientCode: '', patientName: '', campaignId: '', region: '', operationDistrict: '',
     screenedBy: '', screenedById: '', screenedByName: '',
@@ -63,8 +72,10 @@ function blankForm(): Omit<Screening, 'id' | 'createdAt'> {
     cataractSuspected: false, glaucomaSuspected: false, diabeticRetinopathy: false,
     eye: 'Both',
     otherFindings: '', medicalHistory: '', currentMedications: '',
-    recommendation: 'Refer for Surgery',
+    recommendation: 'Discharge',
     notes: '',
+    surgeryConsentGiven: false,
+    surgeryConsentDate: '',
   };
 }
 
@@ -134,8 +145,17 @@ export default function ScreeningPage() {
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
-  function set<K extends keyof ReturnType<typeof blankForm>>(key: K, value: ReturnType<typeof blankForm>[K]) {
+  function set<K extends keyof ScreeningForm>(key: K, value: ScreeningForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setSurgeryConsent(consentGiven: boolean) {
+    setForm((prev) => ({
+      ...prev,
+      surgeryConsentGiven: consentGiven,
+      surgeryConsentDate: consentGiven ? (prev.surgeryConsentDate || todayDate()) : '',
+      recommendation: consentGiven ? prev.recommendation : 'Discharge',
+    }));
   }
 
   function chooseFinding(key: (typeof FINDING_KEYS)[number], checked: boolean) {
@@ -157,6 +177,9 @@ export default function ScreeningPage() {
       campaignId:        patient?.campaignId ?? '',
       region:            patient?.region ?? '',
       operationDistrict: patient?.operationDistrict ?? '',
+      surgeryConsentGiven: patient?.consentGiven ?? false,
+      surgeryConsentDate: patient?.consentDate ?? '',
+      recommendation: patient?.consentGiven ? prev.recommendation : 'Discharge',
     }));
   }
 
@@ -175,6 +198,9 @@ export default function ScreeningPage() {
         campaignId:        patient.campaignId ?? '',
         region:            patient.region ?? '',
         operationDistrict: patient.operationDistrict ?? '',
+        surgeryConsentGiven: patient.consentGiven,
+        surgeryConsentDate: patient.consentDate,
+        recommendation: patient.consentGiven ? base.recommendation : 'Discharge',
       });
     }
   }
@@ -182,8 +208,16 @@ export default function ScreeningPage() {
   function openEdit(screening: Screening) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, createdAt: _ca, ...editable } = screening;
+    const patient = patients.find((row) => row.id === screening.patientId);
     setEditing(screening);
-    setForm(editable);
+    setForm({
+      ...editable,
+      surgeryConsentGiven: patient?.consentGiven ?? false,
+      surgeryConsentDate: patient?.consentDate ?? '',
+      recommendation: patient?.consentGiven === false && editable.recommendation === 'Refer for Surgery'
+        ? 'Discharge'
+        : editable.recommendation,
+    });
     setSaveError('');
     setShowForm(true);
   }
@@ -210,7 +244,14 @@ export default function ScreeningPage() {
       toast({ title: 'Screening recorded', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
     }
     setPatients((rows) =>
-      rows.map((p) => p.id === result.data.patientId ? { ...p, screeningStatus: 'Screened' } : p),
+      rows.map((p) => p.id === result.data.patientId
+        ? {
+            ...p,
+            screeningStatus: 'Screened',
+            consentGiven: form.surgeryConsentGiven,
+            consentDate: form.surgeryConsentDate,
+          }
+        : p),
     );
     setShowForm(false);
     setEditing(null);
@@ -282,6 +323,7 @@ export default function ScreeningPage() {
             set={set}
             chooseFinding={chooseFinding}
             choosePatient={choosePatient}
+            setSurgeryConsent={setSurgeryConsent}
           />
         </ModalForm>
       )}
@@ -323,17 +365,17 @@ export default function ScreeningPage() {
             <table className="w-full min-w-170 text-sm">
               <thead className="border-b border-[#EAEEF3] bg-[#F5F7FA]">
                 <tr>
-                  {['#', 'Code', 'Patient', 'Phone', 'Region / City', 'Registered By', ''].map((h) => (
+                  {['#', 'Code', 'Patient', 'Phone', 'Region / City', 'Surgery Consent', 'Registered By', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {isLoading && (
-                  <TableSkeletonRows rows={6} columns={7} />
+                  <TableSkeletonRows rows={6} columns={8} />
                 )}
                 {!isLoading && filteredQueue.length === 0 && (
-                  <tr><td colSpan={7} className="py-10 text-center text-sm text-[#647184]">
+                  <tr><td colSpan={8} className="py-10 text-center text-sm text-[#647184]">
                     {queueSearch ? 'No patients match the search.' : 'No patients waiting — the queue is clear.'}
                   </td></tr>
                 )}
@@ -349,6 +391,9 @@ export default function ScreeningPage() {
                     <td className="px-4 py-3.5">
                       <p className="text-[#141920]">{patient.region}</p>
                       <p className="text-xs text-[#647184]">{patient.operationDistrict}</p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <ConsentBadge patient={patient} />
                     </td>
                     <td className="px-4 py-3.5 text-[#4B5666]">{patient.registeredByName || '—'}</td>
                     <td className="px-4 py-3.5 text-right">
@@ -483,15 +528,16 @@ export default function ScreeningPage() {
 // ─── Screening form body (inside modal) ──────────────────────────────────────
 
 function ScreeningFormBody({
-  form, patients, queuedPatients, isEditing, set, chooseFinding, choosePatient,
+  form, patients, queuedPatients, isEditing, set, chooseFinding, choosePatient, setSurgeryConsent,
 }: {
-  form: ReturnType<typeof blankForm>;
+  form: ScreeningForm;
   patients: Patient[];
   queuedPatients: Patient[];
   isEditing: boolean;
-  set: <K extends keyof ReturnType<typeof blankForm>>(key: K, value: ReturnType<typeof blankForm>[K]) => void;
+  set: <K extends keyof ScreeningForm>(key: K, value: ScreeningForm[K]) => void;
   chooseFinding: (key: (typeof FINDING_KEYS)[number], checked: boolean) => void;
   choosePatient: (id: string) => void;
+  setSurgeryConsent: (consentGiven: boolean) => void;
 }) {
   const patientList = isEditing ? patients : queuedPatients;
   const selectedPatient = patients.find((patient) => patient.id === form.patientId);
@@ -499,13 +545,16 @@ function ScreeningFormBody({
     ? `${selectedPatient.patientCode} - ${selectedPatient.fullName}`
     : patientDisplayName(form.patientName, form.patientCode);
   const selectedFinding = FINDING_KEYS.find((key) => form[key]);
+  const recommendations = form.surgeryConsentGiven
+    ? ACTIVE_RECOMMENDATIONS
+    : ACTIVE_RECOMMENDATIONS.filter((item) => item !== 'Refer for Surgery');
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       {/* Section 1: Patient & Timestamp */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-2`}>Patient & Session</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
             <label className={F.label}>Patient *</label>
             <Select value={form.patientId} onValueChange={(v) => { if (v) choosePatient(v); }}>
@@ -528,17 +577,38 @@ function ScreeningFormBody({
             <label className={F.label}>Region</label>
             <input value={form.region} disabled className={F.input} placeholder="Auto-filled from patient" />
           </div>
-          <div className="md:col-span-3 xl:col-span-1">
+          <div className="md:col-span-4">
             <label className={F.label}>Screening Time</label>
             <div className="flex items-center gap-2.5 rounded-md border border-[#DDE3EA] bg-[#F5F7FA] px-3 py-2">
               <Clock size={13} className="shrink-0 text-[#647184]" />
-              <span className="min-w-0 truncate text-sm text-[#4B5666]">{form.screenedAt.replace('T', ' ')}</span>
+              <span className="min-w-0 text-sm text-[#4B5666]">{form.screenedAt.replace('T', ' ')}</span>
               <span className="ml-auto shrink-0 rounded bg-[#EBF7EE] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#2C9942]">
                 {isEditing ? 'Original time' : 'Auto'}
               </span>
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Section 2: Surgery Consent */}
+      <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
+        <p className={`${F.label} mb-2`}>Surgery Consent</p>
+        <label className="flex min-h-10 items-center gap-3 rounded-md border border-[#DDE3EA] bg-white px-3 py-2">
+          <input
+            type="checkbox"
+            checked={form.surgeryConsentGiven}
+            onChange={(e) => setSurgeryConsent(e.target.checked)}
+            className="h-4 w-4 rounded border-[#A6DCB5] accent-[#2C9942]"
+          />
+          <span className="text-sm leading-tight text-[#4B5666]">
+            {form.surgeryConsentGiven
+              ? `Patient agrees to surgery if referred${form.surgeryConsentDate ? ` - recorded ${form.surgeryConsentDate}` : ''}`
+              : 'Patient is not ready for surgery referral'}
+          </span>
+        </label>
+        {!form.surgeryConsentGiven && (
+          <p className="mt-2 text-xs font-medium text-[#E53935]">Refer for Surgery is disabled until consent is recorded.</p>
+        )}
       </section>
 
       {/* Section 2: Visual Acuity */}
@@ -665,11 +735,14 @@ function ScreeningFormBody({
             >
               <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
               <SelectContent>
-                {ACTIVE_RECOMMENDATIONS.map((r) => (
+                {recommendations.map((r) => (
                   <SelectItem key={r} value={r}>{r}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {!form.surgeryConsentGiven && (
+              <p className="mt-1 text-xs text-[#E53935]">Surgery referral requires patient consent.</p>
+            )}
           </div>
           <div>
             <label className={F.label}>Notes</label>
@@ -683,5 +756,21 @@ function ScreeningFormBody({
         </div>
       </section>
     </div>
+  );
+}
+
+function ConsentBadge({ patient }: { patient: Patient }) {
+  if (patient.consentGiven) {
+    return (
+      <span className="inline-flex items-center rounded bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942]">
+        Allowed{patient.consentDate ? ` - ${patient.consentDate}` : ''}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center rounded bg-[#FFF5E6] px-2 py-1 text-xs font-medium text-[#F59E0B]">
+      Not ready
+    </span>
   );
 }

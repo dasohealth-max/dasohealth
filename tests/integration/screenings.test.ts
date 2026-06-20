@@ -38,7 +38,7 @@ vi.mock('@/lib/api/screenings', () => ({
   fromPrisma: vi.fn(),
 }));
 
-import { actionCreateScreening, actionDeleteScreening } from '@/app/actions/screenings';
+import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening } from '@/app/actions/screenings';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as screeningApi from '@/lib/api/screenings';
@@ -51,6 +51,8 @@ const patientScope = {
   campaignRegionId: 'plan-galmudug-1',
   region: 'Galmudug',
   operationDistrict: 'Dhuusamareeb',
+  consentGiven: true,
+  consentDate: new Date('2025-02-15'),
 };
 
 const screeningInput = {
@@ -132,8 +134,52 @@ describe('actionCreateScreening', () => {
 
     expect(prisma.patient.update).toHaveBeenCalledWith({
       where: { id: 'patient-1' },
-      data: { screeningStatus: 'Screened' },
+      data: expect.objectContaining({ screeningStatus: 'Screened' }),
     });
+  });
+
+  it('rejects surgery referral when patient consent is not recorded', async () => {
+    vi.mocked(prisma.patient.findUnique).mockResolvedValue({
+      ...patientScope,
+      consentGiven: false,
+      consentDate: null,
+    } as never);
+
+    const result = await actionCreateScreening({
+      ...screeningInput,
+      surgeryConsentGiven: false,
+      surgeryConsentDate: '',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/consent is required/i);
+    expect(screeningApi.createScreening).not.toHaveBeenCalled();
+    expect(prisma.surgery.create).not.toHaveBeenCalled();
+  });
+
+  it('records surgery consent during screening and allows referral', async () => {
+    vi.mocked(prisma.patient.findUnique).mockResolvedValue({
+      ...patientScope,
+      consentGiven: false,
+      consentDate: null,
+    } as never);
+
+    const result = await actionCreateScreening({
+      ...screeningInput,
+      surgeryConsentGiven: true,
+      surgeryConsentDate: '2025-02-15',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.patient.update).toHaveBeenCalledWith({
+      where: { id: 'patient-1' },
+      data: expect.objectContaining({
+        screeningStatus: 'Screened',
+        consentGiven: true,
+        consentDate: new Date('2025-02-15'),
+      }),
+    });
+    expect(prisma.surgery.create).toHaveBeenCalled();
   });
 
   it('routes surgery recommendations into a scheduled surgery record', async () => {
@@ -212,6 +258,62 @@ describe('actionCreateScreening', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/region access denied/);
     expect(screeningApi.createScreening).not.toHaveBeenCalled();
+  });
+});
+
+describe('actionUpdateScreening', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
+    vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
+    vi.mocked(prisma.screening.findUnique).mockResolvedValue({
+      id: 'screening-1',
+      region: 'Galmudug',
+    } as never);
+    vi.mocked(prisma.surgery.findFirst).mockResolvedValue({
+      id: 'surgery-1',
+      status: 'Scheduled',
+    } as never);
+    vi.mocked(prisma.surgery.update).mockResolvedValue({} as never);
+    vi.mocked(prisma.campaignRegion.findUnique).mockResolvedValue({ doctorName: 'Dr. Galmudug' } as never);
+    vi.mocked(screeningApi.updateScreening).mockResolvedValue({
+      ...createdScreening,
+      eye: 'Both',
+    });
+  });
+
+  it('syncs linked non-completed surgery eye when a screening edit changes the eye', async () => {
+    const result = await actionUpdateScreening('screening-1', {
+      ...screeningInput,
+      eye: 'Both',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.surgery.update).toHaveBeenCalledWith({
+      where: { id: 'surgery-1' },
+      data: expect.objectContaining({
+        createdFromScreeningId: 'screening-1',
+        eye: 'Both',
+        preOpVa: 'Right: 6/60 / Left: 6/18',
+      }),
+    });
+  });
+
+  it('does not rewrite linked surgery eye after the surgery is completed', async () => {
+    vi.mocked(prisma.surgery.findFirst).mockResolvedValue({
+      id: 'surgery-1',
+      status: 'Completed',
+    } as never);
+
+    const result = await actionUpdateScreening('screening-1', {
+      ...screeningInput,
+      eye: 'Both',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.surgery.update).not.toHaveBeenCalled();
   });
 });
 

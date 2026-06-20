@@ -6,9 +6,28 @@ import { can, canAccess, mustMaskPatient, type AppModule, type Action } from '@/
 
 const url  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const AUTH_NETWORK_ERROR = 'Authentication service is unreachable. Check your internet connection or Supabase status, then try again.';
 
 function getClient() {
   return createBrowserClient(url, anon);
+}
+
+function isAuthNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes('failed to fetch') ||
+    message.includes('fetch failed') ||
+    message.includes('network') ||
+    message.includes('econnreset') ||
+    message.includes('timeout');
+}
+
+function normalizeAuthError(error: unknown): Error {
+  return isAuthNetworkError(error)
+    ? new Error(AUTH_NETWORK_ERROR)
+    : error instanceof Error
+      ? error
+      : new Error('Authentication failed.');
 }
 
 // ---------------------------------------------------------------------------
@@ -16,18 +35,31 @@ function getClient() {
 // ---------------------------------------------------------------------------
 
 export async function signIn(email: string, password: string) {
-  const { data, error } = await getClient().auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data.session;
+  try {
+    const { data, error } = await getClient().auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data.session;
+  } catch (error) {
+    throw normalizeAuthError(error);
+  }
 }
 
 export async function signOut() {
-  await getClient().auth.signOut();
+  try {
+    await getClient().auth.signOut();
+  } catch (error) {
+    if (!isAuthNetworkError(error)) throw error;
+  }
 }
 
 export async function getSession() {
-  const { data: { session } } = await getClient().auth.getSession();
-  return session;
+  try {
+    const { data: { session } } = await getClient().auth.getSession();
+    return session;
+  } catch (error) {
+    if (isAuthNetworkError(error)) return null;
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -66,8 +98,13 @@ function toSessionUser(user: {
 }
 
 export async function getUser() {
-  const { data: { user } } = await getClient().auth.getUser();
-  return user;
+  try {
+    const { data: { user } } = await getClient().auth.getUser();
+    return user;
+  } catch (error) {
+    if (isAuthNetworkError(error)) return null;
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -81,9 +118,14 @@ export function usePermissions() {
     const sb = getClient();
 
     // Populate synchronously from cached session
-    sb.auth.getSession().then(({ data: { session } }) => {
-      setSessionUser(session?.user ? toSessionUser(session.user) : null);
-    });
+    sb.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSessionUser(session?.user ? toSessionUser(session.user) : null);
+      })
+      .catch((error) => {
+        if (!isAuthNetworkError(error)) throw error;
+        setSessionUser(null);
+      });
 
     // Keep in sync with auth state changes (sign-in, sign-out, token refresh)
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
