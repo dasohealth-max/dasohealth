@@ -30,8 +30,6 @@ export function fromPrisma(row: Row): Screening {
     vaLeftCorrected: row.vaLeftCorrected
       ? (vaGradeToApp(row.vaLeftCorrected) as Screening['vaLeftCorrected'])
       : undefined,
-    iopRight: row.iopRight ?? undefined,
-    iopLeft: row.iopLeft ?? undefined,
     cataractSuspected: row.cataractSuspected,
     glaucomaSuspected: row.glaucomaSuspected,
     diabeticRetinopathy: row.diabeticRetinopathy,
@@ -82,8 +80,6 @@ export async function createScreening(
       vaLeftCorrected: data.vaLeftCorrected
         ? (vaGradeFromApp(data.vaLeftCorrected) as never)
         : null,
-      iopRight: data.iopRight ?? null,
-      iopLeft: data.iopLeft ?? null,
       cataractSuspected: data.cataractSuspected,
       glaucomaSuspected: data.glaucomaSuspected,
       diabeticRetinopathy: data.diabeticRetinopathy,
@@ -123,8 +119,6 @@ export async function updateScreening(
       vaLeftCorrected: data.vaLeftCorrected
         ? (vaGradeFromApp(data.vaLeftCorrected) as never)
         : null,
-      iopRight: data.iopRight ?? null,
-      iopLeft: data.iopLeft ?? null,
       cataractSuspected: data.cataractSuspected,
       glaucomaSuspected: data.glaucomaSuspected,
       diabeticRetinopathy: data.diabeticRetinopathy,

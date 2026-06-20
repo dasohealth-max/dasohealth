@@ -19,8 +19,6 @@ const ScreeningSchema = z.object({
   vaLeftUnaided: VAGradeEnum,
   vaRightCorrected: VAGradeEnum.optional(),
   vaLeftCorrected: VAGradeEnum.optional(),
-  iopRight: z.number().optional(),
-  iopLeft: z.number().optional(),
   cataractSuspected: z.boolean(),
   glaucomaSuspected: z.boolean(),
   diabeticRetinopathy: z.boolean(),

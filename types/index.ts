@@ -124,8 +124,6 @@ export interface Screening {
   vaLeftUnaided: VAGrade;
   vaRightCorrected?: VAGrade;
   vaLeftCorrected?: VAGrade;
-  iopRight?: number;
-  iopLeft?: number;
   cataractSuspected: boolean;
   glaucomaSuspected: boolean;
   diabeticRetinopathy: boolean;
@@ -171,8 +169,6 @@ export interface Surgery {
     screenedByName: string;
     vaRightUnaided: VAGrade;
     vaLeftUnaided: VAGrade;
-    iopRight?: number;
-    iopLeft?: number;
     cataractSuspected: boolean;
     glaucomaSuspected: boolean;
     diabeticRetinopathy: boolean;

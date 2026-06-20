@@ -280,8 +280,6 @@ export default function ReportsPage() {
         'VA Left Unaided': s.vaLeftUnaided,
         'VA Right Corrected': s.vaRightCorrected ?? '',
         'VA Left Corrected': s.vaLeftCorrected ?? '',
-        'IOP Right': s.iopRight ?? '',
-        'IOP Left': s.iopLeft ?? '',
         'Cataract Suspected': s.cataractSuspected ? 'Yes' : 'No',
         'Glaucoma Suspected': s.glaucomaSuspected ? 'Yes' : 'No',
         'Diabetic Retinopathy': s.diabeticRetinopathy ? 'Yes' : 'No',

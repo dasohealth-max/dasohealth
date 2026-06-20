@@ -70,8 +70,6 @@ const screeningInput = {
   vaLeftUnaided: '6/18' as const,
   vaRightCorrected: '6/36' as const,
   vaLeftCorrected: '6/12' as const,
-  iopRight: 16,
-  iopLeft: 17,
   cataractSuspected: true,
   glaucomaSuspected: false,
   diabeticRetinopathy: false,

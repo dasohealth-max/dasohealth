@@ -79,8 +79,6 @@ export async function attachScreeningResults(rows: Row[]): Promise<Surgery[]> {
         screenedByName: screening.screenedByName,
         vaRightUnaided: vaGradeToApp(screening.vaRightUnaided) as SurgeryScreeningResult['vaRightUnaided'],
         vaLeftUnaided: vaGradeToApp(screening.vaLeftUnaided) as SurgeryScreeningResult['vaLeftUnaided'],
-        iopRight: screening.iopRight ?? undefined,
-        iopLeft: screening.iopLeft ?? undefined,
         cataractSuspected: screening.cataractSuspected,
         glaucomaSuspected: screening.glaucomaSuspected,
         diabeticRetinopathy: screening.diabeticRetinopathy,

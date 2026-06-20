@@ -639,7 +639,7 @@ function ScreeningFormBody({
       {/* Section 2: Visual Acuity */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-2`}>Visual Acuity (Unaided)</p>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className={F.label}>VA — Right Eye</label>
             <Select value={form.vaRightUnaided} onValueChange={(v) => { if (v) set('vaRightUnaided', v as VAGrade); }}>
@@ -653,26 +653,6 @@ function ScreeningFormBody({
               <SelectTrigger className={F.sel}><SelectValue /></SelectTrigger>
               <SelectContent>{VA_GRADES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
             </Select>
-          </div>
-          <div>
-            <label className={F.label}>IOP — Right (mmHg)</label>
-            <input
-              type="number"
-              value={form.iopRight ?? ''}
-              onChange={(e) => set('iopRight', e.target.value ? Number(e.target.value) : undefined)}
-              placeholder="e.g. 16"
-              className={F.input}
-            />
-          </div>
-          <div>
-            <label className={F.label}>IOP — Left (mmHg)</label>
-            <input
-              type="number"
-              value={form.iopLeft ?? ''}
-              onChange={(e) => set('iopLeft', e.target.value ? Number(e.target.value) : undefined)}
-              placeholder="e.g. 16"
-              className={F.input}
-            />
           </div>
         </div>
       </section>

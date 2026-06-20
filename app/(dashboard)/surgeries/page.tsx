@@ -274,7 +274,6 @@ export default function SurgeriesPage() {
                   <DetailValue label="Recommendation" value={viewing.screeningResult.recommendation} />
                   <DetailValue label="Screened By" value={viewing.screeningResult.screenedByName || '—'} />
                   <DetailValue label="VA Right / Left" value={`${viewing.screeningResult.vaRightUnaided} / ${viewing.screeningResult.vaLeftUnaided}`} />
-                  <DetailValue label="IOP Right / Left" value={`${viewing.screeningResult.iopRight ?? '—'} / ${viewing.screeningResult.iopLeft ?? '—'}`} />
                   <DetailValue label="Screening Eye" value={viewing.screeningResult.eye} />
                   <DetailValue label="Medical History" value={viewing.screeningResult.medicalHistory || '—'} wide />
                   <DetailValue label="Current Medications" value={viewing.screeningResult.currentMedications || '—'} wide />
@@ -947,7 +946,6 @@ function SurgeryFormBody({
             <ReadOnlyValue label="Finding" value={screeningFindingLabel(form.screeningResult)} />
             <ReadOnlyValue label="Eye" value={form.screeningResult.eye} />
             <ReadOnlyValue label="VA Right / Left" value={`${form.screeningResult.vaRightUnaided} / ${form.screeningResult.vaLeftUnaided}`} />
-            <ReadOnlyValue label="IOP Right / Left" value={`${form.screeningResult.iopRight ?? '—'} / ${form.screeningResult.iopLeft ?? '—'}`} />
             <ReadOnlyValue label="Recommendation" value={form.screeningResult.recommendation} />
             <ReadOnlyValue label="Other Findings" value={form.screeningResult.otherFindings || '—'} wide />
             <ReadOnlyValue label="Medical History" value={form.screeningResult.medicalHistory || '—'} wide />
