@@ -324,12 +324,12 @@ export default function SettingsPage() {
               onClose={() => setShowForm(false)}
               onSave={save}
               saveLabel={editing ? 'Update User' : 'Add User'}
-              saveDisabled={!form.name || !form.email || !form.role || (form.role !== 'Super Administrator' && !form.assignedRegion) || (!editing && form.password.length < 10) || isPending}
+              saveDisabled={!form.name || !form.email || !form.role || (form.role !== 'Super Administrator' && !form.assignedRegion) || (!editing && form.password.length < 8) || isPending}
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div><Label className="mb-1 block text-xs">Full Name *</Label><Input value={form.name} onChange={(e) => set('name', e.target.value)} className="rounded-xl" /></div>
                 <div><Label className="mb-1 block text-xs">Email *</Label><Input type="email" disabled={!!editing} value={form.email} onChange={(e) => set('email', e.target.value)} className="rounded-xl" /></div>
-                {!editing && <div><Label className="mb-1 block text-xs">Password *</Label><Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} className="rounded-xl" placeholder="Minimum 10 characters" /></div>}
+                {!editing && <div><Label className="mb-1 block text-xs">Password *</Label><Input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} className="rounded-xl" placeholder="Minimum 8 characters" /></div>}
                 <div>
                   <Label className="mb-1 block text-xs">Role *</Label>
                   <Select value={form.role} onValueChange={(value) => { if (value) setRole(value as Role); }}>
@@ -357,7 +357,7 @@ export default function SettingsPage() {
               onClose={() => setResetTarget(null)}
               onSave={resetUserPassword}
               saveLabel="Reset Password"
-              saveDisabled={resetPassword.length < 6 || isPending}
+              saveDisabled={resetPassword.length < 8 || isPending}
             >
               {resetError && (
                 <div className="mb-4 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-3 py-2 text-sm text-[#E53935]">
@@ -376,7 +376,7 @@ export default function SettingsPage() {
                     value={resetPassword}
                     onChange={(e) => setResetPassword(e.target.value)}
                     className="rounded-xl"
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 8 characters"
                   />
                 </div>
               </div>

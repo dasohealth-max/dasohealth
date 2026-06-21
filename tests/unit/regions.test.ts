@@ -16,7 +16,7 @@ describe('REGIONAL_CAMPAIGN_AREAS', () => {
     const names = REGIONAL_CAMPAIGN_AREAS.map((a) => a.region);
     expect(names).toContain('Banadir / Mogadishu');
     expect(names).toContain('Koofur Galbeed Somalia');
-    expect(names).toContain('Hiiraan State');
+    expect(names).toContain('Hiiran Region');
     expect(names).toContain('Hirshabelle State');
     expect(names).toContain('Jubaland');
     expect(names).toContain('Galmudug');

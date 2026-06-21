@@ -3,7 +3,7 @@ const REGION_CODES: Record<string, string> = {
   'Banadir / Mogadishu': 'BN',
   Banadir: 'BN',
   'Koofur Galbeed Somalia': 'KG',
-  'Hiiraan State': 'HI',
+  'Hiiran Region': 'HI',
   'Hirshabelle State': 'HS',
   Jubaland: 'JL',
   Galmudug: 'GM',

@@ -132,8 +132,8 @@ export default function ForgotPasswordPage() {
       setError('Passwords do not match.');
       return;
     }
-    if (password.length < 10) {
-      setError('Password must be at least 10 characters.');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
     setLoading(true);
@@ -269,7 +269,7 @@ export default function ForgotPasswordPage() {
               <div className="mb-7">
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#647184]">New password</p>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight text-[#141920]">Set a new password</h2>
-                <p className="mt-2 text-sm text-[#647184]">Must be at least 10 characters.</p>
+                <p className="mt-2 text-sm text-[#647184]">Must be at least 8 characters.</p>
               </div>
 
               <ErrorBanner error={error} />
@@ -281,7 +281,7 @@ export default function ForgotPasswordPage() {
                     <Input
                       type={showPass ? 'text' : 'password'}
                       autoComplete="new-password"
-                      placeholder="At least 10 characters"
+                      placeholder="At least 8 characters"
                       value={password}
                       onChange={(e) => setPass(e.target.value)}
                       required

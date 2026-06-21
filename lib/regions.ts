@@ -1,7 +1,7 @@
 export const REGIONAL_CAMPAIGN_AREAS = [
   { region: 'Banadir / Mogadishu', defaultDistrict: 'Mogadishu', defaultSurgeryTarget: 800 },
   { region: 'Koofur Galbeed Somalia', defaultDistrict: 'Baydhabo', defaultSurgeryTarget: 400 },
-  { region: 'Hiiraan State', defaultDistrict: 'Beledweyne', defaultSurgeryTarget: 400 },
+  { region: 'Hiiran Region', defaultDistrict: 'Beledweyne', defaultSurgeryTarget: 400 },
   { region: 'Hirshabelle State', defaultDistrict: 'Jowhar', defaultSurgeryTarget: 400 },
   { region: 'Jubaland', defaultDistrict: 'Kismaayo', defaultSurgeryTarget: 400 },
   { region: 'Galmudug', defaultDistrict: 'Dhuusamareeb', defaultSurgeryTarget: 400 },

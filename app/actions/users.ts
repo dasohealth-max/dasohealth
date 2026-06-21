@@ -159,8 +159,8 @@ export async function actionCreateUser(input: {
   if (!input.email || !input.password || !input.name || !input.role) {
     return { ok: false, error: 'email, password, name and role are required' };
   }
-  if (input.password.length < 10) {
-    return { ok: false, error: 'Password must be at least 10 characters' };
+  if (input.password.length < 8) {
+    return { ok: false, error: 'Password must be at least 8 characters' };
   }
 
   const db = createServerClient();
@@ -274,8 +274,8 @@ export async function actionResetUserPassword(
   const actor = await requireActor('settings', 'edit');
   if ('error' in actor) return { ok: false, error: actor.error };
 
-  if (password.length < 10) {
-    return { ok: false, error: 'Password must be at least 10 characters' };
+  if (password.length < 8) {
+    return { ok: false, error: 'Password must be at least 8 characters' };
   }
 
   const db = createServerClient();
