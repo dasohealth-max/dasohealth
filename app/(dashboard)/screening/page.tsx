@@ -16,11 +16,12 @@ import { toast } from '@/components/ui/toast';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
+import { defaultRecommendationForSurgeryConsent } from '@/lib/screening-defaults';
 import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, Search, Stethoscope, Trash2 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const VA_GRADES: VAGrade[] = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'HM', 'PL', 'NPL'];
+const VA_GRADES: VAGrade[] = ['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF 1M', 'CF 2M', 'CF 3M', 'HM', 'PL', 'NPL'];
 const EYES: SurgeryEye[] = ['Right', 'Left', 'Both'];
 const FINDING_KEYS = ['cataractSuspected', 'glaucomaSuspected', 'diabeticRetinopathy'] as const;
 
@@ -72,7 +73,7 @@ function blankForm(): ScreeningForm {
     cataractSuspected: false, glaucomaSuspected: false, diabeticRetinopathy: false,
     eye: 'Both',
     otherFindings: '', medicalHistory: '', currentMedications: '',
-    recommendation: 'Discharge',
+    recommendation: defaultRecommendationForSurgeryConsent(false),
     notes: '',
     surgeryConsentGiven: false,
     surgeryConsentDate: '',
@@ -179,7 +180,7 @@ export default function ScreeningPage() {
       ...prev,
       surgeryConsentGiven: consentGiven,
       surgeryConsentDate: consentGiven ? (prev.surgeryConsentDate || todayDate()) : '',
-      recommendation: consentGiven ? prev.recommendation : 'Discharge',
+      recommendation: defaultRecommendationForSurgeryConsent(consentGiven),
     }));
   }
 
@@ -204,7 +205,7 @@ export default function ScreeningPage() {
       operationDistrict: patient?.operationDistrict ?? '',
       surgeryConsentGiven: patient?.consentGiven ?? false,
       surgeryConsentDate: patient?.consentDate ?? '',
-      recommendation: patient?.consentGiven ? prev.recommendation : 'Discharge',
+      recommendation: defaultRecommendationForSurgeryConsent(patient?.consentGiven ?? false),
     }));
   }
 
@@ -225,7 +226,7 @@ export default function ScreeningPage() {
         operationDistrict: patient.operationDistrict ?? '',
         surgeryConsentGiven: patient.consentGiven,
         surgeryConsentDate: patient.consentDate,
-        recommendation: patient.consentGiven ? base.recommendation : 'Discharge',
+        recommendation: defaultRecommendationForSurgeryConsent(patient.consentGiven),
       });
     }
   }

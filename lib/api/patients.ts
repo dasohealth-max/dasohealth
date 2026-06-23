@@ -10,6 +10,8 @@ export function fromPrisma(row: PrismaPatient): Patient {
     patientCode: row.patientCode,
     fullName: row.fullName,
     dateOfBirth: (row.dateOfBirth as Date).toISOString().split('T')[0],
+    birthDateSource: row.birthDateSource as Patient['birthDateSource'],
+    ageYearsAtRegistration: row.ageYearsAtRegistration ?? undefined,
     sex: row.sex as Patient['sex'],
     phone: row.phone,
     email: row.email ?? undefined,

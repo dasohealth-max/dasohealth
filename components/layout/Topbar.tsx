@@ -8,7 +8,7 @@ import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllPatients } from '@/app/actions/patients';
 import { signOut, usePermissions } from '@/lib/auth';
-import { formatDate } from '@/lib/utils';
+import { formatPatientBirthDateLabel } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -237,8 +237,8 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
                   <span className="font-medium text-[var(--text-strong)]">{hoveredPatient.sex}</span>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <span className="text-[var(--text-muted)]">Date of Birth</span>
-                  <span className="font-medium text-[var(--text-strong)]">{formatDate(hoveredPatient.dateOfBirth)}</span>
+                  <span className="text-[var(--text-muted)]">Age / DOB</span>
+                  <span className="font-medium text-[var(--text-strong)]">{formatPatientBirthDateLabel(hoveredPatient)}</span>
                 </div>
                 <div className="flex justify-between gap-2">
                   <span className="text-[var(--text-muted)]">Status</span>
@@ -315,4 +315,3 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     </header>
   );
 }
-

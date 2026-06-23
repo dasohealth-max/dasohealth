@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import type { Campaign, DisabilityStatus, Patient, Sex } from '@/types';
+import type { BirthDateSource, Campaign, DisabilityStatus, Patient, Sex } from '@/types';
 import {
   getPatientsPaginated,
   actionCreatePatient,
@@ -19,7 +19,7 @@ import Pagination from '@/components/ui/Pagination';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
-import { formatDate } from '@/lib/utils';
+import { formatPatientBirthDateLabel } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
@@ -49,6 +49,8 @@ const STATUS_STYLE: Record<string, string> = {
 const BLANK = {
   fullName:         '',
   dateOfBirth:      '',
+  birthDateSource:   'AgeEstimate' as BirthDateSource,
+  ageYearsAtRegistration: '',
   sex:              'Female' as Sex,
   phone:            '252',
   district:         '',
@@ -59,7 +61,7 @@ const BLANK = {
   disabilityStatus: 'None' as DisabilityStatus,
   insuranceStatus:  'None',
   emergencyContact: '',
-  emergencyPhone:   '',
+  emergencyPhone:   '252',
   consentGiven:     false,
   consentDate:      '',
   campaignId:       '',
@@ -197,7 +199,13 @@ export default function PatientsPage() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, patientCode: _code, createdAt: _ca, email: _email, ...editable } = patient as Patient & { email?: string };
     setEditing(patient);
-    setForm({ ...BLANK, ...editable });
+    setForm({
+      ...BLANK,
+      ...editable,
+      birthDateSource: editable.birthDateSource ?? 'Exact',
+      ageYearsAtRegistration: editable.ageYearsAtRegistration !== undefined ? String(editable.ageYearsAtRegistration) : '',
+      emergencyPhone: editable.emergencyPhone || SOMALIA_PHONE_PREFIX,
+    });
     setSaveError('');
     setShowForm(true);
   }
@@ -249,7 +257,10 @@ export default function PatientsPage() {
   }
 
   const hasFilters = !!search || !!regionFilter || !!statusFilter;
-  const formInvalid = !form.fullName || !form.dateOfBirth || !form.phone || !form.campaignId || !form.campaignRegionId;
+  const birthDateComplete = form.birthDateSource === 'AgeEstimate'
+    ? isValidAgeInput(form.ageYearsAtRegistration)
+    : !!form.dateOfBirth;
+  const formInvalid = !form.fullName || !birthDateComplete || !form.phone || !form.campaignId || !form.campaignRegionId;
   const registrationCampaigns = campaigns.filter((campaign) => eligiblePlans(campaign).length > 0);
 
   return (
@@ -395,7 +406,7 @@ export default function PatientsPage() {
                     <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{patient.fullName}</p>
-                      <p className="font-mono text-xs text-[#647184]">{patient.patientCode} · {formatDate(patient.dateOfBirth)} · {patient.sex}</p>
+                      <p className="font-mono text-xs text-[#647184]">{patient.patientCode} · {formatPatientBirthDateLabel(patient)} · {patient.sex}</p>
                     </td>
                     <td className="px-4 py-3.5 text-[#4B5666]">{patient.phone}</td>
                     <td className="px-4 py-3.5">
@@ -556,8 +567,42 @@ function PatientRegistrationForm({
             </Select>
           </div>
           <div className="md:col-span-2 xl:col-span-2">
-            <label className={F.label}>Date of Birth * — Day / Month / Year</label>
-            <DateOfBirthPicker value={form.dateOfBirth} onChange={(v) => set('dateOfBirth', v)} />
+            <label className={F.label}>Age / Date of Birth *</label>
+            <div className="mb-2 inline-flex rounded-md border border-[#DDE3EA] bg-[#F5F7FA] p-0.5">
+              <button
+                type="button"
+                aria-pressed={form.birthDateSource === 'AgeEstimate'}
+                onClick={() => {
+                  set('birthDateSource', 'AgeEstimate');
+                  set('dateOfBirth', '');
+                }}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${form.birthDateSource === 'AgeEstimate' ? 'bg-white text-[#141920] shadow-sm' : 'text-[#647184] hover:text-[#141920]'}`}
+              >
+                Age
+              </button>
+              <button
+                type="button"
+                aria-pressed={form.birthDateSource === 'Exact'}
+                onClick={() => {
+                  set('birthDateSource', 'Exact');
+                  set('ageYearsAtRegistration', '');
+                }}
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition ${form.birthDateSource === 'Exact' ? 'bg-white text-[#141920] shadow-sm' : 'text-[#647184] hover:text-[#141920]'}`}
+              >
+                Exact DOB
+              </button>
+            </div>
+            {form.birthDateSource === 'AgeEstimate' ? (
+              <input
+                value={form.ageYearsAtRegistration}
+                onChange={(e) => set('ageYearsAtRegistration', normalizeAgeInput(e.target.value))}
+                placeholder="e.g. 47"
+                inputMode="numeric"
+                className={F.input}
+              />
+            ) : (
+              <DateOfBirthPicker value={form.dateOfBirth} onChange={(v) => set('dateOfBirth', v)} />
+            )}
           </div>
         </div>
       </section>
@@ -588,7 +633,7 @@ function PatientRegistrationForm({
             <label className={F.label}>Emergency Phone</label>
             <input
               value={form.emergencyPhone}
-              onChange={(e) => set('emergencyPhone', normalizeSomaliaPhoneInput(e.target.value, false))}
+              onChange={(e) => set('emergencyPhone', normalizeSomaliaPhoneInput(e.target.value, true))}
               placeholder={SOMALIA_PHONE_PREFIX}
               inputMode="tel"
               className={F.input}
@@ -651,4 +696,14 @@ function normalizeSomaliaPhoneInput(value: string, required: boolean): string {
   if (!digits) return required ? SOMALIA_PHONE_PREFIX : '';
   if (digits.startsWith(SOMALIA_PHONE_PREFIX)) return digits;
   return `${SOMALIA_PHONE_PREFIX}${digits}`;
+}
+
+function normalizeAgeInput(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 3);
+}
+
+function isValidAgeInput(value: string): boolean {
+  if (!/^\d{1,3}$/.test(value)) return false;
+  const age = Number(value);
+  return age >= 0 && age <= 120;
 }

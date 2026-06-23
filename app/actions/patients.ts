@@ -8,7 +8,7 @@ import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetch
 import { getAllCampaigns as fetchAllCampaigns } from '@/lib/api/campaigns';
 import { auditLog, ensureRegionAccess, isSuperAdmin, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Campaign, Patient } from '@/types';
-import { Prisma, type Sex, type DisabilityStatus } from '@/lib/generated/prisma/client';
+import { Prisma, type Sex, type DisabilityStatus, type BirthDateSource } from '@/lib/generated/prisma/client';
 import { formatPatientCode, patientCodePrefix } from '@/lib/patient-code';
 
 export async function getAllPatients(): Promise<Patient[]> {
@@ -85,7 +85,12 @@ export async function getPatientById(id: string): Promise<Patient | null> {
 
 const PatientSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
-  dateOfBirth: z.string().min(1, 'Date of birth is required'),
+  dateOfBirth: z.string().optional().default(''),
+  birthDateSource: z.enum(['Exact', 'AgeEstimate']).optional().default('Exact'),
+  ageYearsAtRegistration: z.preprocess((value) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    return typeof value === 'number' ? value : Number(value);
+  }, z.number().int('Age must be a whole number').min(0, 'Age must be between 0 and 120').max(120, 'Age must be between 0 and 120').optional()),
   sex: z.enum(['Male', 'Female']),
   phone: z.string().min(1, 'Phone is required'),
   email: z.string().optional(),
@@ -118,6 +123,11 @@ function normalizeSomaliaPhone(value: string): string {
   return normalizePhone(value).replace(/^\+/, '');
 }
 
+function normalizeOptionalSomaliaPhone(value: string): string {
+  const normalized = normalizeSomaliaPhone(value);
+  return normalized === '252' ? '' : normalized;
+}
+
 function isValidSomaliaPhone(value: string): boolean {
   const normalized = normalizeSomaliaPhone(value);
   return /^252\d{6,12}$/.test(normalized);
@@ -125,6 +135,69 @@ function isValidSomaliaPhone(value: string): boolean {
 
 function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
+}
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function todayIsoDate(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${padDatePart(now.getUTCMonth() + 1)}-${padDatePart(now.getUTCDate())}`;
+}
+
+function dateFromIsoDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function approximateBirthDateFromAge(ageYears: number): Date {
+  const today = todayIsoDate();
+  const [year, month, day] = today.split('-').map(Number);
+  const estimatedYear = year - ageYears;
+  const maxDay = new Date(Date.UTC(estimatedYear, month, 0)).getUTCDate();
+  return new Date(Date.UTC(estimatedYear, month - 1, Math.min(day, maxDay)));
+}
+
+function resolveBirthDate(data: {
+  dateOfBirth: string;
+  birthDateSource: 'Exact' | 'AgeEstimate';
+  ageYearsAtRegistration?: number;
+}): { dateOfBirth: Date; birthDateSource: BirthDateSource; ageYearsAtRegistration: number | null } | { error: string } {
+  if (data.birthDateSource === 'AgeEstimate') {
+    if (data.ageYearsAtRegistration === undefined) return { error: 'Age is required' };
+    return {
+      dateOfBirth: approximateBirthDateFromAge(data.ageYearsAtRegistration),
+      birthDateSource: 'AgeEstimate' as BirthDateSource,
+      ageYearsAtRegistration: data.ageYearsAtRegistration,
+    };
+  }
+
+  if (!data.dateOfBirth) return { error: 'Date of birth is required' };
+  const dateOfBirth = dateFromIsoDate(data.dateOfBirth);
+  if (!dateOfBirth) return { error: 'Date of birth must be a valid date' };
+  if (data.dateOfBirth > todayIsoDate()) return { error: 'Date of birth cannot be in the future' };
+
+  return {
+    dateOfBirth,
+    birthDateSource: 'Exact' as BirthDateSource,
+    ageYearsAtRegistration: null,
+  };
 }
 
 async function getCampaignScope(campaignId: string, campaignRegionId: string) {
@@ -167,9 +240,11 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
   const d = parsed.data;
   const fullName = normalizeName(d.fullName);
   const phone = normalizeSomaliaPhone(d.phone);
-  const emergencyPhone = normalizeSomaliaPhone(d.emergencyPhone);
+  const emergencyPhone = normalizeOptionalSomaliaPhone(d.emergencyPhone);
   if (!isValidSomaliaPhone(phone)) return { ok: false, error: 'Phone must start with 252 and contain 9-15 digits total' };
   if (emergencyPhone && !isValidSomaliaPhone(emergencyPhone)) return { ok: false, error: 'Emergency phone must start with 252 and contain 9-15 digits total' };
+  const birthDate = resolveBirthDate(d);
+  if ('error' in birthDate) return { ok: false, error: birthDate.error };
 
   try {
     const campaign = await getCampaignScope(d.campaignId, d.campaignRegionId);
@@ -192,7 +267,9 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
 
     const patient = await createPatientWithCode({
       fullName,
-      dateOfBirth: new Date(d.dateOfBirth),
+      dateOfBirth: birthDate.dateOfBirth,
+      birthDateSource: birthDate.birthDateSource,
+      ageYearsAtRegistration: birthDate.ageYearsAtRegistration,
       sex: d.sex as Sex,
       phone,
       email: d.email || null,
@@ -241,9 +318,11 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
   const d = parsed.data;
   const fullName = normalizeName(d.fullName);
   const phone = normalizeSomaliaPhone(d.phone);
-  const emergencyPhone = normalizeSomaliaPhone(d.emergencyPhone);
+  const emergencyPhone = normalizeOptionalSomaliaPhone(d.emergencyPhone);
   if (!isValidSomaliaPhone(phone)) return { ok: false, error: 'Phone must start with 252 and contain 9-15 digits total' };
   if (emergencyPhone && !isValidSomaliaPhone(emergencyPhone)) return { ok: false, error: 'Emergency phone must start with 252 and contain 9-15 digits total' };
+  const birthDate = resolveBirthDate(d);
+  if ('error' in birthDate) return { ok: false, error: birthDate.error };
 
   try {
     const before = await fetchPatientById(id);
@@ -274,7 +353,9 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
       where: { id },
       data: {
         fullName,
-        dateOfBirth: new Date(d.dateOfBirth),
+        dateOfBirth: birthDate.dateOfBirth,
+        birthDateSource: birthDate.birthDateSource,
+        ageYearsAtRegistration: birthDate.ageYearsAtRegistration,
         sex: d.sex as Sex,
         phone,
         email: d.email || null,

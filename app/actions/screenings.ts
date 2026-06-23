@@ -9,7 +9,7 @@ import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@
 import type { Screening } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
-const VAGradeEnum = z.enum(['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'HM', 'PL', 'NPL']);
+const VAGradeEnum = z.enum(['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'CF 1M', 'CF 2M', 'CF 3M', 'HM', 'PL', 'NPL']);
 
 const ScreeningSchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),

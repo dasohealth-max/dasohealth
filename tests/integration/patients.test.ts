@@ -52,6 +52,8 @@ const rawPatientRow = {
   patientCode: 'CS-GM-0001',
   fullName: 'Amina Hassan',
   dateOfBirth: new Date('1965-03-12'),
+  birthDateSource: 'Exact',
+  ageYearsAtRegistration: null,
   sex: 'Female',
   phone: '+252612345678',
   email: null,
@@ -231,6 +233,61 @@ describe('actionCreatePatient', () => {
     const result = await actionCreatePatient({ ...patientInput, emergencyPhone: '612345679' });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/Emergency phone must start with 252/);
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+  });
+
+  it('treats bare emergency phone prefix as empty because the field is optional', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
+
+    const result = await actionCreatePatient({ ...patientInput, emergencyPhone: '252' });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.patient.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          emergencyPhone: '',
+        }),
+      }),
+    );
+  });
+
+  it('stores entered age as an estimated birth date with source metadata', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
+    const ageYears = 47;
+    const today = new Date();
+    const expectedBirthDate = new Date(Date.UTC(today.getUTCFullYear() - ageYears, today.getUTCMonth(), today.getUTCDate()));
+
+    const result = await actionCreatePatient({
+      ...patientInput,
+      dateOfBirth: '',
+      birthDateSource: 'AgeEstimate',
+      ageYearsAtRegistration: String(ageYears),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(prisma.patient.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          dateOfBirth: expectedBirthDate,
+          birthDateSource: 'AgeEstimate',
+          ageYearsAtRegistration: ageYears,
+        }),
+      }),
+    );
+  });
+
+  it('rejects age estimates outside the allowed range', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
+
+    const result = await actionCreatePatient({
+      ...patientInput,
+      dateOfBirth: '',
+      birthDateSource: 'AgeEstimate',
+      ageYearsAtRegistration: '121',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Age must be between 0 and 120/);
     expect(prisma.patient.create).not.toHaveBeenCalled();
   });
 

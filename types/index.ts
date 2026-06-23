@@ -75,12 +75,15 @@ export interface Campaign {
 
 export type Sex = 'Male' | 'Female';
 export type DisabilityStatus = 'None' | 'Visual' | 'Hearing' | 'Mobility' | 'Cognitive' | 'Multiple';
+export type BirthDateSource = 'Exact' | 'AgeEstimate';
 
 export interface Patient {
   id: string;
   patientCode: string;
   fullName: string;
   dateOfBirth: string;
+  birthDateSource: BirthDateSource;
+  ageYearsAtRegistration?: number;
   sex: Sex;
   phone: string;
   email?: string;
@@ -105,7 +108,7 @@ export interface Patient {
   createdAt: string;
 }
 
-export type VAGrade = '6/6' | '6/9' | '6/12' | '6/18' | '6/24' | '6/36' | '6/60' | '<6/60' | 'CF' | 'HM' | 'PL' | 'NPL';
+export type VAGrade = '6/6' | '6/9' | '6/12' | '6/18' | '6/24' | '6/36' | '6/60' | '<6/60' | 'CF' | 'CF 1M' | 'CF 2M' | 'CF 3M' | 'HM' | 'PL' | 'NPL';
 
 export interface Screening {
   id: string;

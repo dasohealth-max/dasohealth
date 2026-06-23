@@ -17,7 +17,8 @@ export const campaignTypeFromApp = (v: string) => CT_FROM_APP[v] ?? v;
 const VA_TO_APP: Record<string, string> = {
   V6_6: '6/6', V6_9: '6/9', V6_12: '6/12', V6_18: '6/18',
   V6_24: '6/24', V6_36: '6/36', V6_60: '6/60', LT6_60: '<6/60',
-  CF: 'CF', HM: 'HM', PL: 'PL', NPL: 'NPL',
+  CF: 'CF', CF1M: 'CF 1M', CF2M: 'CF 2M', CF3M: 'CF 3M',
+  HM: 'HM', PL: 'PL', NPL: 'NPL',
 };
 const VA_FROM_APP: Record<string, string> = Object.fromEntries(Object.entries(VA_TO_APP).map(([k, v]) => [v, k]));
 export const vaGradeToApp = (k: string) => VA_TO_APP[k] ?? k;

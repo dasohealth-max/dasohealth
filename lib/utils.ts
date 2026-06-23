@@ -14,6 +14,31 @@ export function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+export function calculateAge(dateOfBirth: string, referenceDate = new Date()) {
+  if (!dateOfBirth) return null;
+  const birthDate = new Date(dateOfBirth);
+  if (Number.isNaN(birthDate.getTime())) return null;
+
+  let age = referenceDate.getFullYear() - birthDate.getFullYear();
+  const monthDelta = referenceDate.getMonth() - birthDate.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && referenceDate.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+export function formatPatientBirthDateLabel(patient: {
+  dateOfBirth: string;
+  birthDateSource?: string;
+  ageYearsAtRegistration?: number;
+}) {
+  if (patient.birthDateSource === 'AgeEstimate') {
+    const age = patient.ageYearsAtRegistration ?? calculateAge(patient.dateOfBirth);
+    return typeof age === 'number' ? `Age ${age} (est.)` : 'Age estimated';
+  }
+  return formatDate(patient.dateOfBirth);
+}
+
 export function formatDateTime(iso: string) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

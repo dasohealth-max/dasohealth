@@ -89,6 +89,7 @@ export const galmudugPatient: Patient = {
   patientCode: 'CS-GM-0001',
   fullName: 'Amina Hassan',
   dateOfBirth: '1965-03-12',
+  birthDateSource: 'Exact',
   sex: 'Female',
   phone: '+252612345678',
   district: 'Dhuusamareeb',

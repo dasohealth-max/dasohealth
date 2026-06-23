@@ -82,6 +82,13 @@ enum DisabilityStatus {
   @@map("disability_status")
 }
 
+enum BirthDateSource {
+  Exact
+  AgeEstimate
+
+  @@map("birth_date_source")
+}
+
 enum VaGrade {
   V6_6   @map("6/6")
   V6_9   @map("6/9")
@@ -92,6 +99,9 @@ enum VaGrade {
   V6_60  @map("6/60")
   LT6_60 @map("<6/60")
   CF
+  CF1M   @map("CF 1M")
+  CF2M   @map("CF 2M")
+  CF3M   @map("CF 3M")
   HM
   PL
   NPL
@@ -262,6 +272,8 @@ model Patient {
   patientCode       String           @unique @map("patient_code")
   fullName          String           @map("full_name")
   dateOfBirth       DateTime         @map("date_of_birth") @db.Date
+  birthDateSource   BirthDateSource  @default(Exact) @map("birth_date_source")
+  ageYearsAtRegistration Int?        @map("age_years_at_registration") @db.SmallInt
   sex               Sex
   phone             String
   email             String?

@@ -200,6 +200,26 @@ describe('actionCreateScreening', () => {
     });
   });
 
+  it('accepts measured count-fingers visual acuity grades', async () => {
+    const result = await actionCreateScreening({
+      ...screeningInput,
+      vaRightUnaided: 'CF 1M',
+      vaLeftUnaided: 'CF 3M',
+      vaRightCorrected: 'CF 2M',
+      vaLeftCorrected: 'CF',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(screeningApi.createScreening).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vaRightUnaided: 'CF 1M',
+        vaLeftUnaided: 'CF 3M',
+        vaRightCorrected: 'CF 2M',
+        vaLeftCorrected: 'CF',
+      }),
+    );
+  });
+
   it('does not create surgery for non-surgery recommendations', async () => {
     vi.mocked(screeningApi.createScreening).mockResolvedValue({
       ...createdScreening,
