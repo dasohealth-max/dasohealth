@@ -13,6 +13,8 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     patient: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
       update: vi.fn(),
     },
     surgery: {
@@ -38,10 +40,15 @@ vi.mock('@/lib/api/screenings', () => ({
   fromPrisma: vi.fn(),
 }));
 
-import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening } from '@/app/actions/screenings';
+vi.mock('@/lib/api/patients', () => ({
+  fromPrisma: vi.fn(),
+}));
+
+import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningQueuePaginated } from '@/app/actions/screenings';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as screeningApi from '@/lib/api/screenings';
+import * as patientApi from '@/lib/api/patients';
 
 const patientScope = {
   id: 'patient-1',
@@ -95,9 +102,61 @@ const createdScreening: Screening = {
   createdAt: '2025-02-15T09:01:00.000Z',
 };
 
+describe('getScreeningQueuePaginated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
+    vi.mocked(prisma.patient.findMany).mockResolvedValue([patientScope] as never);
+    vi.mocked(prisma.patient.count).mockResolvedValue(1);
+    vi.mocked(patientApi.fromPrisma).mockReturnValue({
+      ...patientScope,
+      dateOfBirth: '1965-03-12',
+      birthDateSource: 'Exact',
+      sex: 'Female',
+      phone: '+252612345678',
+      district: 'Dhuusamareeb',
+      disabilityStatus: 'None',
+      insuranceStatus: 'None',
+      emergencyContact: '',
+      emergencyPhone: '',
+      consentDate: '2025-02-15',
+      referralSource: 'Campaign walk-in',
+      registeredById: 'actor-clerk-1',
+      registeredByName: 'Clerk Galmudug',
+      screeningStatus: 'Awaiting Screening',
+      createdAt: '2025-02-01T08:00:00.000Z',
+    });
+  });
+
+  it('loads only assigned-region awaiting patients with pagination', async () => {
+    const result = await getScreeningQueuePaginated({ search: 'CS-GM', page: 1, pageSize: 50 });
+
+    expect(result.total).toBe(1);
+    expect(prisma.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 50,
+        where: expect.objectContaining({
+          region: 'Galmudug',
+          screeningStatus: 'Awaiting Screening',
+        }),
+      }),
+    );
+    expect(prisma.patient.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        region: 'Galmudug',
+        screeningStatus: 'Awaiting Screening',
+      }),
+    });
+  });
+});
+
 describe('actionCreateScreening', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
@@ -282,6 +341,7 @@ describe('actionCreateScreening', () => {
 describe('actionUpdateScreening', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
@@ -338,6 +398,7 @@ describe('actionUpdateScreening', () => {
 describe('actionDeleteScreening', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);

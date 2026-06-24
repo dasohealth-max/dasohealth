@@ -1,9 +1,9 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Patient, Screening, SurgeryEye, VAGrade } from '@/types';
-import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated } from '@/app/actions/screenings';
-import { getAllPatients } from '@/app/actions/patients';
+import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated, getScreeningQueuePaginated } from '@/app/actions/screenings';
+import { getPatientById } from '@/app/actions/patients';
 import Pagination from '@/components/ui/Pagination';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
 
@@ -17,7 +17,7 @@ import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { defaultRecommendationForSurgeryConsent } from '@/lib/screening-defaults';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, Search, Stethoscope, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, RefreshCw, Search, Stethoscope, Trash2 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,10 @@ export default function ScreeningPage() {
   const [screenings,          setScreenings]          = useState<Screening[]>([]);
   const [screeningsTotal,     setScreeningsTotal]     = useState(0);
   const [screeningsPage,      setScreeningsPage]      = useState(1);
+  const [queueTotal,          setQueueTotal]          = useState(0);
+  const [queuePage,           setQueuePage]           = useState(1);
   const [debouncedHistSearch, setDebouncedHistSearch] = useState('');
+  const [debouncedQueueSearch, setDebouncedQueueSearch] = useState('');
   const [patients,            setPatients]            = useState<Patient[]>([]);
   const [form,                setForm]                = useState(blankForm);
   const [editing,             setEditing]             = useState<Screening | null>(null);
@@ -100,39 +103,16 @@ export default function ScreeningPage() {
   const [historySearch,       setHistorySearch]       = useState('');
   const [historyOpen,         setHistoryOpen]         = useState(false);
   const [deleteTarget,        setDeleteTarget]        = useState<Screening | null>(null);
+  const [queueError,          setQueueError]          = useState('');
+  const [historyError,        setHistoryError]        = useState('');
+  const [queueRefreshKey,     setQueueRefreshKey]     = useState(0);
+  const [historyRefreshKey,   setHistoryRefreshKey]   = useState(0);
 
-  // Load region-scoped patients for queue and form
+  // Debounce queue search, reset page
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadPatients(showInitialLoading = false) {
-      if (showInitialLoading) setIsLoading(true);
-      try {
-        const patientRows = await getAllPatients();
-        if (!cancelled) setPatients(patientRows);
-      } finally {
-        if (!cancelled && showInitialLoading) setIsLoading(false);
-      }
-    }
-
-    loadPatients(true);
-    const refreshId = window.setInterval(() => {
-      loadPatients();
-    }, 5000);
-    const refreshWhenVisible = () => {
-      if (!document.hidden) loadPatients();
-    };
-
-    window.addEventListener('focus', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(refreshId);
-      window.removeEventListener('focus', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, []);
+    const t = setTimeout(() => { setDebouncedQueueSearch(queueSearch); setQueuePage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [queueSearch]);
 
   // Debounce history search, reset page
   useEffect(() => {
@@ -140,34 +120,50 @@ export default function ScreeningPage() {
     return () => clearTimeout(t);
   }, [historySearch]);
 
+  // Load paginated waiting queue
+  useEffect(() => {
+    let cancelled = false;
+    getScreeningQueuePaginated({ search: debouncedQueueSearch, page: queuePage, pageSize: PAGE_SIZE })
+      .then(({ data, total }) => {
+        if (!cancelled) {
+          setPatients(data);
+          setQueueTotal(total);
+          setQueueError('');
+          setIsLoading(false);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPatients([]);
+          setQueueTotal(0);
+          setQueueError(error instanceof Error ? error.message : 'Could not load screening queue');
+          setIsLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [debouncedQueueSearch, queuePage, queueRefreshKey]);
+
   // Load paginated screening history
   useEffect(() => {
     let cancelled = false;
     getScreeningHistoryPaginated({ search: debouncedHistSearch, page: screeningsPage, pageSize: PAGE_SIZE })
       .then(({ data, total }) => {
-        if (!cancelled) { setScreenings(data); setScreeningsTotal(total); setHistLoading(false); }
+        if (!cancelled) { setScreenings(data); setScreeningsTotal(total); setHistoryError(''); setHistLoading(false); }
       })
-      .catch(() => { if (!cancelled) setHistLoading(false); });
+      .catch((error) => {
+        if (!cancelled) {
+          setScreenings([]);
+          setScreeningsTotal(0);
+          setHistoryError(error instanceof Error ? error.message : 'Could not load screening history');
+          setHistLoading(false);
+        }
+      });
     return () => { cancelled = true; };
-  }, [debouncedHistSearch, screeningsPage]);
+  }, [debouncedHistSearch, screeningsPage, historyRefreshKey]);
 
   // ── Derived lists ──────────────────────────────────────────────────────────
 
-  const queuedPatients = useMemo(
-    () => patients.filter((p) => p.screeningStatus === 'Awaiting Screening'),
-    [patients],
-  );
-
-  const filteredQueue = useMemo(() => {
-    const q = queueSearch.trim().toLowerCase();
-    if (!q) return queuedPatients;
-    return queuedPatients.filter(
-      (p) =>
-        p.patientCode.toLowerCase().includes(q) ||
-        p.fullName.toLowerCase().includes(q) ||
-        p.phone.includes(q),
-    );
-  }, [queuedPatients, queueSearch]);
+  const queuedPatients = patients;
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
@@ -231,16 +227,29 @@ export default function ScreeningPage() {
     }
   }
 
-  function openEdit(screening: Screening) {
+  async function openEdit(screening: Screening) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, createdAt: _ca, ...editable } = screening;
-    const patient = patients.find((row) => row.id === screening.patientId);
+    let patient = patients.find((row) => row.id === screening.patientId);
+    if (!patient) {
+      try {
+        patient = await getPatientById(screening.patientId) ?? undefined;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not load patient details';
+        toast({ title: 'Patient details unavailable', description: message, variant: 'error' });
+        return;
+      }
+    }
+    if (!patient) {
+      toast({ title: 'Patient details unavailable', description: 'The selected patient could not be found.', variant: 'error' });
+      return;
+    }
     setEditing(screening);
     setForm({
       ...editable,
-      surgeryConsentGiven: patient?.consentGiven ?? false,
-      surgeryConsentDate: patient?.consentDate ?? '',
-      recommendation: patient?.consentGiven === false && editable.recommendation === 'Refer for Surgery'
+      surgeryConsentGiven: patient.consentGiven,
+      surgeryConsentDate: patient.consentDate ?? '',
+      recommendation: patient.consentGiven === false && editable.recommendation === 'Refer for Surgery'
         ? 'Discharge'
         : editable.recommendation,
     });
@@ -267,18 +276,11 @@ export default function ScreeningPage() {
       setScreeningsTotal((n) => n + 1);
       setScreenings((rows) => screeningsPage === 1 ? [result.data, ...rows].slice(0, PAGE_SIZE) : rows);
       setScreeningsPage(1);
+      setQueueTotal((n) => Math.max(0, n - 1));
+      setPatients((rows) => rows.filter((p) => p.id !== result.data.patientId));
+      setQueueRefreshKey((key) => key + 1);
       toast({ title: 'Screening recorded', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
     }
-    setPatients((rows) =>
-      rows.map((p) => p.id === result.data.patientId
-        ? {
-            ...p,
-            screeningStatus: 'Screened',
-            consentGiven: form.surgeryConsentGiven,
-            consentDate: form.surgeryConsentDate,
-          }
-        : p),
-    );
     setShowForm(false);
     setEditing(null);
   }
@@ -293,13 +295,7 @@ export default function ScreeningPage() {
       setScreenings((rows) => rows.filter((r) => r.id !== deleteTarget.id));
       setScreeningsTotal((n) => Math.max(0, n - 1));
       if (result.data) {
-        setPatients((rows) =>
-          rows.map((patient) =>
-            patient.id === result.data?.patientId
-              ? { ...patient, screeningStatus: result.data.screeningStatus }
-              : patient,
-          ),
-        );
+        setQueueRefreshKey((key) => key + 1);
       }
       if (screenings.length === 1 && screeningsPage > 1) setScreeningsPage((p) => p - 1);
       toast({ title: 'Screening deleted', description: deletedName });
@@ -359,7 +355,7 @@ export default function ScreeningPage() {
         <div>
           <h1 className="text-xl font-bold text-[#141920]">Screening</h1>
           <p className="text-sm text-[#4B5666]">
-            {isLoading ? 'Loading…' : `${queuedPatients.length} patient${queuedPatients.length === 1 ? '' : 's'} waiting for screening`}
+            {isLoading ? 'Loading...' : `${queueTotal} patient${queueTotal === 1 ? '' : 's'} waiting for screening`}
           </p>
         </div>
       </div>
@@ -371,9 +367,9 @@ export default function ScreeningPage() {
             <div>
               <p className="text-sm font-bold text-[#141920]">Waiting Queue</p>
               <p className="text-xs text-[#4B5666]">
-                {filteredQueue.length !== queuedPatients.length
-                  ? `${filteredQueue.length} of ${queuedPatients.length}`
-                  : queuedPatients.length} patient{queuedPatients.length === 1 ? '' : 's'} awaiting screening
+                {debouncedQueueSearch
+                  ? `${patients.length} of ${queueTotal}`
+                  : queueTotal} patient{queueTotal === 1 ? '' : 's'} awaiting screening
               </p>
             </div>
             <div className="relative min-w-56">
@@ -400,14 +396,33 @@ export default function ScreeningPage() {
                 {isLoading && (
                   <TableSkeletonRows rows={6} columns={8} />
                 )}
-                {!isLoading && filteredQueue.length === 0 && (
+                {!isLoading && queueError && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8">
+                      <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <AlertTriangle size={15} className="shrink-0" />
+                          <span className="min-w-0">{queueError}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { setIsLoading(true); setQueueError(''); setQueueRefreshKey((key) => key + 1); }}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+                        >
+                          <RefreshCw size={12} /> Retry
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!isLoading && !queueError && patients.length === 0 && (
                   <tr><td colSpan={8} className="py-10 text-center text-sm text-[#647184]">
                     {queueSearch ? 'No patients match the search.' : 'No patients waiting — the queue is clear.'}
                   </td></tr>
                 )}
-                {!isLoading && filteredQueue.map((patient, index) => (
+                {!isLoading && !queueError && patients.map((patient, index) => (
                   <tr key={patient.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
-                    <td className="px-4 py-3.5 text-xs text-[#647184]">{index + 1}</td>
+                    <td className="px-4 py-3.5 text-xs text-[#647184]">{(queuePage - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="px-4 py-3.5 font-mono text-xs text-[#4B5666]">{patient.patientCode}</td>
                     <td className="px-4 py-3.5">
                       <p className="font-medium text-[#141920]">{patient.fullName}</p>
@@ -437,6 +452,7 @@ export default function ScreeningPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={queuePage} pageSize={PAGE_SIZE} total={queueTotal} onPageChange={setQueuePage} />
         </CardContent>
       </Card>
 
@@ -493,10 +509,29 @@ export default function ScreeningPage() {
                     {histLoading && (
                       <TableSkeletonRows rows={5} columns={9} />
                     )}
-                    {!histLoading && screenings.length === 0 && (
+                    {!histLoading && historyError && (
+                      <tr>
+                        <td colSpan={9} className="px-4 py-8">
+                          <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <AlertTriangle size={15} className="shrink-0" />
+                              <span className="min-w-0">{historyError}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => { setHistLoading(true); setHistoryError(''); setHistoryRefreshKey((key) => key + 1); }}
+                              className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+                            >
+                              <RefreshCw size={12} /> Retry
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {!histLoading && !historyError && screenings.length === 0 && (
                       <tr><td colSpan={9} className="py-8 text-center text-sm text-[#647184]">No screenings found.</td></tr>
                     )}
-                    {!histLoading && screenings.map((screening, index) => (
+                    {!histLoading && !historyError && screenings.map((screening, index) => (
                       <tr key={screening.id} className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
                         <td className="px-4 py-3.5 text-xs text-[#647184]">{(screeningsPage - 1) * PAGE_SIZE + index + 1}</td>
                         <td className="px-4 py-3.5">

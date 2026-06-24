@@ -18,7 +18,7 @@ import {
   completionRate,
   type RegionStatus,
 } from '@/lib/reporting';
-import { CalendarDays, Download, MapPin, UserCheck } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Download, MapPin, UserCheck } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -31,6 +31,8 @@ export default function ReportsPage() {
   const { user, role } = usePermissions();
   const [agg, setAgg] = useState<ReportAggregation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -44,10 +46,32 @@ export default function ReportsPage() {
   useEffect(() => {
     let cancelled = false;
     getReportAggregation({ filterRegion: effectiveRegion, filterCampaignId: campaignId })
-      .then((data) => { if (!cancelled) { setAgg(data); setLoading(false); } })
-      .catch(() => { if (!cancelled) setLoading(false); });
+      .then((data) => {
+        if (!cancelled) {
+          setAgg(data);
+          setLoadError('');
+          setLoading(false);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAgg(null);
+          setLoadError(error instanceof Error ? error.message : 'Report data could not be loaded.');
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
-  }, [effectiveRegion, campaignId]);
+  }, [effectiveRegion, campaignId, reloadVersion]);
+
+  const prepareReportReload = () => {
+    setLoading(true);
+    setLoadError('');
+  };
+
+  const retryReportLoad = () => {
+    prepareReportReload();
+    setReloadVersion((value) => value + 1);
+  };
 
   const availableRegions = agg?.availableRegions ?? [];
   const availableCampaigns = (agg?.allCampaigns ?? []).filter(
@@ -548,6 +572,10 @@ export default function ReportsPage() {
     );
   }
 
+  if (loadError) {
+    return <ReportLoadError message={loadError} onRetry={retryReportLoad} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Report header */}
@@ -611,7 +639,11 @@ export default function ReportsPage() {
           <Select
             value={region}
             onValueChange={(v) => {
-              if (v) { setRegion(v); setCampaignId('all'); }
+              if (v) {
+                prepareReportReload();
+                setRegion(v);
+                setCampaignId('all');
+              }
             }}
           >
             <SelectTrigger className="w-full rounded-xl">
@@ -632,7 +664,12 @@ export default function ReportsPage() {
 
         <Select
           value={campaignId}
-          onValueChange={(v) => { if (v) setCampaignId(v); }}
+          onValueChange={(v) => {
+            if (v) {
+              prepareReportReload();
+              setCampaignId(v);
+            }
+          }}
         >
           <SelectTrigger className="w-full rounded-xl">
             {selectedCampaignLabel ? (
@@ -914,7 +951,7 @@ export default function ReportsPage() {
                 <tbody>
                   {(scoped?.campaigns ?? []).map((c) => {
                     const stats = agg?.campaignStats.find((cs) => cs.id === c.id);
-                    const target = campaignTargetSurgeries(c);
+                    const target = stats?.targetSurgeries ?? campaignTargetSurgeries(c);
                     const cRate = completionRate(stats?.completed ?? 0, target);
                     return (
                       <tr key={c.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
@@ -953,6 +990,27 @@ export default function ReportsPage() {
 }
 
 // ── Helper components ─────────────────────────────────────────────────────────
+
+function ReportLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-xl border border-[#F5C2C0] bg-[#FDECEB] p-5 text-[#141920] shadow-sm dark:border-red-900/50 dark:bg-[#3A171A] dark:text-white">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[#E53935]" />
+        <div>
+          <h1 className="text-lg font-bold">Report data failed to load</h1>
+          <p className="mt-1 text-sm text-[#4B5666] dark:text-red-100">{message}</p>
+          <Button
+            type="button"
+            onClick={onRetry}
+            className="mt-4 rounded-md bg-[#002E63] px-3 py-2 text-sm font-semibold text-white hover:bg-[#014080]"
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type Rgb = [number, number, number];
 

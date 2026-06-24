@@ -13,7 +13,7 @@ import {
   actionUpdateCampaignRegion,
   getAllCampaigns,
 } from '@/app/actions/campaigns';
-import { actionGetAllUsers } from '@/app/actions/users';
+import { actionGetAssignableUsers } from '@/app/actions/users';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
@@ -22,7 +22,7 @@ import { CardSkeleton, TableSkeletonRows } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 import { defaultOperationDistrict, REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
-import { Activity, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, Target, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, Calendar, ChevronLeft, ChevronRight, ClipboardList, Eye, MapPin, Pencil, Plus, RefreshCw, Target, Trash2 } from 'lucide-react';
 
 const TYPES: CampaignType[] = ['Cataract Surgery Outreach'];
 const CAMPAIGN_STATUSES: CampaignStatus[] = ['Planned', 'Active', 'Completed', 'Suspended'];
@@ -95,16 +95,24 @@ export default function CampaignsPage() {
   const [saveError, setSaveError] = useState('');
   const [activity, setActivity] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAllCampaigns(), actionGetAllUsers()]).then(([rows, userResult]) => {
+    Promise.all([getAllCampaigns(), actionGetAssignableUsers()]).then(([rows, userResult]) => {
       setCampaigns(rows);
       if (rows[0]) setSelectedId(rows[0].id);
       if (userResult.ok) setUsers(userResult.data);
+      setLoadError('');
+      setIsLoading(false);
+    }).catch((error) => {
+      setCampaigns([]);
+      setUsers([]);
+      setLoadError(error instanceof Error ? error.message : 'Could not load campaigns');
       setIsLoading(false);
     });
-  }, []);
+  }, [refreshKey]);
 
   const selected = campaigns.find((campaign) => campaign.id === selectedId) ?? campaigns[0];
   const regions = selected?.regions ?? [];
@@ -136,7 +144,7 @@ export default function CampaignsPage() {
   }
 
   async function reloadUsers() {
-    const result = await actionGetAllUsers();
+    const result = await actionGetAssignableUsers();
     if (result.ok) setUsers(result.data);
     return result;
   }
@@ -328,6 +336,22 @@ export default function CampaignsPage() {
           </Button>
         )}
       </div>
+
+      {loadError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+          <span className="flex min-w-0 items-center gap-2">
+            <AlertTriangle size={15} className="shrink-0" />
+            <span className="min-w-0">{loadError}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => { setIsLoading(true); setLoadError(''); setRefreshKey((key) => key + 1); }}
+            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+          >
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

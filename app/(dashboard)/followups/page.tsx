@@ -1,9 +1,9 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FollowUp, FollowUpMedication, FollowUpStatus, DoctorReviewStatus, MedicationStatus } from '@/types';
 import {
-  actionUpdateFollowUp, checkAndMarkOverdue, getFollowUpsPaginated, getFollowUpTabCounts,
+  actionUpdateFollowUp, getFollowUpsPaginated, getFollowUpTabCounts,
   getMedicationsForFollowUp,
   actionCreateMedication, actionUpdateMedication, actionDeleteMedication,
 } from '@/app/actions/follow_ups';
@@ -22,7 +22,7 @@ import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { ACTIVE_FOLLOW_UP_SCHEDULE } from '@/lib/follow-up-schedule';
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Trash2, UserX, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, RefreshCw, Trash2, UserX, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -184,6 +184,8 @@ export default function FollowUpsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [countsError, setCountsError] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [statusRefreshKey, setStatusRefreshKey] = useState(0);
   const [completeTarget, setCompleteTarget] = useState<FollowUp | null>(null);
@@ -197,14 +199,31 @@ export default function FollowUpsPage() {
   const [showMedForm, setShowMedForm] = useState(false);
   const [medError, setMedError] = useState('');
 
-  // Mark overdue + load tab counts on mount
-  useEffect(() => {
-    checkAndMarkOverdue()
-      .then(() => getFollowUpTabCounts())
-      .then((nextCounts) => {
-        setCounts(nextCounts);
-        setStatusRefreshKey((current) => current + 1);
+  const refreshCounts = useCallback(() => {
+    setCountsError('');
+    getFollowUpTabCounts()
+      .then(setCounts)
+      .catch((error) => {
+        setCountsError(error instanceof Error ? error.message : 'Could not load follow-up counts');
       });
+  }, []);
+
+  // Load tab counts. Overdue status updates are handled by the secured cron route.
+  useEffect(() => {
+    let cancelled = false;
+    getFollowUpTabCounts()
+      .then((nextCounts) => {
+        if (!cancelled) {
+          setCounts(nextCounts);
+          setCountsError('');
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setCountsError(error instanceof Error ? error.message : 'Could not load follow-up counts');
+        }
+      });
+    return () => { cancelled = true; };
   }, []);
 
   // Debounce search, reset page
@@ -218,9 +237,16 @@ export default function FollowUpsPage() {
     let cancelled = false;
     getFollowUpsPaginated({ tab, search: debouncedSearch, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
-        if (!cancelled) { setFollowUpGroups(data); setTotal(t); setIsLoading(false); }
+        if (!cancelled) { setFollowUpGroups(data); setTotal(t); setLoadError(''); setIsLoading(false); }
       })
-      .catch(() => { if (!cancelled) setIsLoading(false); });
+      .catch((error) => {
+        if (!cancelled) {
+          setFollowUpGroups([]);
+          setTotal(0);
+          setLoadError(error instanceof Error ? error.message : 'Could not load follow-ups');
+          setIsLoading(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [tab, debouncedSearch, page, statusRefreshKey]);
 
@@ -280,7 +306,13 @@ export default function FollowUpsPage() {
     setShowMedForm(false);
     setEditingMed(null);
     // Load medications
-    getMedicationsForFollowUp(followUp.id).then(setMedications);
+    getMedicationsForFollowUp(followUp.id)
+      .then(setMedications)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Could not load medications';
+        setMedications([]);
+        toast({ title: 'Medication load failed', description: message, variant: 'error' });
+      });
   }
 
   function closeForm() {
@@ -307,7 +339,7 @@ export default function FollowUpsPage() {
     });
     toast({ title: 'Follow-up updated', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
     // Refresh counts
-    getFollowUpTabCounts().then(setCounts);
+    refreshCounts();
     closeForm();
   }
 
@@ -326,7 +358,7 @@ export default function FollowUpsPage() {
         return next;
       });
       toast({ title: 'Follow-up completed', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
-      getFollowUpTabCounts().then(setCounts);
+      refreshCounts();
     } else {
       toast({ title: 'Could not complete follow-up', description: result.error, variant: 'error' });
     }
@@ -348,7 +380,7 @@ export default function FollowUpsPage() {
         return next;
       });
       toast({ title: 'Follow-up marked missed', description: `${patientDisplayName(result.data.patientName, result.data.patientCode)} - ${result.data.milestone}` });
-      getFollowUpTabCounts().then(setCounts);
+      refreshCounts();
     } else {
       toast({ title: 'Could not mark follow-up missed', description: result.error, variant: 'error' });
     }
@@ -459,6 +491,22 @@ export default function FollowUpsPage() {
           <p className="text-sm text-[#4B5666]">Day 1 and Week 1 follow-ups after completed surgery</p>
         </div>
       </div>
+
+      {countsError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+          <span className="flex min-w-0 items-center gap-2">
+            <AlertTriangle size={15} className="shrink-0" />
+            <span className="min-w-0">{countsError}</span>
+          </span>
+          <button
+            type="button"
+            onClick={refreshCounts}
+            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+          >
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="rounded-xl border border-[#DDE3EA] bg-white p-4 shadow-sm">
@@ -820,10 +868,27 @@ export default function FollowUpsPage() {
               </table>
             </div>
           )}
-          {!isLoading && followUpGroups.length === 0 && (
+          {!isLoading && loadError && (
+            <div className="px-4 py-8">
+              <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+                <span className="flex min-w-0 items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span className="min-w-0">{loadError}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setIsLoading(true); setLoadError(''); setStatusRefreshKey((key) => key + 1); }}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+                >
+                  <RefreshCw size={12} /> Retry
+                </button>
+              </div>
+            </div>
+          )}
+          {!isLoading && !loadError && followUpGroups.length === 0 && (
             <div className="py-10 text-center text-sm text-[#647184]">No follow-ups found.</div>
           )}
-          {!isLoading && followUpGroups.length > 0 && (
+          {!isLoading && !loadError && followUpGroups.length > 0 && (
             <div className="divide-y divide-[#EAEEF3]">
               {followUpGroups.map((group) => {
                 const summary = groupSummary(group);

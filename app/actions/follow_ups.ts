@@ -14,7 +14,7 @@ import {
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import type { FollowUp, FollowUpMedication } from '@/types';
-import type { Prisma } from '@/lib/generated/prisma/client';
+import { Prisma } from '@/lib/generated/prisma/client';
 import { ACTIVE_FOLLOW_UP_PRISMA_MILESTONES } from '@/lib/follow-up-schedule';
 
 export async function getAllFollowUps(): Promise<FollowUp[]> {
@@ -71,6 +71,48 @@ function tabWhere(tab: FollowUpTab): Prisma.FollowUpWhereInput {
   return activeMilestones;
 }
 
+function followUpTabSql(tab: FollowUpTab): Prisma.Sql[] {
+  const activeMilestones = Prisma.sql`milestone IN (${'Day 1'}::follow_up_milestone, ${'Week 1'}::follow_up_milestone)`;
+  if (tab === 'due') return [activeMilestones, Prisma.sql`status = ${'Due'}::follow_up_status`];
+  if (tab === 'overdue') return [activeMilestones, Prisma.sql`status = ${'Overdue'}::follow_up_status`];
+  if (tab === 'missed') return [activeMilestones, Prisma.sql`status = ${'Missed'}::follow_up_status`];
+  if (tab === 'needs-review') {
+    return [
+      activeMilestones,
+      Prisma.sql`needs_doctor_review = true`,
+      Prisma.sql`doctor_review_status = ${'Pending'}::doctor_review_status`,
+    ];
+  }
+  if (tab === 'review-completed') return [activeMilestones, Prisma.sql`doctor_review_status = ${'Completed'}::doctor_review_status`];
+  return [activeMilestones];
+}
+
+function followUpDistinctGroupWhereSql(params: {
+  tab: FollowUpTab;
+  search?: string;
+  region?: string;
+}) {
+  const conditions: Prisma.Sql[] = followUpTabSql(params.tab);
+  if (params.region) conditions.push(Prisma.sql`region = ${params.region}`);
+
+  const search = params.search?.trim();
+  if (search) {
+    const like = `%${search.toLowerCase()}%`;
+    conditions.push(Prisma.sql`(
+      lower(patient_name) LIKE ${like}
+      OR lower(region) LIKE ${like}
+      OR EXISTS (
+        SELECT 1
+        FROM patients p
+        WHERE p.id = follow_ups.patient_id
+          AND lower(p.patient_code) LIKE ${like}
+      )
+    )`);
+  }
+
+  return Prisma.join(conditions, ' AND ');
+}
+
 export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number>> {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);
@@ -112,7 +154,8 @@ export async function getFollowUpsPaginated(params: {
   const pageSize = Math.min(Math.max(1, params.pageSize), 200);
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
-  const [pageGroups, allGroups] = await Promise.all([
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const [pageGroups, totalRows] = await Promise.all([
     prisma.followUp.groupBy({
       by: ['surgeryId'],
       where,
@@ -121,10 +164,15 @@ export async function getFollowUpsPaginated(params: {
       _min: { dueDate: true },
       orderBy: { _min: { dueDate: 'asc' } },
     }),
-    prisma.followUp.groupBy({ by: ['surgeryId'], where }),
+    prisma.$queryRaw<{ total: bigint | number }[]>`
+      SELECT COUNT(DISTINCT surgery_id) AS total
+      FROM follow_ups
+      WHERE ${followUpDistinctGroupWhereSql({ tab: params.tab, search: params.search, region: regionScope.region })}
+    `,
   ]);
+  const total = Number(totalRows[0]?.total ?? 0);
   const surgeryIds = pageGroups.map((group) => group.surgeryId);
-  if (surgeryIds.length === 0) return { data: [], total: allGroups.length };
+  if (surgeryIds.length === 0) return { data: [], total };
 
   const rows = await prisma.followUp.findMany({
     where: {
@@ -158,7 +206,7 @@ export async function getFollowUpsPaginated(params: {
     }];
   });
 
-  return { data, total: allGroups.length };
+  return { data, total };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };

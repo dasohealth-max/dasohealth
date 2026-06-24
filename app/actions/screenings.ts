@@ -5,8 +5,9 @@ import { updateTag } from 'next/cache';
 import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAllScreenings as fetchAllScreenings, createScreening, updateScreening, deleteScreening, fromPrisma as screeningFromPrisma } from '@/lib/api/screenings';
+import { fromPrisma as patientFromPrisma } from '@/lib/api/patients';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
-import type { Screening } from '@/types';
+import type { Patient, Screening } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
 const VAGradeEnum = z.enum(['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'CF 1M', 'CF 2M', 'CF 3M', 'HM', 'PL', 'NPL']);
@@ -47,6 +48,37 @@ export async function getAllScreenings(): Promise<Screening[]> {
   const actor = await requireActor('screening', 'view');
   if ('error' in actor) throw new Error(actor.error);
   return fetchAllScreenings(scopedRegionWhere(actor));
+}
+
+export async function getScreeningQueuePaginated(params: {
+  search?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ data: Patient[]; total: number }> {
+  const actor = await requireActor('screening', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const where: Prisma.PatientWhereInput = {
+    ...scopedRegionWhere(actor),
+    screeningStatus: 'Awaiting Screening',
+    ...(params.search && {
+      OR: [
+        { fullName: { contains: params.search, mode: 'insensitive' } },
+        { patientCode: { contains: params.search, mode: 'insensitive' } },
+        { phone: { contains: params.search } },
+      ],
+    }),
+  };
+
+  const pageSize = Math.min(Math.max(1, params.pageSize), 200);
+  const page = Math.max(1, params.page);
+  const skip = (page - 1) * pageSize;
+  const [rows, total] = await Promise.all([
+    prisma.patient.findMany({ where, skip, take: pageSize, orderBy: { createdAt: 'desc' } }),
+    prisma.patient.count({ where }),
+  ]);
+
+  return { data: rows.map(patientFromPrisma), total };
 }
 
 export async function getScreeningHistoryPaginated(params: {

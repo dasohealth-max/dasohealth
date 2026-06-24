@@ -22,7 +22,7 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatPatientBirthDateLabel } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,8 @@ export default function PatientsPage() {
   const [showForm,     setShowForm]     = useState(false);
   const [saveError,    setSaveError]    = useState('');
   const [isLoading,    setIsLoading]    = useState(true);
+  const [loadError,    setLoadError]    = useState('');
+  const [refreshKey,   setRefreshKey]   = useState(0);
   const [search,       setSearch]       = useState(() => {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('highlight') ?? '';
@@ -130,11 +132,18 @@ export default function PatientsPage() {
     let cancelled = false;
     getPatientsPaginated({ search: debouncedSearch, region: regionFilter, status: statusFilter, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
-        if (!cancelled) { setPatients(data); setTotal(t); setIsLoading(false); }
+        if (!cancelled) { setPatients(data); setTotal(t); setLoadError(''); setIsLoading(false); }
       })
-      .catch(() => { if (!cancelled) setIsLoading(false); });
+      .catch((error) => {
+        if (!cancelled) {
+          setPatients([]);
+          setTotal(0);
+          setLoadError(error instanceof Error ? error.message : 'Could not load patients');
+          setIsLoading(false);
+        }
+      });
     return () => { cancelled = true; };
-  }, [debouncedSearch, regionFilter, statusFilter, page]);
+  }, [debouncedSearch, regionFilter, statusFilter, page, refreshKey]);
 
   // Load region-scoped campaigns only for roles that can use the registration form.
   useEffect(() => {
@@ -374,6 +383,22 @@ export default function PatientsPage() {
           {total} {total === 1 ? 'patient' : 'patients'}
         </span>
       </div>
+
+      {loadError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+          <span className="flex min-w-0 items-center gap-2">
+            <AlertTriangle size={15} className="shrink-0" />
+            <span className="min-w-0">{loadError}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => { setIsLoading(true); setLoadError(''); setRefreshKey((key) => key + 1); }}
+            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+          >
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
 
       {/* Patients table */}
       <Card className="overflow-hidden border-0 shadow-sm">

@@ -76,6 +76,17 @@ async function getDbUsers(): Promise<User[]> {
   return rows.map(toUserFromDb);
 }
 
+export async function actionGetAssignableUsers(): Promise<ActionResult<User[]>> {
+  const actor = await requireActor('settings', 'view');
+  if ('error' in actor) return { ok: false, error: actor.error };
+
+  let users = await getDbUsers();
+  if (actor.role !== 'Super Administrator') {
+    users = users.filter((u) => u.assignedRegion === actor.assignedRegion);
+  }
+  return { ok: true, data: users };
+}
+
 async function syncUserToDb(user: User) {
   await prisma.user.upsert({
     where: { id: user.id },

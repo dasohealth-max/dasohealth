@@ -13,8 +13,9 @@ vi.mock('@/lib/auth-server', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn(),
     surgery: { findUnique: vi.fn() },
-    followUp: { findUnique: vi.fn() },
+    followUp: { findUnique: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
     followUpMedication: { findUnique: vi.fn() },
   },
 }));
@@ -30,10 +31,11 @@ vi.mock('@/lib/api/follow_ups', () => ({
   createMedication: vi.fn(),
   updateMedication: vi.fn(),
   deleteMedication: vi.fn(),
+  fromPrisma: vi.fn(),
 }));
 
 // Imports after mocks
-import { actionCreateFollowUp, actionUpdateFollowUp, actionCreateMedication } from '@/app/actions/follow_ups';
+import { actionCreateFollowUp, actionUpdateFollowUp, actionCreateMedication, getFollowUpsPaginated } from '@/app/actions/follow_ups';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as followUpApi from '@/lib/api/follow_ups';
@@ -72,9 +74,39 @@ const followUpData = {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe('getFollowUpsPaginated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
+    vi.mocked(prisma.followUp.groupBy).mockResolvedValue([{ surgeryId: 'surgery-1' }] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ total: 1 }] as never);
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue([{}] as never);
+    vi.mocked(followUpApi.fromPrisma).mockReturnValue(galmudugFollowUp);
+  });
+
+  it('uses a distinct surgery count instead of materializing all groups for totals', async () => {
+    const result = await getFollowUpsPaginated({ tab: 'due', search: '', page: 1, pageSize: 50 });
+
+    expect(result.total).toBe(1);
+    expect(prisma.followUp.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.followUp.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          region: 'Galmudug',
+          surgeryId: { in: ['surgery-1'] },
+        }),
+      }),
+    );
+  });
+});
+
 describe('actionCreateFollowUp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
@@ -137,6 +169,7 @@ describe('actionUpdateFollowUp – doctor review', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
@@ -217,6 +250,7 @@ describe('actionCreateMedication', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(prisma.followUp.findUnique).mockResolvedValue(followUpRow as never);

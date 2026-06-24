@@ -48,10 +48,11 @@ export async function getPatientsPaginated(params: {
 }): Promise<{ data: Patient[]; total: number }> {
   const actor = await requireActor('patients', 'view');
   if ('error' in actor) throw new Error(actor.error);
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const region = regionScope.region ?? (params.region || undefined);
 
   const where: Prisma.PatientWhereInput = {
-    ...scopedRegionWhere(actor),
-    ...(params.region && { region: params.region }),
+    ...(region && { region }),
     ...(params.status && { screeningStatus: params.status }),
     ...(params.search && {
       OR: [

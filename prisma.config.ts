@@ -3,10 +3,12 @@ import { defineConfig } from 'prisma/config';
 
 config({ path: '.env.local' });
 
-// Supabase requires SSL and the session pooler (port 6543) for external connections.
-// We append sslmode=require so Prisma CLI can complete the TLS handshake.
+// Keep Prisma CLI SSL behavior aligned with lib/prisma.ts.
+// Supabase pooler certificates can fail local chain verification unless strict
+// verification is explicitly enabled for the environment.
+const sslMode = process.env['DATABASE_SSL_REJECT_UNAUTHORIZED'] === 'true' ? 'require' : 'no-verify';
 const migrationUrl = process.env['DIRECT_URL']
-  ? `${process.env['DIRECT_URL']}${process.env['DIRECT_URL']!.includes('?') ? '&' : '?'}sslmode=require`
+  ? `${process.env['DIRECT_URL']}${process.env['DIRECT_URL']!.includes('?') ? '&' : '?'}sslmode=${sslMode}`
   : undefined;
 
 export default defineConfig({

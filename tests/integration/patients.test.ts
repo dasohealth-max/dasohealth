@@ -18,6 +18,8 @@ vi.mock('@/lib/prisma', () => ({
     campaignRegion: { findFirst: vi.fn() },
     patient: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
@@ -36,7 +38,7 @@ vi.mock('@/lib/api/campaigns', () => ({
 }));
 
 // Imports after mocks
-import { actionCreatePatient, getPatientRegistrationCampaigns } from '@/app/actions/patients';
+import { actionCreatePatient, getPatientRegistrationCampaigns, getPatientsPaginated } from '@/app/actions/patients';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as patientApi from '@/lib/api/patients';
@@ -83,6 +85,7 @@ const rawPatientRow = {
 describe('getPatientRegistrationCampaigns', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
   });
 
   it('Data Clerk receives only assigned-region campaign sub-regions for patient registration', async () => {
@@ -116,9 +119,41 @@ describe('getPatientRegistrationCampaigns', () => {
   });
 });
 
+describe('getPatientsPaginated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(patientApi.fromPrisma).mockReturnValue(galmudugPatient);
+    vi.mocked(prisma.patient.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.patient.count).mockResolvedValue(0);
+  });
+
+  it('keeps assigned-region scope even when a different region filter is supplied', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugClerk);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
+
+    await getPatientsPaginated({
+      search: '',
+      region: 'Banadir / Mogadishu',
+      status: '',
+      page: 1,
+      pageSize: 50,
+    });
+
+    expect(prisma.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ region: 'Galmudug' }),
+      }),
+    );
+    expect(prisma.patient.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ region: 'Galmudug' }),
+    });
+  });
+});
+
 describe('actionCreatePatient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(prisma.patient.findFirst).mockReset();
     vi.mocked(prisma.patient.create).mockReset();
     vi.mocked(prisma.$queryRaw).mockReset();

@@ -15,7 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     patient: { findUnique: vi.fn() },
     screening: { findUnique: vi.fn() },
-    surgery: { findUnique: vi.fn() },
+    surgery: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     followUp: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   },
 }));
@@ -26,6 +26,7 @@ vi.mock('@/lib/api/surgeries', () => ({
   updateSurgery: vi.fn(),
   deleteSurgery: vi.fn(),
   fromPrisma: vi.fn(),
+  attachScreeningResults: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma-enums', () => ({
@@ -34,7 +35,7 @@ vi.mock('@/lib/prisma-enums', () => ({
 }));
 
 // Imports after mocks
-import { actionCreateSurgery, actionUpdateSurgery } from '@/app/actions/surgeries';
+import { actionCreateSurgery, actionUpdateSurgery, getSurgeriesPaginated } from '@/app/actions/surgeries';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as surgeryApi from '@/lib/api/surgeries';
@@ -91,9 +92,40 @@ const allFollowUpMilestoneRows = [
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe('getSurgeriesPaginated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(banadiPM);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Banadir / Mogadishu' });
+    vi.mocked(prisma.surgery.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(surgeryApi.attachScreeningResults).mockResolvedValue([]);
+  });
+
+  it('keeps assigned-region scope even when a different region filter is supplied', async () => {
+    await getSurgeriesPaginated({
+      search: '',
+      region: 'Galmudug',
+      status: '',
+      page: 1,
+      pageSize: 50,
+    });
+
+    expect(prisma.surgery.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ region: 'Banadir / Mogadishu' }),
+      }),
+    );
+    expect(prisma.surgery.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ region: 'Banadir / Mogadishu' }),
+    });
+  });
+});
+
 describe('actionCreateSurgery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
@@ -188,6 +220,7 @@ describe('actionCreateSurgery', () => {
 describe('actionUpdateSurgery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);

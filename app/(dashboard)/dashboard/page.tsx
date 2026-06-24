@@ -1,22 +1,11 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Campaign, FollowUp, Patient, Screening, Surgery } from '@/types';
-import { getAllCampaigns } from '@/app/actions/campaigns';
-import { getAllFollowUps } from '@/app/actions/follow_ups';
-import { getAllPatients } from '@/app/actions/patients';
-import { getAllScreenings } from '@/app/actions/screenings';
-import { getAllSurgeries } from '@/app/actions/surgeries';
+import { getDashboardRegionStats } from '@/app/actions/dashboard';
+import type { DashboardRegionStats as RegionStats, DashboardRegionStatus as RegionStatus } from '@/app/actions/dashboard';
 import { usePermissions } from '@/lib/auth';
-import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { CardSkeleton, Skeleton } from '@/components/ui/skeleton';
-import {
-  campaignTargetSurgeriesForRegion,
-  campaignsForRegion,
-  filterRowsByRegisteredCampaign,
-  registeredCampaignIds,
-} from '@/lib/reporting';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -39,31 +28,6 @@ import {
   YAxis,
 } from 'recharts';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type RegionStatus = 'No Campaign' | 'No Activity' | 'Behind' | 'Active' | 'Strong';
-
-type RegionStats = {
-  region: string;
-  district: string;
-  manager: string;
-  campaignName: string;
-  campaignStatus: string | null;
-  campaignStart: string;
-  campaignEnd: string;
-  target: number;
-  patients: number;
-  screened: number;
-  scheduled: number;
-  completed: number;
-  followUpsDone: number;
-  followUpsDue: number;
-  overdue: number;
-  doctorReview: number;
-  pct: number;
-  status: RegionStatus;
-};
-
 // ─── Status config ────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<RegionStatus, { border: string; badge: string; bar: string }> = {
@@ -76,74 +40,8 @@ const STATUS_STYLES: Record<RegionStatus, { border: string; badge: string; bar: 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function computeStatus(campaignCount: number, patientCount: number, pct: number): RegionStatus {
-  if (!campaignCount) return 'No Campaign';
-  if (!patientCount) return 'No Activity';
-  if (pct >= 75) return 'Strong';
-  if (pct >= 25) return 'Active';
-  return 'Behind';
-}
-
 function shortName(region: string) {
   return region.replace(' / Mogadishu', '').replace(' Somalia', '').replace(' State', '');
-}
-
-function computeRegionStats(
-  campaigns: Campaign[],
-  patients: Patient[],
-  screenings: Screening[],
-  surgeries: Surgery[],
-  followUps: FollowUp[],
-): RegionStats[] {
-  return REGIONAL_CAMPAIGN_AREAS.map((area) => {
-    const regionCampaigns = campaignsForRegion(campaigns, area.region);
-    const primary = regionCampaigns.find((c) => c.status === 'Active') ?? regionCampaigns[0] ?? null;
-    const primaryPlan = primary?.regions?.find((plan) => plan.region === area.region) ?? null;
-    const campaignIds = registeredCampaignIds(regionCampaigns);
-
-    const rPatients = filterRowsByRegisteredCampaign(
-      patients.filter((p) => p.region === area.region),
-      campaignIds,
-    );
-    const rScreenings = filterRowsByRegisteredCampaign(
-      screenings.filter((s) => s.region === area.region),
-      campaignIds,
-    );
-    const rSurgeries = filterRowsByRegisteredCampaign(
-      surgeries.filter((s) => s.region === area.region),
-      campaignIds,
-    );
-    const rFollowUps = filterRowsByRegisteredCampaign(
-      followUps.filter((f) => f.region === area.region),
-      campaignIds,
-    );
-
-    const completed = rSurgeries.filter((s) => s.status === 'Completed').length;
-    const scheduled = rSurgeries.filter((s) => s.status === 'Scheduled').length;
-    const target    = campaignTargetSurgeriesForRegion(regionCampaigns, area.region);
-    const pct       = target ? Math.round((completed / target) * 100) : 0;
-
-    return {
-      region:         area.region,
-      district:       primaryPlan?.operationDistrict ?? area.defaultDistrict,
-      manager:        primaryPlan?.regionalManagerName ?? '',
-      campaignName:   primary?.name ?? '',
-      campaignStatus: primary?.status ?? null,
-      campaignStart:  primary?.startDate ?? '',
-      campaignEnd:    primary?.endDate ?? '',
-      target,
-      patients:       rPatients.length,
-      screened:       rScreenings.length,
-      scheduled,
-      completed,
-      followUpsDone:  rFollowUps.filter((f) => f.status === 'Completed').length,
-      followUpsDue:   rFollowUps.filter((f) => f.status === 'Pending' || f.status === 'Due').length,
-      overdue:        rFollowUps.filter((f) => f.status === 'Overdue').length,
-      doctorReview:   rFollowUps.filter((f) => f.needsDoctorReview).length,
-      pct,
-      status: computeStatus(regionCampaigns.length, rPatients.length, pct),
-    };
-  });
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -152,30 +50,38 @@ export default function DashboardPage() {
   const { role, user } = usePermissions();
   const isSuperAdmin = role === 'Super Administrator';
 
-  const [campaigns,  setCampaigns]  = useState<Campaign[]>([]);
-  const [patients,   setPatients]   = useState<Patient[]>([]);
-  const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [surgeries,  setSurgeries]  = useState<Surgery[]>([]);
-  const [followUps,  setFollowUps]  = useState<FollowUp[]>([]);
-  const [loading,    setLoading]    = useState(true);
+  const [allStats, setAllStats] = useState<RegionStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
 
   useEffect(() => {
-    Promise.all([
-      getAllCampaigns(),
-      getAllPatients(),
-      getAllScreenings(),
-      getAllSurgeries(),
-      getAllFollowUps(),
-    ]).then(([c, p, s, sur, f]) => {
-      setCampaigns(c); setPatients(p); setScreenings(s); setSurgeries(sur); setFollowUps(f);
-      setLoading(false);
-    });
-  }, []);
+    let mounted = true;
 
-  const allStats = useMemo(
-    () => computeRegionStats(campaigns, patients, screenings, surgeries, followUps),
-    [campaigns, followUps, patients, screenings, surgeries],
-  );
+    getDashboardRegionStats()
+      .then((stats) => {
+        if (!mounted) return;
+        setAllStats(stats);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        console.error('Dashboard data failed to load', err);
+        setError(err instanceof Error ? err.message : 'Dashboard data could not be loaded.');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [loadVersion]);
+
+  const retryDashboardLoad = () => {
+    setLoading(true);
+    setError(null);
+    setLoadVersion((value) => value + 1);
+  };
 
   const effectiveSelectedRegion = isSuperAdmin ? 'all' : (user?.assignedRegion ?? 'all');
 
@@ -185,6 +91,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return <DashboardSkeleton />;
+  }
+
+  if (error) {
+    return <DashboardError message={error} onRetry={retryDashboardLoad} />;
   }
 
   return (
@@ -213,6 +123,27 @@ export default function DashboardPage() {
           onBack={() => undefined}
         />
       )}
+    </div>
+  );
+}
+
+function DashboardError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-xl border border-[#F5C2C0] bg-[#FDECEB] p-5 text-[#141920] shadow-sm dark:border-red-900/50 dark:bg-[#3A171A] dark:text-white">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[#E53935]" />
+        <div>
+          <h1 className="text-lg font-bold">Dashboard data failed to load</h1>
+          <p className="mt-1 text-sm text-[#4B5666] dark:text-red-100">{message}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-4 rounded-md bg-[#002E63] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#014080]"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
