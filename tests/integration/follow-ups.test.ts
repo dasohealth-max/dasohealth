@@ -15,7 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     $queryRaw: vi.fn(),
     surgery: { findUnique: vi.fn() },
-    followUp: { findUnique: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
+    followUp: { findUnique: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     followUpMedication: { findUnique: vi.fn() },
   },
 }));
@@ -35,7 +35,7 @@ vi.mock('@/lib/api/follow_ups', () => ({
 }));
 
 // Imports after mocks
-import { actionCreateFollowUp, actionUpdateFollowUp, actionCreateMedication, getFollowUpsPaginated } from '@/app/actions/follow_ups';
+import { actionCreateFollowUp, actionUpdateFollowUp, actionCreateMedication, getFollowUpsPaginated, getPrintableFollowUps } from '@/app/actions/follow_ups';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as followUpApi from '@/lib/api/follow_ups';
@@ -100,6 +100,39 @@ describe('getFollowUpsPaginated', () => {
         }),
       }),
     );
+  });
+});
+
+describe('getPrintableFollowUps', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue([{}] as never);
+    vi.mocked(prisma.followUp.count).mockResolvedValue(1);
+    vi.mocked(followUpApi.fromPrisma).mockReturnValue(galmudugFollowUp);
+  });
+
+  it('keeps assigned-region scope and caps printable records', async () => {
+    const result = await getPrintableFollowUps({ tab: 'due', search: 'Amina' });
+
+    expect(result.total).toBe(1);
+    expect(result.truncated).toBe(false);
+    expect(prisma.followUp.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          region: 'Galmudug',
+          status: 'Due',
+        }),
+        take: 1000,
+      }),
+    );
+    expect(prisma.followUp.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        region: 'Galmudug',
+        status: 'Due',
+      }),
+    });
   });
 });
 

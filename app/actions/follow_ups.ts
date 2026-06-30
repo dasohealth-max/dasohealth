@@ -17,6 +17,8 @@ import type { FollowUp, FollowUpMedication } from '@/types';
 import { Prisma } from '@/lib/generated/prisma/client';
 import { ACTIVE_FOLLOW_UP_PRISMA_MILESTONES } from '@/lib/follow-up-schedule';
 
+const PRINT_LIMIT = 1000;
+
 export async function getAllFollowUps(): Promise<FollowUp[]> {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);
@@ -54,8 +56,14 @@ export type FollowUpGroup = {
   surgeryId: string;
   patientId: string;
   patientCode?: string;
+  patientPhone?: string;
+  patientEmergencyPhone?: string;
   patientName: string;
   region: string;
+  operationDistrict?: string;
+  surgeryPerformedAt?: string;
+  surgeryScheduledAt?: string;
+  surgeryEye?: FollowUp['surgeryEye'];
   campaignId: string;
   campaignRegionId?: string;
   followUps: FollowUp[];
@@ -69,6 +77,23 @@ function tabWhere(tab: FollowUpTab): Prisma.FollowUpWhereInput {
   if (tab === 'needs-review') return { ...activeMilestones, needsDoctorReview: true, doctorReviewStatus: 'Pending' as never };
   if (tab === 'review-completed') return { ...activeMilestones, doctorReviewStatus: 'Completed' as never };
   return activeMilestones;
+}
+
+function followUpWhere(params: {
+  tab: FollowUpTab;
+  search?: string;
+}, regionWhere: Prisma.FollowUpWhereInput): Prisma.FollowUpWhereInput {
+  return {
+    ...regionWhere,
+    ...tabWhere(params.tab),
+    ...(params.search && {
+      OR: [
+        { patientName: { contains: params.search, mode: 'insensitive' } },
+        { region: { contains: params.search, mode: 'insensitive' } },
+        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
+      ],
+    }),
+  };
 }
 
 function followUpTabSql(tab: FollowUpTab): Prisma.Sql[] {
@@ -139,17 +164,7 @@ export async function getFollowUpsPaginated(params: {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);
 
-  const where: Prisma.FollowUpWhereInput = {
-    ...scopedRegionWhere(actor),
-    ...tabWhere(params.tab),
-    ...(params.search && {
-      OR: [
-        { patientName: { contains: params.search, mode: 'insensitive' } },
-        { region: { contains: params.search, mode: 'insensitive' } },
-        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
-      ],
-    }),
-  };
+  const where = followUpWhere(params, scopedRegionWhere(actor));
 
   const pageSize = Math.min(Math.max(1, params.pageSize), 200);
   const page = Math.max(1, params.page);
@@ -180,7 +195,10 @@ export async function getFollowUpsPaginated(params: {
       surgeryId: { in: surgeryIds },
       milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] },
     },
-    include: { patient: { select: { patientCode: true } } },
+    include: {
+      patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
+      surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true } },
+    },
     orderBy: [{ surgeryId: 'asc' }, { dueDate: 'asc' }],
   });
 
@@ -198,8 +216,14 @@ export async function getFollowUpsPaginated(params: {
       surgeryId,
       patientId: first.patientId,
       patientCode: first.patientCode,
+      patientPhone: first.patientPhone,
+      patientEmergencyPhone: first.patientEmergencyPhone,
       patientName: first.patientName,
       region: first.region,
+      operationDistrict: first.operationDistrict,
+      surgeryPerformedAt: first.surgeryPerformedAt,
+      surgeryScheduledAt: first.surgeryScheduledAt,
+      surgeryEye: first.surgeryEye,
       campaignId: first.campaignId,
       campaignRegionId: first.campaignRegionId,
       followUps,
@@ -209,13 +233,56 @@ export async function getFollowUpsPaginated(params: {
   return { data, total };
 }
 
+export async function getPrintableFollowUps(params: {
+  tab: FollowUpTab;
+  search?: string;
+}): Promise<{ data: FollowUp[]; total: number; truncated: boolean; limit: number }> {
+  const actor = await requireActor('followups', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const where = followUpWhere(params, scopedRegionWhere(actor));
+  const [rows, total] = await Promise.all([
+    prisma.followUp.findMany({
+      where,
+      take: PRINT_LIMIT,
+      include: {
+        patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
+        surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true } },
+      },
+      orderBy: [{ dueDate: 'asc' }, { patientName: 'asc' }],
+    }),
+    prisma.followUp.count({ where }),
+  ]);
+
+  return {
+    data: rows.map(followUpFromPrisma),
+    total,
+    truncated: total > rows.length,
+    limit: PRINT_LIMIT,
+  };
+}
+
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
 
 async function getSurgeryScope(surgeryId: string) {
   return prisma.surgery.findUnique({
     where: { id: surgeryId },
-    include: { patient: { select: { patientCode: true } } },
+    include: {
+      patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
+    },
   });
+}
+
+function withFollowUpPrintFields(followUp: FollowUp, surgery: Awaited<ReturnType<typeof getSurgeryScope>>): FollowUp {
+  return {
+    ...followUp,
+    patientPhone: surgery?.patient?.phone,
+    patientEmergencyPhone: surgery?.patient?.emergencyPhone,
+    operationDistrict: surgery?.operationDistrict,
+    surgeryPerformedAt: surgery?.performedAt ? surgery.performedAt.toISOString() : undefined,
+    surgeryScheduledAt: surgery?.scheduledAt ? surgery.scheduledAt.toISOString() : undefined,
+    surgeryEye: surgery?.eye as FollowUp['surgeryEye'],
+  };
 }
 
 export async function actionCreateFollowUp(
@@ -233,7 +300,7 @@ export async function actionCreateFollowUp(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const followUp = {
+    const followUp = withFollowUpPrintFields({
       ...(await createFollowUp({
       ...data,
       region: surgery.region,
@@ -246,7 +313,7 @@ export async function actionCreateFollowUp(
       completedByName: data.status === 'Completed' ? actor.name : '',
       })),
       patientCode: surgery.patient?.patientCode,
-    };
+    }, surgery);
     updateTag('follow-ups');
     after(() => auditLog({
       actor,
@@ -282,7 +349,7 @@ export async function actionUpdateFollowUp(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const followUp = {
+    const followUp = withFollowUpPrintFields({
       ...(await updateFollowUp(id, {
       ...data,
       region: surgery.region,
@@ -298,7 +365,7 @@ export async function actionUpdateFollowUp(
         : data.doctorReviewedAt,
       })),
       patientCode: surgery.patient?.patientCode,
-    };
+    }, surgery);
     updateTag('follow-ups');
     after(() => auditLog({
       actor,

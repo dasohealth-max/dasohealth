@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FollowUp, FollowUpMedication, FollowUpStatus, DoctorReviewStatus, MedicationStatus } from '@/types';
 import {
-  actionUpdateFollowUp, getFollowUpsPaginated, getFollowUpTabCounts,
+  actionUpdateFollowUp, getFollowUpsPaginated, getFollowUpTabCounts, getPrintableFollowUps,
   getMedicationsForFollowUp,
   actionCreateMedication, actionUpdateMedication, actionDeleteMedication,
 } from '@/app/actions/follow_ups';
@@ -22,9 +22,10 @@ import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { ACTIVE_FOLLOW_UP_SCHEDULE } from '@/lib/follow-up-schedule';
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, RefreshCw, Trash2, UserX, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Printer, RefreshCw, Trash2, UserX, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
+type PrintMode = 'current' | 'all';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -168,6 +169,12 @@ const ACTION_PANEL_TONE = {
   green: 'border-[#A6DCB5] bg-[#EBF7EE] text-[#238038]',
 };
 
+function printAfterRender() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => window.print());
+  });
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FollowUpsPage() {
@@ -190,6 +197,12 @@ export default function FollowUpsPage() {
   const [statusRefreshKey, setStatusRefreshKey] = useState(0);
   const [completeTarget, setCompleteTarget] = useState<FollowUp | null>(null);
   const [missedTarget, setMissedTarget] = useState<FollowUp | null>(null);
+  const [printRows, setPrintRows] = useState<FollowUp[] | null>(null);
+  const [printMode, setPrintMode] = useState<PrintMode>('current');
+  const [printTotal, setPrintTotal] = useState(0);
+  const [printLimit, setPrintLimit] = useState(0);
+  const [printTruncated, setPrintTruncated] = useState(false);
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
   // Medications state
   const [medications, setMedications] = useState<FollowUpMedication[]>([]);
@@ -454,9 +467,72 @@ export default function FollowUpsPage() {
   const showDoctorSection = form.needsDoctorReview || form.doctorReviewStatus !== 'Not Needed';
   const nextAction = nextActionForCounts(counts);
   const NextActionIcon = nextAction.Icon;
+  const printableFollowUps = followUpGroups.flatMap((group) => {
+    const matching = group.followUps.filter((followUp) => followUpBelongsToTab(followUp, tab));
+    const rows = matching.length ? matching : group.followUps;
+    return rows.map((followUp) => ({
+      ...followUp,
+      patientPhone: followUp.patientPhone ?? group.patientPhone,
+      patientEmergencyPhone: followUp.patientEmergencyPhone ?? group.patientEmergencyPhone,
+      operationDistrict: followUp.operationDistrict ?? group.operationDistrict,
+      surgeryPerformedAt: followUp.surgeryPerformedAt ?? group.surgeryPerformedAt,
+      surgeryScheduledAt: followUp.surgeryScheduledAt ?? group.surgeryScheduledAt,
+      surgeryEye: followUp.surgeryEye ?? group.surgeryEye,
+    }));
+  });
+  const selectedTabLabel = TABS.find((item) => item.id === tab)?.label ?? 'Follow-ups';
+
+  function printCurrentList() {
+    setPrintRows(null);
+    setPrintMode('current');
+    setPrintTotal(0);
+    setPrintLimit(0);
+    setPrintTruncated(false);
+    printAfterRender();
+  }
+
+  async function printAllMatchingList() {
+    setIsPreparingPrint(true);
+    try {
+      const result = await getPrintableFollowUps({ tab, search: debouncedSearch });
+      setPrintRows(result.data);
+      setPrintMode('all');
+      setPrintTotal(result.total);
+      setPrintLimit(result.limit);
+      setPrintTruncated(result.truncated);
+      if (result.truncated) {
+        toast({
+          title: 'Print list limited',
+          description: `Showing the first ${result.limit} matching follow-ups. Narrow the filters to print fewer records.`,
+          variant: 'info',
+        });
+      }
+      printAfterRender();
+    } catch (error) {
+      toast({
+        title: 'Could not prepare print list',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'error',
+      });
+    } finally {
+      setIsPreparingPrint(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
+      <FollowUpsPrintView
+        rows={printRows ?? printableFollowUps}
+        title={selectedTabLabel}
+        mode={printMode}
+        total={printTotal}
+        limit={printLimit}
+        truncated={printTruncated}
+        search={debouncedSearch}
+        currentGroupTotal={total}
+      />
+
+      <div className="space-y-4" data-print-hide="">
       <ConfirmDialog
         open={!!deleteMedTarget}
         title="Delete Medication"
@@ -489,6 +565,23 @@ export default function FollowUpsPage() {
         <div>
           <h1 className="text-xl font-bold text-[#141920]">Follow-ups</h1>
           <p className="text-sm text-[#4B5666]">Day 1 and Week 1 follow-ups after completed surgery</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={printCurrentList}
+            className="inline-flex items-center gap-2 rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm font-semibold text-[#4B5666] shadow-sm transition hover:bg-[#F5F7FA] hover:text-[#141920]"
+          >
+            <Printer size={15} /> Print Page
+          </button>
+          <button
+            type="button"
+            onClick={printAllMatchingList}
+            disabled={isPreparingPrint}
+            className="inline-flex items-center gap-2 rounded-md bg-[#2C9942] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#238038] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Printer size={15} /> {isPreparingPrint ? 'Preparing...' : 'Print All Matching'}
+          </button>
         </div>
       </div>
 
@@ -981,7 +1074,94 @@ export default function FollowUpsPage() {
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </CardContent>
       </Card>
+      </div>
     </div>
+  );
+}
+
+function FollowUpsPrintView({
+  rows,
+  title,
+  mode,
+  total,
+  limit,
+  truncated,
+  search,
+  currentGroupTotal,
+}: {
+  rows: FollowUp[];
+  title: string;
+  mode: PrintMode;
+  total: number;
+  limit: number;
+  truncated: boolean;
+  search: string;
+  currentGroupTotal: number;
+}) {
+  return (
+    <section data-print-only="" className="print-report">
+      <div className="print-report-header">
+        <h1>{title} Follow-ups</h1>
+        {mode === 'all' ? (
+          <p>
+            {rows.length} of {total} matching follow-up record{total === 1 ? '' : 's'}
+            {search ? ` for "${search}"` : ''}
+            {truncated ? ` (limited to first ${limit}; narrow filters to print the full list)` : ''}
+          </p>
+        ) : (
+          <p>
+            {rows.length} follow-up record{rows.length === 1 ? '' : 's'} on this page
+            {search ? ` matching "${search}"` : ''}
+            {currentGroupTotal ? ` from ${currentGroupTotal} patient group${currentGroupTotal === 1 ? '' : 's'}` : ''}
+          </p>
+        )}
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            {[
+              '#',
+              'Patient Name',
+              'Phone',
+              'Region / City',
+              'Surgery Date',
+              'Eye',
+              'Milestone',
+              'Completed By',
+              'Next Appointment',
+              'Complications / Notes',
+            ].map((header) => (
+              <th key={header}>{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={10}>No follow-ups found on this page.</td>
+            </tr>
+          ) : rows.map((followUp, index) => {
+            const surgeryDate = followUp.surgeryPerformedAt ?? followUp.surgeryScheduledAt ?? '';
+            const notes = [followUp.complications, followUp.notes].filter(Boolean).join(' / ') || '-';
+            return (
+              <tr key={followUp.id}>
+                <td>{index + 1}</td>
+                <td>{followUp.patientName || '-'}</td>
+                <td>{followUp.patientPhone || '-'}</td>
+                <td>{followUp.region}{followUp.operationDistrict ? ` / ${followUp.operationDistrict}` : ''}</td>
+                <td>{surgeryDate ? formatDate(surgeryDate) : '-'}</td>
+                <td>{followUp.surgeryEye || '-'}</td>
+                <td>{followUp.milestone}</td>
+                <td>{followUp.completedByName || '-'}</td>
+                <td>{followUp.nextAppointmentDate ? formatDate(followUp.nextAppointmentDate) : '-'}</td>
+                <td>{notes}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
   );
 }
 

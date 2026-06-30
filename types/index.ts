@@ -147,6 +147,7 @@ export interface Surgery {
   id: string;
   patientId: string;
   patientCode?: string;
+  patientAge?: number;
   patientPhone?: string;
   patientEmergencyPhone?: string;
   patientName: string;
@@ -194,11 +195,17 @@ export interface FollowUp {
   id: string;
   patientId: string;
   patientCode?: string;
+  patientPhone?: string;
+  patientEmergencyPhone?: string;
   patientName: string;
   surgeryId: string;
   campaignId: string;
   campaignRegionId?: string;
   region: string;
+  operationDistrict?: string;
+  surgeryPerformedAt?: string;
+  surgeryScheduledAt?: string;
+  surgeryEye?: SurgeryEye;
   milestone: FollowUpMilestone;
   dueDate: string;
   completedAt?: string;

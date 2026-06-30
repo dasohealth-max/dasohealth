@@ -6,20 +6,37 @@ import type { FollowUp, FollowUpMedication } from '@/types';
 import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays, startOfDay } from '@/lib/follow-up-schedule';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.followUp.findFirst>>> & {
-  patient?: { patientCode: string } | null;
+  patient?: { patientCode: string; phone?: string; emergencyPhone?: string } | null;
+  surgery?: {
+    operationDistrict?: string;
+    performedAt?: Date | string | null;
+    scheduledAt?: Date | string;
+    eye?: string;
+  } | null;
 };
 type MedRow = NonNullable<Awaited<ReturnType<typeof prisma.followUpMedication.findFirst>>>;
+
+const FOLLOW_UP_INCLUDE = {
+  patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
+  surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true } },
+} as const;
 
 export function fromPrisma(row: Row): FollowUp {
   return {
     id: row.id,
     patientId: row.patientId,
     patientCode: row.patient?.patientCode,
+    patientPhone: row.patient?.phone,
+    patientEmergencyPhone: row.patient?.emergencyPhone,
     patientName: row.patientName,
     surgeryId: row.surgeryId,
     campaignId: row.campaignId,
     campaignRegionId: row.campaignRegionId ?? undefined,
     region: row.region,
+    operationDistrict: row.surgery?.operationDistrict,
+    surgeryPerformedAt: row.surgery?.performedAt ? new Date(row.surgery.performedAt).toISOString() : undefined,
+    surgeryScheduledAt: row.surgery?.scheduledAt ? new Date(row.surgery.scheduledAt).toISOString() : undefined,
+    surgeryEye: row.surgery?.eye as FollowUp['surgeryEye'],
     milestone: followUpMilestoneToApp(row.milestone) as FollowUp['milestone'],
     dueDate: (row.dueDate as Date).toISOString().split('T')[0],
     completedAt: row.completedAt ? (row.completedAt as Date).toISOString() : undefined,
@@ -62,7 +79,7 @@ export const getAllFollowUps = unstable_cache(
   async (where: { region?: string } = {}): Promise<FollowUp[]> => {
     const rows = await prisma.followUp.findMany({
       where,
-      include: { patient: { select: { patientCode: true } } },
+      include: FOLLOW_UP_INCLUDE,
       orderBy: { dueDate: 'asc' },
     });
     return rows.map(fromPrisma);

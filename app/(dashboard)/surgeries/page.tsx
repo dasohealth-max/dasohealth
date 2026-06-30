@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { LensType, Surgery, SurgeryStatus } from '@/types';
-import { actionDeleteSurgery, actionUpdateSurgery, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { actionDeleteSurgery, actionUpdateSurgery, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
@@ -14,9 +14,11 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
+
+type PrintMode = 'current' | 'all';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,17 @@ function screeningFindingLabel(screening: NonNullable<Surgery['screeningResult']
   return 'No major finding selected';
 }
 
+function surgeryFindingLabel(surgery: Surgery) {
+  return surgery.screeningResult ? screeningFindingLabel(surgery.screeningResult) : '-';
+}
+
+function surgeryVaSummary(surgery: Surgery) {
+  if (surgery.screeningResult) {
+    return `${surgery.screeningResult.vaRightUnaided} / ${surgery.screeningResult.vaLeftUnaided}`;
+  }
+  return surgery.preOpVA || '-';
+}
+
 function sortScheduledQueue(surgeries: Surgery[]) {
   return [...surgeries].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 }
@@ -80,6 +93,12 @@ function historySummary(surgeries: Surgery[]) {
   const postponed = surgeries.filter((surgery) => surgery.status === 'Postponed').length;
   const cancelled = surgeries.filter((surgery) => surgery.status === 'Cancelled').length;
   return `${completed} completed, ${postponed} postponed, ${cancelled} cancelled`;
+}
+
+function printAfterRender() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => window.print());
+  });
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -106,6 +125,12 @@ export default function SurgeriesPage() {
   const [completeTarget, setCompleteTarget] = useState<Surgery | null>(null);
   const [viewing,        setViewing]        = useState<Surgery | null>(null);
   const [historyOpen,    setHistoryOpen]    = useState(false);
+  const [printRows,      setPrintRows]      = useState<Surgery[] | null>(null);
+  const [printMode,      setPrintMode]      = useState<PrintMode>('current');
+  const [printTotal,     setPrintTotal]     = useState(0);
+  const [printLimit,     setPrintLimit]     = useState(0);
+  const [printTruncated, setPrintTruncated] = useState(false);
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
@@ -130,6 +155,46 @@ export default function SurgeriesPage() {
   }, [debouncedSearch, regionFilter, statusFilter, page, refreshKey]);
 
   const hasFilters = !!search || !!statusFilter || !!regionFilter;
+
+  function printCurrentQueue() {
+    setPrintRows(null);
+    setPrintMode('current');
+    setPrintTotal(0);
+    setPrintLimit(0);
+    setPrintTruncated(false);
+    printAfterRender();
+  }
+
+  async function printAllMatchingQueue() {
+    setIsPreparingPrint(true);
+    try {
+      const result = await getPrintableWaitingSurgeries({
+        search: debouncedSearch,
+        region: regionFilter,
+      });
+      setPrintRows(result.data);
+      setPrintMode('all');
+      setPrintTotal(result.total);
+      setPrintLimit(result.limit);
+      setPrintTruncated(result.truncated);
+      if (result.truncated) {
+        toast({
+          title: 'Print list limited',
+          description: `Showing the first ${result.limit} matching waiting surgeries. Narrow the filters to print fewer records.`,
+          variant: 'info',
+        });
+      }
+      printAfterRender();
+    } catch (error) {
+      toast({
+        title: 'Could not prepare print list',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'error',
+      });
+    } finally {
+      setIsPreparingPrint(false);
+    }
+  }
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
@@ -315,15 +380,42 @@ export default function SurgeriesPage() {
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3" data-print-hide="">
         <div>
           <h1 className="text-xl font-bold text-[#141920]">Surgeries</h1>
           <p className="text-sm text-[#4B5666]">
             {isLoading ? 'Loading…' : `${total} ${total === 1 ? 'surgery' : 'surgeries'}`}
           </p>
         </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={printCurrentQueue}
+            className="inline-flex items-center gap-2 rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm font-semibold text-[#4B5666] shadow-sm transition hover:bg-[#F5F7FA] hover:text-[#141920]"
+          >
+            <Printer size={15} /> Print Page
+          </button>
+          <button
+            type="button"
+            onClick={printAllMatchingQueue}
+            disabled={isPreparingPrint}
+            className="inline-flex items-center gap-2 rounded-md bg-[#2C9942] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#238038] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Printer size={15} /> {isPreparingPrint ? 'Preparing...' : 'Print All Matching'}
+          </button>
+        </div>
       </div>
 
+      <SurgeryWaitingPrintView
+        rows={printRows ?? scheduledSurgeries}
+        mode={printMode}
+        total={printTotal}
+        limit={printLimit}
+        truncated={printTruncated}
+        hasFilters={hasFilters}
+      />
+
+      <div className="space-y-5" data-print-hide="">
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Search */}
@@ -462,7 +554,71 @@ export default function SurgeriesPage() {
       )}
 
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+      </div>
     </div>
+  );
+}
+
+function SurgeryWaitingPrintView({
+  rows,
+  mode,
+  total,
+  limit,
+  truncated,
+  hasFilters,
+}: {
+  rows: Surgery[];
+  mode: PrintMode;
+  total: number;
+  limit: number;
+  truncated: boolean;
+  hasFilters: boolean;
+}) {
+  return (
+    <section data-print-only="" className="print-report">
+      <div className="print-report-header">
+        <h1>Waiting Surgery List</h1>
+        {mode === 'all' ? (
+          <p>
+            {rows.length} of {total} matching scheduled patient{total === 1 ? '' : 's'}
+            {truncated ? ` (limited to first ${limit}; narrow filters to print the full list)` : ''}
+          </p>
+        ) : (
+          <p>
+            {rows.length} scheduled patient{rows.length === 1 ? '' : 's'} on this page
+            {hasFilters ? ' with current filters' : ''}
+          </p>
+        )}
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            {['#', 'Patient Name', 'Age', 'Phone', 'Region / City', 'Eye', 'Screening Finding', 'VA R / L'].map((header) => (
+              <th key={header}>{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={8}>No scheduled surgeries waiting on this page.</td>
+            </tr>
+          ) : rows.map((surgery, index) => (
+            <tr key={surgery.id}>
+              <td>{index + 1}</td>
+              <td>{surgery.patientName || '-'}</td>
+              <td>{typeof surgery.patientAge === 'number' ? surgery.patientAge : '-'}</td>
+              <td>{surgery.patientPhone || '-'}</td>
+              <td>{surgery.region}{surgery.operationDistrict ? ` / ${surgery.operationDistrict}` : ''}</td>
+              <td>{surgery.eye || '-'}</td>
+              <td>{surgeryFindingLabel(surgery)}</td>
+              <td>{surgeryVaSummary(surgery)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 

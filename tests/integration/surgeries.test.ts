@@ -35,7 +35,7 @@ vi.mock('@/lib/prisma-enums', () => ({
 }));
 
 // Imports after mocks
-import { actionCreateSurgery, actionUpdateSurgery, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { actionCreateSurgery, actionUpdateSurgery, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as surgeryApi from '@/lib/api/surgeries';
@@ -118,6 +118,29 @@ describe('getSurgeriesPaginated', () => {
     );
     expect(prisma.surgery.count).toHaveBeenCalledWith({
       where: expect.objectContaining({ region: 'Banadir / Mogadishu' }),
+    });
+  });
+
+  it('printable waiting list keeps assigned-region scope and scheduled status', async () => {
+    await getPrintableWaitingSurgeries({
+      search: 'Amina',
+      region: 'Galmudug',
+    });
+
+    expect(prisma.surgery.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          region: 'Banadir / Mogadishu',
+          status: 'Scheduled',
+        }),
+        take: 1000,
+      }),
+    );
+    expect(prisma.surgery.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        region: 'Banadir / Mogadishu',
+        status: 'Scheduled',
+      }),
     });
   });
 });

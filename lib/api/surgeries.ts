@@ -2,20 +2,48 @@ import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { surgeryStatusToApp, surgeryStatusFromApp, lensTypeToApp, lensTypeFromApp, screeningRecToApp, vaGradeToApp } from '@/lib/prisma-enums';
+import { calculateAge } from '@/lib/utils';
 import type { Surgery } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.surgery.findFirst>>> & {
-  patient?: { patientCode: string; phone: string; emergencyPhone: string } | null;
+  patient?: {
+    patientCode: string;
+    phone: string;
+    emergencyPhone: string;
+    dateOfBirth?: Date | string;
+    birthDateSource?: string;
+    ageYearsAtRegistration?: number | null;
+  } | null;
 };
 type ScreeningSnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>>;
 type SurgeryScreeningResult = NonNullable<Surgery['screeningResult']>;
+
+const SURGERY_PATIENT_SELECT = {
+  patientCode: true,
+  phone: true,
+  emergencyPhone: true,
+  dateOfBirth: true,
+  birthDateSource: true,
+  ageYearsAtRegistration: true,
+} as const;
+
+function patientAge(row: Row): number | undefined {
+  const patient = row.patient;
+  if (!patient) return undefined;
+  if (patient.birthDateSource === 'AgeEstimate' && typeof patient.ageYearsAtRegistration === 'number') {
+    return patient.ageYearsAtRegistration;
+  }
+  const age = calculateAge(patient.dateOfBirth ? String(patient.dateOfBirth) : '');
+  return typeof age === 'number' ? age : undefined;
+}
 
 export function fromPrisma(row: Row): Surgery {
   return {
     id: row.id,
     patientId: row.patientId,
     patientCode: row.patient?.patientCode,
+    patientAge: patientAge(row),
     patientPhone: row.patient?.phone,
     patientEmergencyPhone: row.patient?.emergencyPhone,
     patientName: row.patientName,
@@ -45,7 +73,7 @@ export const getAllSurgeries = unstable_cache(
   async (where: { region?: string } = {}): Promise<Surgery[]> => {
     const rows = await prisma.surgery.findMany({
       where,
-      include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
+      include: { patient: { select: SURGERY_PATIENT_SELECT } },
       orderBy: { scheduledAt: 'desc' },
     });
     return rows.map(fromPrisma);
@@ -104,7 +132,7 @@ function preOpVaForScreeningEye(screening: ScreeningSnapshotRow): string {
 export async function getSurgeriesWithScreeningResults(where: Prisma.SurgeryWhereInput = {}): Promise<Surgery[]> {
   const rows = await prisma.surgery.findMany({
     where,
-    include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
+    include: { patient: { select: SURGERY_PATIENT_SELECT } },
     orderBy: { scheduledAt: 'desc' },
   });
   return attachScreeningResults(rows);
@@ -139,7 +167,7 @@ export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Pr
       completedById: data.completedById,
       completedByName: data.completedByName,
     },
-    include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
+    include: { patient: { select: SURGERY_PATIENT_SELECT } },
   });
   return fromPrisma(row);
 }
@@ -168,7 +196,7 @@ export async function updateSurgery(id: string, data: Omit<Surgery, 'id' | 'crea
       completedById: data.completedById,
       completedByName: data.completedByName,
     },
-    include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
+    include: { patient: { select: SURGERY_PATIENT_SELECT } },
   });
   return fromPrisma(row);
 }

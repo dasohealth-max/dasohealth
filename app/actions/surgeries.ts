@@ -11,6 +11,8 @@ import type { Surgery } from '@/types';
 import { Prisma } from '@/lib/generated/prisma/client';
 import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays as addScheduleDays } from '@/lib/follow-up-schedule';
 
+const PRINT_LIMIT = 1000;
+
 const SurgerySchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
   campaignId: z.string().min(1, 'Campaign is required'),
@@ -32,6 +34,36 @@ const SurgerySchema = z.object({
   completedByName: z.string().optional(),
 });
 
+const SURGERY_PATIENT_SELECT = {
+  patientCode: true,
+  phone: true,
+  emergencyPhone: true,
+  dateOfBirth: true,
+  birthDateSource: true,
+  ageYearsAtRegistration: true,
+} as const;
+
+function surgeryWhere(params: {
+  search?: string;
+  region?: string;
+  status?: string;
+}, scopedRegion?: string): Prisma.SurgeryWhereInput {
+  const region = scopedRegion ?? (params.region || undefined);
+  return {
+    ...(region && { region }),
+    ...(params.status && { status: surgeryStatusFromApp(params.status) as never }),
+    ...(params.search && {
+      OR: [
+        { patientName: { contains: params.search, mode: 'insensitive' } },
+        { region: { contains: params.search, mode: 'insensitive' } },
+        { surgeonName: { contains: params.search, mode: 'insensitive' } },
+        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
+        { patient: { phone: { contains: params.search } } },
+      ],
+    }),
+  };
+}
+
 export async function getAllSurgeries(): Promise<Surgery[]> {
   const actor = await requireActor('surgeries', 'view');
   if ('error' in actor) throw new Error(actor.error);
@@ -48,21 +80,7 @@ export async function getSurgeriesPaginated(params: {
   const actor = await requireActor('surgeries', 'view');
   if ('error' in actor) throw new Error(actor.error);
   const regionScope = scopedRegionWhere(actor) as { region?: string };
-  const region = regionScope.region ?? (params.region || undefined);
-
-  const where: Prisma.SurgeryWhereInput = {
-    ...(region && { region }),
-    ...(params.status && { status: surgeryStatusFromApp(params.status) as never }),
-    ...(params.search && {
-      OR: [
-        { patientName: { contains: params.search, mode: 'insensitive' } },
-        { region: { contains: params.search, mode: 'insensitive' } },
-        { surgeonName: { contains: params.search, mode: 'insensitive' } },
-        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
-        { patient: { phone: { contains: params.search } } },
-      ],
-    }),
-  };
+  const where = surgeryWhere(params, regionScope.region);
 
   const pageSize = Math.min(Math.max(1, params.pageSize), 200);
   const page = Math.max(1, params.page);
@@ -72,13 +90,43 @@ export async function getSurgeriesPaginated(params: {
       where,
       skip,
       take: pageSize,
-      include: { patient: { select: { patientCode: true, phone: true, emergencyPhone: true } } },
+      include: {
+        patient: { select: SURGERY_PATIENT_SELECT },
+      },
       orderBy: { scheduledAt: 'desc' },
     }),
     prisma.surgery.count({ where }),
   ]);
 
   return { data: await attachScreeningResults(rows), total };
+}
+
+export async function getPrintableWaitingSurgeries(params: {
+  search?: string;
+  region?: string;
+}): Promise<{ data: Surgery[]; total: number; truncated: boolean; limit: number }> {
+  const actor = await requireActor('surgeries', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const where = surgeryWhere({ ...params, status: 'Scheduled' }, regionScope.region);
+
+  const [rows, total] = await Promise.all([
+    prisma.surgery.findMany({
+      where,
+      take: PRINT_LIMIT,
+      include: { patient: { select: SURGERY_PATIENT_SELECT } },
+      orderBy: { scheduledAt: 'asc' },
+    }),
+    prisma.surgery.count({ where }),
+  ]);
+
+  return {
+    data: await attachScreeningResults(rows),
+    total,
+    truncated: total > rows.length,
+    limit: PRINT_LIMIT,
+  };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
