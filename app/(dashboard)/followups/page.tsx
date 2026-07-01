@@ -122,6 +122,16 @@ function updateFollowUpInGroups(groups: FollowUpGroup[], updated: FollowUp, targ
   });
 }
 
+function uniquePrintablePatients(rows: FollowUp[]) {
+  const seen = new Set<string>();
+  return rows.filter((followUp) => {
+    const key = followUp.patientId || `${followUp.patientName}-${followUp.patientPhone ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function nextActionForCounts(counts: Record<Tab, number>) {
   if (counts.overdue > 0) {
     return {
@@ -202,6 +212,7 @@ export default function FollowUpsPage() {
   const [printTotal, setPrintTotal] = useState(0);
   const [printLimit, setPrintLimit] = useState(0);
   const [printTruncated, setPrintTruncated] = useState(false);
+  const [printRequestId, setPrintRequestId] = useState(0);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
   // Medications state
@@ -262,6 +273,11 @@ export default function FollowUpsPage() {
       });
     return () => { cancelled = true; };
   }, [tab, debouncedSearch, page, statusRefreshKey]);
+
+  useEffect(() => {
+    if (printRequestId === 0) return;
+    printAfterRender();
+  }, [printRequestId]);
 
   function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
     setForm((current) => {
@@ -467,7 +483,7 @@ export default function FollowUpsPage() {
   const showDoctorSection = form.needsDoctorReview || form.doctorReviewStatus !== 'Not Needed';
   const nextAction = nextActionForCounts(counts);
   const NextActionIcon = nextAction.Icon;
-  const printableFollowUps = followUpGroups.flatMap((group) => {
+  const printableFollowUps = uniquePrintablePatients(followUpGroups.flatMap((group) => {
     const matching = group.followUps.filter((followUp) => followUpBelongsToTab(followUp, tab));
     const rows = matching.length ? matching : group.followUps;
     return rows.map((followUp) => ({
@@ -479,7 +495,7 @@ export default function FollowUpsPage() {
       surgeryScheduledAt: followUp.surgeryScheduledAt ?? group.surgeryScheduledAt,
       surgeryEye: followUp.surgeryEye ?? group.surgeryEye,
     }));
-  });
+  }));
   const selectedTabLabel = TABS.find((item) => item.id === tab)?.label ?? 'Follow-ups';
 
   function printCurrentList() {
@@ -488,7 +504,7 @@ export default function FollowUpsPage() {
     setPrintTotal(0);
     setPrintLimit(0);
     setPrintTruncated(false);
-    printAfterRender();
+    setPrintRequestId((id) => id + 1);
   }
 
   async function printAllMatchingList() {
@@ -503,11 +519,11 @@ export default function FollowUpsPage() {
       if (result.truncated) {
         toast({
           title: 'Print list limited',
-          description: `Showing the first ${result.limit} matching follow-ups. Narrow the filters to print fewer records.`,
+          description: `Showing the first ${result.limit} matching follow-up patients. Narrow the filters to print fewer records.`,
           variant: 'info',
         });
       }
-      printAfterRender();
+      setPrintRequestId((id) => id + 1);
     } catch (error) {
       toast({
         title: 'Could not prepare print list',
@@ -1098,19 +1114,20 @@ function FollowUpsPrintView({
   search: string;
   currentGroupTotal: number;
 }) {
+  const printTitle = title.endsWith('Follow-ups') ? title : `${title} Follow-ups`;
   return (
     <section data-print-only="" className="print-report">
       <div className="print-report-header">
-        <h1>{title} Follow-ups</h1>
+        <h1>{printTitle}</h1>
         {mode === 'all' ? (
           <p>
-            {rows.length} of {total} matching follow-up record{total === 1 ? '' : 's'}
+            {rows.length} of {total} matching follow-up patient{total === 1 ? '' : 's'}
             {search ? ` for "${search}"` : ''}
             {truncated ? ` (limited to first ${limit}; narrow filters to print the full list)` : ''}
           </p>
         ) : (
           <p>
-            {rows.length} follow-up record{rows.length === 1 ? '' : 's'} on this page
+            {rows.length} follow-up patient{rows.length === 1 ? '' : 's'} on this page
             {search ? ` matching "${search}"` : ''}
             {currentGroupTotal ? ` from ${currentGroupTotal} patient group${currentGroupTotal === 1 ? '' : 's'}` : ''}
           </p>
@@ -1127,10 +1144,6 @@ function FollowUpsPrintView({
               'Region / City',
               'Surgery Date',
               'Eye',
-              'Milestone',
-              'Completed By',
-              'Next Appointment',
-              'Complications / Notes',
             ].map((header) => (
               <th key={header}>{header}</th>
             ))}
@@ -1139,11 +1152,10 @@ function FollowUpsPrintView({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={10}>No follow-ups found on this page.</td>
+              <td colSpan={6}>No follow-ups found on this page.</td>
             </tr>
           ) : rows.map((followUp, index) => {
             const surgeryDate = followUp.surgeryPerformedAt ?? followUp.surgeryScheduledAt ?? '';
-            const notes = [followUp.complications, followUp.notes].filter(Boolean).join(' / ') || '-';
             return (
               <tr key={followUp.id}>
                 <td>{index + 1}</td>
@@ -1152,10 +1164,6 @@ function FollowUpsPrintView({
                 <td>{followUp.region}{followUp.operationDistrict ? ` / ${followUp.operationDistrict}` : ''}</td>
                 <td>{surgeryDate ? formatDate(surgeryDate) : '-'}</td>
                 <td>{followUp.surgeryEye || '-'}</td>
-                <td>{followUp.milestone}</td>
-                <td>{followUp.completedByName || '-'}</td>
-                <td>{followUp.nextAppointmentDate ? formatDate(followUp.nextAppointmentDate) : '-'}</td>
-                <td>{notes}</td>
               </tr>
             );
           })}

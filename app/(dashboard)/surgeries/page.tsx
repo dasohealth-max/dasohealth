@@ -130,6 +130,7 @@ export default function SurgeriesPage() {
   const [printTotal,     setPrintTotal]     = useState(0);
   const [printLimit,     setPrintLimit]     = useState(0);
   const [printTruncated, setPrintTruncated] = useState(false);
+  const [printRequestId, setPrintRequestId] = useState(0);
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
   useEffect(() => {
@@ -154,6 +155,11 @@ export default function SurgeriesPage() {
     return () => { cancelled = true; };
   }, [debouncedSearch, regionFilter, statusFilter, page, refreshKey]);
 
+  useEffect(() => {
+    if (printRequestId === 0) return;
+    printAfterRender();
+  }, [printRequestId]);
+
   const hasFilters = !!search || !!statusFilter || !!regionFilter;
 
   function printCurrentQueue() {
@@ -162,7 +168,7 @@ export default function SurgeriesPage() {
     setPrintTotal(0);
     setPrintLimit(0);
     setPrintTruncated(false);
-    printAfterRender();
+    setPrintRequestId((id) => id + 1);
   }
 
   async function printAllMatchingQueue() {
@@ -184,7 +190,7 @@ export default function SurgeriesPage() {
           variant: 'info',
         });
       }
-      printAfterRender();
+      setPrintRequestId((id) => id + 1);
     } catch (error) {
       toast({
         title: 'Could not prepare print list',

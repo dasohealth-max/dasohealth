@@ -108,18 +108,19 @@ describe('getPrintableFollowUps', () => {
     vi.clearAllMocks();
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
+    vi.mocked(prisma.followUp.groupBy).mockResolvedValue([{ patientId: 'patient-1' }] as never);
     vi.mocked(prisma.followUp.findMany).mockResolvedValue([{}] as never);
-    vi.mocked(prisma.followUp.count).mockResolvedValue(1);
     vi.mocked(followUpApi.fromPrisma).mockReturnValue(galmudugFollowUp);
   });
 
-  it('keeps assigned-region scope and caps printable records', async () => {
+  it('keeps assigned-region scope and caps printable patients', async () => {
     const result = await getPrintableFollowUps({ tab: 'due', search: 'Amina' });
 
     expect(result.total).toBe(1);
     expect(result.truncated).toBe(false);
-    expect(prisma.followUp.findMany).toHaveBeenCalledWith(
+    expect(prisma.followUp.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({
+        by: ['patientId'],
         where: expect.objectContaining({
           region: 'Galmudug',
           status: 'Due',
@@ -127,12 +128,15 @@ describe('getPrintableFollowUps', () => {
         take: 1000,
       }),
     );
-    expect(prisma.followUp.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        region: 'Galmudug',
-        status: 'Due',
+    expect(prisma.followUp.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          region: 'Galmudug',
+          status: 'Due',
+          patientId: { in: ['patient-1'] },
+        }),
       }),
-    });
+    );
   });
 });
 

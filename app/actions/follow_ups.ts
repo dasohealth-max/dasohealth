@@ -241,23 +241,46 @@ export async function getPrintableFollowUps(params: {
   if ('error' in actor) throw new Error(actor.error);
 
   const where = followUpWhere(params, scopedRegionWhere(actor));
-  const [rows, total] = await Promise.all([
-    prisma.followUp.findMany({
-      where,
+  const [printablePatientGroups, totalPatientGroups] = await Promise.all([
+    prisma.followUp.groupBy({
+      by: ['patientId'],
       take: PRINT_LIMIT,
+      where,
+      _min: { dueDate: true },
+      orderBy: { _min: { dueDate: 'asc' } },
+    }),
+    prisma.followUp.groupBy({
+      by: ['patientId'],
+      where,
+    }),
+  ]);
+
+  const patientIds = printablePatientGroups.map((group) => group.patientId);
+  const rows = patientIds.length
+    ? await prisma.followUp.findMany({
+      where: { ...where, patientId: { in: patientIds } },
       include: {
         patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
         surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true } },
       },
       orderBy: [{ dueDate: 'asc' }, { patientName: 'asc' }],
-    }),
-    prisma.followUp.count({ where }),
-  ]);
+    })
+    : [];
+
+  const byPatient = new Map<string, FollowUp>();
+  rows.map(followUpFromPrisma).forEach((followUp) => {
+    if (!byPatient.has(followUp.patientId)) byPatient.set(followUp.patientId, followUp);
+  });
+  const data = patientIds.flatMap((patientId) => {
+    const followUp = byPatient.get(patientId);
+    return followUp ? [followUp] : [];
+  });
+  const total = totalPatientGroups.length;
 
   return {
-    data: rows.map(followUpFromPrisma),
+    data,
     total,
-    truncated: total > rows.length,
+    truncated: total > data.length,
     limit: PRINT_LIMIT,
   };
 }

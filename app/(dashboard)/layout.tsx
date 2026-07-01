@@ -10,16 +10,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthGuard>
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-screen overflow-hidden" data-print-shell="">
         <Sidebar
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
           collapsed={collapsed}
           onToggleCollapse={() => setCollapsed((v) => !v)}
         />
-        <div className="flex flex-col flex-1 overflow-hidden min-w-0 bg-[var(--surface-app)]">
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0 bg-[var(--surface-app)]" data-print-shell="">
           <Topbar onMenuClick={() => setMobileOpen(true)} />
-          <main className="flex-1 overflow-y-auto bg-[var(--surface-app)] p-4 sm:p-6">
+          <main className="flex-1 overflow-y-auto bg-[var(--surface-app)] p-4 sm:p-6" data-print-shell="">
             {children}
           </main>
         </div>
