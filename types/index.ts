@@ -143,6 +143,22 @@ export type SurgeryEye = 'Right' | 'Left' | 'Both';
 export type LensType = 'PMMA' | 'Foldable Acrylic' | 'Hydrophilic' | 'Hydrophobic';
 export type SurgeryStatus = 'Scheduled' | 'Completed' | 'Cancelled' | 'Postponed';
 
+export interface ScreeningResultSnapshot {
+  screenedAt: string;
+  screenedByName: string;
+  vaRightUnaided: VAGrade;
+  vaLeftUnaided: VAGrade;
+  cataractSuspected: boolean;
+  glaucomaSuspected: boolean;
+  diabeticRetinopathy: boolean;
+  eye: SurgeryEye;
+  recommendation: Screening['recommendation'];
+  otherFindings: string;
+  medicalHistory: string;
+  currentMedications: string;
+  notes: string;
+}
+
 export interface Surgery {
   id: string;
   patientId: string;
@@ -168,21 +184,7 @@ export interface Surgery {
   intraopNotes: string;
   completedById: string;
   completedByName: string;
-  screeningResult?: {
-    screenedAt: string;
-    screenedByName: string;
-    vaRightUnaided: VAGrade;
-    vaLeftUnaided: VAGrade;
-    cataractSuspected: boolean;
-    glaucomaSuspected: boolean;
-    diabeticRetinopathy: boolean;
-    eye: SurgeryEye;
-    recommendation: Screening['recommendation'];
-    otherFindings: string;
-    medicalHistory: string;
-    currentMedications: string;
-    notes: string;
-  };
+  screeningResult?: ScreeningResultSnapshot;
   createdAt: string;
 }
 
@@ -206,6 +208,7 @@ export interface FollowUp {
   surgeryPerformedAt?: string;
   surgeryScheduledAt?: string;
   surgeryEye?: SurgeryEye;
+  screeningResult?: ScreeningResultSnapshot;
   milestone: FollowUpMilestone;
   dueDate: string;
   completedAt?: string;

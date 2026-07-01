@@ -15,6 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     $queryRaw: vi.fn(),
     surgery: { findUnique: vi.fn() },
+    screening: { findMany: vi.fn() },
     followUp: { findUnique: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     followUpMedication: { findUnique: vi.fn() },
   },
@@ -72,6 +73,23 @@ const followUpData = {
   completedByName: '',
 };
 
+const linkedScreeningRow = {
+  id: 'screening-1',
+  screenedAt: new Date('2025-02-28T08:00:00.000Z'),
+  screenedByName: 'Nurse Ayaan',
+  vaRightUnaided: 'V6_60',
+  vaLeftUnaided: 'V6_18',
+  cataractSuspected: true,
+  glaucomaSuspected: false,
+  diabeticRetinopathy: false,
+  eye: 'Right',
+  recommendation: 'ReferForSurgery',
+  otherFindings: 'Dense cataract',
+  medicalHistory: 'Diabetes controlled',
+  currentMedications: 'Metformin',
+  notes: 'Ready for surgery',
+};
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('getFollowUpsPaginated', () => {
@@ -83,6 +101,7 @@ describe('getFollowUpsPaginated', () => {
     vi.mocked(prisma.followUp.groupBy).mockResolvedValue([{ surgeryId: 'surgery-1' }] as never);
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ total: 1 }] as never);
     vi.mocked(prisma.followUp.findMany).mockResolvedValue([{}] as never);
+    vi.mocked(prisma.screening.findMany).mockResolvedValue([] as never);
     vi.mocked(followUpApi.fromPrisma).mockReturnValue(galmudugFollowUp);
   });
 
@@ -100,6 +119,30 @@ describe('getFollowUpsPaginated', () => {
         }),
       }),
     );
+  });
+
+  it('attaches the linked previous screening result for follow-up context', async () => {
+    vi.mocked(prisma.followUp.findMany).mockResolvedValue([
+      {
+        surgeryId: 'surgery-1',
+        surgery: { createdFromScreeningId: 'screening-1' },
+      },
+    ] as never);
+    vi.mocked(prisma.screening.findMany).mockResolvedValue([linkedScreeningRow] as never);
+
+    const result = await getFollowUpsPaginated({ tab: 'due', search: '', page: 1, pageSize: 50 });
+
+    expect(prisma.screening.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['screening-1'] } },
+    });
+    expect(result.data[0]?.followUps[0]?.screeningResult).toMatchObject({
+      eye: 'Right',
+      vaRightUnaided: '6/60',
+      vaLeftUnaided: '6/18',
+      recommendation: 'Refer for Surgery',
+      cataractSuspected: true,
+      otherFindings: 'Dense cataract',
+    });
   });
 });
 

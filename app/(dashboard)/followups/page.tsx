@@ -87,6 +87,32 @@ function milestoneBadge(m: string) {
   return `rounded-full px-2 py-1 text-xs font-medium ${c}`;
 }
 
+function screeningFindingLabel(screening: NonNullable<FollowUp['screeningResult']>) {
+  if (screening.cataractSuspected) return 'Cataract Suspected';
+  if (screening.glaucomaSuspected) return 'Glaucoma Suspected';
+  if (screening.diabeticRetinopathy) return 'Diabetic Retinopathy';
+  return 'No major finding selected';
+}
+
+function ReadOnlyClinicalValue({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <div className={wide ? 'md:col-span-2 xl:col-span-2' : ''}>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#647184]">{label}</p>
+      <p className="mt-1 min-h-5 rounded-lg border border-[#EAEEF3] bg-white px-3 py-2 text-sm font-medium text-[#141920]">
+        {value || '-'}
+      </p>
+    </div>
+  );
+}
+
 function followUpBelongsToTab(followUp: FollowUp, target: Tab) {
   if (target === 'due') return followUp.status === 'Due';
   if (target === 'overdue') return followUp.status === 'Overdue';
@@ -481,6 +507,8 @@ export default function FollowUpsPage() {
   }
 
   const showDoctorSection = form.needsDoctorReview || form.doctorReviewStatus !== 'Not Needed';
+  const linkedScreening = form.screeningResult ?? editing?.screeningResult;
+  const surgeryEye = form.surgeryEye ?? editing?.surgeryEye;
   const nextAction = nextActionForCounts(counts);
   const NextActionIcon = nextAction.Icon;
   const printableFollowUps = uniquePrintablePatients(followUpGroups.flatMap((group) => {
@@ -672,6 +700,31 @@ export default function FollowUpsPage() {
           wide
         >
           {saveError && <p className="mb-3 text-xs text-[#E53935]">{saveError}</p>}
+
+          <section className="mb-4 rounded-xl border border-[#DDE3EA] bg-[#F8FAFC] p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#4B5666]">Previous Screening Result</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <ReadOnlyClinicalValue label="Surgery Eye" value={surgeryEye || '-'} />
+              {linkedScreening ? (
+                <>
+                  <ReadOnlyClinicalValue label="Screening Eye" value={linkedScreening.eye} />
+                  <ReadOnlyClinicalValue label="Finding" value={screeningFindingLabel(linkedScreening)} />
+                  <ReadOnlyClinicalValue label="Recommendation" value={linkedScreening.recommendation} />
+                  <ReadOnlyClinicalValue label="VA Right / Left" value={`${linkedScreening.vaRightUnaided} / ${linkedScreening.vaLeftUnaided}`} />
+                  <ReadOnlyClinicalValue label="Screened At" value={formatDate(linkedScreening.screenedAt)} />
+                  <ReadOnlyClinicalValue label="Screened By" value={linkedScreening.screenedByName || '-'} />
+                  <ReadOnlyClinicalValue label="Other Findings" value={linkedScreening.otherFindings || '-'} wide />
+                  <ReadOnlyClinicalValue label="Medical History" value={linkedScreening.medicalHistory || '-'} wide />
+                  <ReadOnlyClinicalValue label="Current Medications" value={linkedScreening.currentMedications || '-'} wide />
+                  <ReadOnlyClinicalValue label="Screening Notes" value={linkedScreening.notes || '-'} wide />
+                </>
+              ) : (
+                <p className="rounded-lg border border-[#EAEEF3] bg-white px-3 py-2 text-sm text-[#647184] md:col-span-3">
+                  No linked screening result found.
+                </p>
+              )}
+            </div>
+          </section>
 
           {/* Clinical section */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">

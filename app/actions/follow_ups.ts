@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 import type { FollowUp, FollowUpMedication } from '@/types';
 import { Prisma } from '@/lib/generated/prisma/client';
 import { ACTIVE_FOLLOW_UP_PRISMA_MILESTONES } from '@/lib/follow-up-schedule';
+import { screeningRecToApp, vaGradeToApp } from '@/lib/prisma-enums';
 
 const PRINT_LIMIT = 1000;
 
@@ -68,6 +69,55 @@ export type FollowUpGroup = {
   campaignRegionId?: string;
   followUps: FollowUp[];
 };
+
+type ScreeningSnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>>;
+type FollowUpScreeningResult = NonNullable<FollowUp['screeningResult']>;
+
+function screeningResultFromPrisma(screening: ScreeningSnapshotRow): FollowUpScreeningResult {
+  return {
+    screenedAt: (screening.screenedAt as Date).toISOString(),
+    screenedByName: screening.screenedByName,
+    vaRightUnaided: vaGradeToApp(screening.vaRightUnaided) as FollowUpScreeningResult['vaRightUnaided'],
+    vaLeftUnaided: vaGradeToApp(screening.vaLeftUnaided) as FollowUpScreeningResult['vaLeftUnaided'],
+    cataractSuspected: screening.cataractSuspected,
+    glaucomaSuspected: screening.glaucomaSuspected,
+    diabeticRetinopathy: screening.diabeticRetinopathy,
+    eye: screening.eye as FollowUpScreeningResult['eye'],
+    recommendation: screeningRecToApp(screening.recommendation) as FollowUpScreeningResult['recommendation'],
+    otherFindings: screening.otherFindings,
+    medicalHistory: screening.medicalHistory,
+    currentMedications: screening.currentMedications,
+    notes: screening.notes,
+  };
+}
+
+async function loadScreeningResultsById(screeningIds: string[]): Promise<Map<string, FollowUpScreeningResult>> {
+  const uniqueIds = [...new Set(screeningIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return new Map();
+
+  const screenings = await prisma.screening.findMany({
+    where: { id: { in: uniqueIds } },
+  });
+  return new Map(screenings.map((screening) => [screening.id, screeningResultFromPrisma(screening)]));
+}
+
+async function attachScreeningResultsToFollowUps(
+  followUps: FollowUp[],
+  screeningIdsBySurgeryId: Map<string, string | null | undefined>,
+): Promise<FollowUp[]> {
+  const screeningResultsById = await loadScreeningResultsById(
+    followUps.flatMap((followUp) => {
+      const screeningId = screeningIdsBySurgeryId.get(followUp.surgeryId);
+      return screeningId ? [screeningId] : [];
+    }),
+  );
+
+  return followUps.map((followUp) => {
+    const screeningId = screeningIdsBySurgeryId.get(followUp.surgeryId);
+    const screeningResult = screeningId ? screeningResultsById.get(screeningId) : undefined;
+    return screeningResult ? { ...followUp, screeningResult } : followUp;
+  });
+}
 
 function tabWhere(tab: FollowUpTab): Prisma.FollowUpWhereInput {
   const activeMilestones = { milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] } };
@@ -197,14 +247,17 @@ export async function getFollowUpsPaginated(params: {
     },
     include: {
       patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
-      surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true } },
+      surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true, createdFromScreeningId: true } },
     },
     orderBy: [{ surgeryId: 'asc' }, { dueDate: 'asc' }],
   });
 
+  const screeningIdsBySurgeryId = new Map(
+    rows.map((row) => [row.surgeryId, row.surgery?.createdFromScreeningId]),
+  );
+  const items = await attachScreeningResultsToFollowUps(rows.map(followUpFromPrisma), screeningIdsBySurgeryId);
   const grouped = new Map<string, FollowUp[]>();
-  rows.forEach((row) => {
-    const item = followUpFromPrisma(row);
+  items.forEach((item) => {
     grouped.set(item.surgeryId, [...(grouped.get(item.surgeryId) ?? []), item]);
   });
 
@@ -261,14 +314,18 @@ export async function getPrintableFollowUps(params: {
       where: { ...where, patientId: { in: patientIds } },
       include: {
         patient: { select: { patientCode: true, phone: true, emergencyPhone: true } },
-        surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true } },
+        surgery: { select: { operationDistrict: true, performedAt: true, scheduledAt: true, eye: true, createdFromScreeningId: true } },
       },
       orderBy: [{ dueDate: 'asc' }, { patientName: 'asc' }],
     })
     : [];
 
+  const screeningIdsBySurgeryId = new Map(
+    rows.map((row) => [row.surgeryId, row.surgery?.createdFromScreeningId]),
+  );
+  const followUps = await attachScreeningResultsToFollowUps(rows.map(followUpFromPrisma), screeningIdsBySurgeryId);
   const byPatient = new Map<string, FollowUp>();
-  rows.map(followUpFromPrisma).forEach((followUp) => {
+  followUps.forEach((followUp) => {
     if (!byPatient.has(followUp.patientId)) byPatient.set(followUp.patientId, followUp);
   });
   const data = patientIds.flatMap((patientId) => {
@@ -296,7 +353,11 @@ async function getSurgeryScope(surgeryId: string) {
   });
 }
 
-function withFollowUpPrintFields(followUp: FollowUp, surgery: Awaited<ReturnType<typeof getSurgeryScope>>): FollowUp {
+async function withFollowUpPrintFields(followUp: FollowUp, surgery: Awaited<ReturnType<typeof getSurgeryScope>>): Promise<FollowUp> {
+  const screeningResult = surgery?.createdFromScreeningId
+    ? (await loadScreeningResultsById([surgery.createdFromScreeningId])).get(surgery.createdFromScreeningId)
+    : undefined;
+
   return {
     ...followUp,
     patientPhone: surgery?.patient?.phone,
@@ -305,6 +366,7 @@ function withFollowUpPrintFields(followUp: FollowUp, surgery: Awaited<ReturnType
     surgeryPerformedAt: surgery?.performedAt ? surgery.performedAt.toISOString() : undefined,
     surgeryScheduledAt: surgery?.scheduledAt ? surgery.scheduledAt.toISOString() : undefined,
     surgeryEye: surgery?.eye as FollowUp['surgeryEye'],
+    screeningResult,
   };
 }
 
@@ -323,7 +385,7 @@ export async function actionCreateFollowUp(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const followUp = withFollowUpPrintFields({
+    const followUp = await withFollowUpPrintFields({
       ...(await createFollowUp({
       ...data,
       region: surgery.region,
@@ -372,7 +434,7 @@ export async function actionUpdateFollowUp(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const followUp = withFollowUpPrintFields({
+    const followUp = await withFollowUpPrintFields({
       ...(await updateFollowUp(id, {
       ...data,
       region: surgery.region,
