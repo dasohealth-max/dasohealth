@@ -28,6 +28,7 @@ vi.mock('@/lib/prisma', () => ({
     screening: {
       findUnique: vi.fn(),
       count: vi.fn(),
+      groupBy: vi.fn(),
     },
   },
 }));
@@ -110,6 +111,7 @@ describe('getScreeningQueuePaginated', () => {
     vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
     vi.mocked(prisma.patient.findMany).mockResolvedValue([patientScope] as never);
     vi.mocked(prisma.patient.count).mockResolvedValue(1);
+    vi.mocked(prisma.screening.groupBy).mockResolvedValue([] as never);
     vi.mocked(patientApi.fromPrisma).mockReturnValue({
       ...patientScope,
       dateOfBirth: '1965-03-12',

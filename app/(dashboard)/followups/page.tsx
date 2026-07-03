@@ -141,7 +141,7 @@ function mostUrgentFollowUp(group: FollowUpGroup, target: Tab) {
 
 function updateFollowUpInGroups(groups: FollowUpGroup[], updated: FollowUp, target: Tab) {
   return groups.flatMap((group) => {
-    if (group.surgeryId !== updated.surgeryId) return [group];
+    if (group.patientId !== updated.patientId) return [group];
     const followUps = group.followUps.map((followUp) => followUp.id === updated.id ? updated : followUp);
     const nextGroup = { ...group, followUps };
     return groupBelongsToTab(nextGroup, target) ? [nextGroup] : [];

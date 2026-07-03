@@ -98,14 +98,14 @@ describe('getFollowUpsPaginated', () => {
     vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
     vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
     vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
-    vi.mocked(prisma.followUp.groupBy).mockResolvedValue([{ surgeryId: 'surgery-1' }] as never);
+    vi.mocked(prisma.followUp.groupBy).mockResolvedValue([{ patientId: 'patient-1' }] as never);
     vi.mocked(prisma.$queryRaw).mockResolvedValue([{ total: 1 }] as never);
     vi.mocked(prisma.followUp.findMany).mockResolvedValue([{}] as never);
     vi.mocked(prisma.screening.findMany).mockResolvedValue([] as never);
     vi.mocked(followUpApi.fromPrisma).mockReturnValue(galmudugFollowUp);
   });
 
-  it('uses a distinct surgery count instead of materializing all groups for totals', async () => {
+  it('uses a distinct patient count instead of materializing all groups for totals', async () => {
     const result = await getFollowUpsPaginated({ tab: 'due', search: '', page: 1, pageSize: 50 });
 
     expect(result.total).toBe(1);
@@ -115,7 +115,7 @@ describe('getFollowUpsPaginated', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           region: 'Galmudug',
-          surgeryId: { in: ['surgery-1'] },
+          patientId: { in: ['patient-1'] },
         }),
       }),
     );

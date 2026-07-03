@@ -76,7 +76,7 @@ export async function getSurgeriesPaginated(params: {
   status?: string;
   page: number;
   pageSize: number;
-}): Promise<{ data: Surgery[]; total: number }> {
+}): Promise<{ data: Surgery[]; total: number; patientTotal: number }> {
   const actor = await requireActor('surgeries', 'view');
   if ('error' in actor) throw new Error(actor.error);
   const regionScope = scopedRegionWhere(actor) as { region?: string };
@@ -85,7 +85,7 @@ export async function getSurgeriesPaginated(params: {
   const pageSize = Math.min(Math.max(1, params.pageSize), 200);
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
-  const [rows, total] = await Promise.all([
+  const [rows, total, patientGroups] = await Promise.all([
     prisma.surgery.findMany({
       where,
       skip,
@@ -96,9 +96,13 @@ export async function getSurgeriesPaginated(params: {
       orderBy: { scheduledAt: 'desc' },
     }),
     prisma.surgery.count({ where }),
+    prisma.surgery.groupBy({
+      by: ['patientId'],
+      where,
+    }),
   ]);
 
-  return { data: await attachScreeningResults(rows), total };
+  return { data: await attachScreeningResults(rows), total, patientTotal: patientGroups.length };
 }
 
 export async function getPrintableWaitingSurgeries(params: {

@@ -109,6 +109,7 @@ export default function SurgeriesPage() {
 
   const [surgeries,      setSurgeries]      = useState<Surgery[]>([]);
   const [total,          setTotal]          = useState(0);
+  const [patientTotal,   setPatientTotal]   = useState(0);
   const [page,           setPage]           = useState(1);
   const [form,           setForm]           = useState<SurgeryForm>(BLANK);
   const [editing,        setEditing]        = useState<Surgery | null>(null);
@@ -141,13 +142,20 @@ export default function SurgeriesPage() {
   useEffect(() => {
     let cancelled = false;
     getSurgeriesPaginated({ search: debouncedSearch, region: regionFilter, status: statusFilter, page, pageSize: PAGE_SIZE })
-      .then(({ data, total: t }) => {
-        if (!cancelled) { setSurgeries(data); setTotal(t); setLoadError(''); setIsLoading(false); }
+      .then(({ data, total: t, patientTotal: pt }) => {
+        if (!cancelled) {
+          setSurgeries(data);
+          setTotal(t);
+          setPatientTotal(pt);
+          setLoadError('');
+          setIsLoading(false);
+        }
       })
       .catch((error) => {
         if (!cancelled) {
           setSurgeries([]);
           setTotal(0);
+          setPatientTotal(0);
           setLoadError(error instanceof Error ? error.message : 'Could not load surgeries');
           setIsLoading(false);
         }
@@ -390,7 +398,9 @@ export default function SurgeriesPage() {
         <div>
           <h1 className="text-xl font-bold text-[#141920]">Surgeries</h1>
           <p className="text-sm text-[#4B5666]">
-            {isLoading ? 'Loading…' : `${total} ${total === 1 ? 'surgery' : 'surgeries'}`}
+            {isLoading
+              ? 'Loading...'
+              : `${patientTotal} patient${patientTotal === 1 ? '' : 's'}${total !== patientTotal ? ` - ${total} surgery record${total === 1 ? '' : 's'}` : ''}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -469,7 +479,7 @@ export default function SurgeriesPage() {
         )}
 
         <span className="ml-auto shrink-0 text-sm text-[#647184]">
-          {total} {total === 1 ? 'surgery' : 'surgeries'}
+          {patientTotal} patient{patientTotal === 1 ? '' : 's'} · {total} record{total === 1 ? '' : 's'}
         </span>
       </div>
 
@@ -492,7 +502,7 @@ export default function SurgeriesPage() {
       {filteredMode ? (
         <SurgeryTable
           title={`${statusFilter} Surgeries`}
-          subtitle={`${visibleSurgeries.length} matching ${statusFilter.toLowerCase()} record${visibleSurgeries.length === 1 ? '' : 's'}`}
+          subtitle={`${patientTotal} matching patient${patientTotal === 1 ? '' : 's'} · ${total} ${statusFilter.toLowerCase()} record${total === 1 ? '' : 's'}`}
           rows={visibleSurgeries}
           isLoading={isLoading}
           emptyMessage={hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}

@@ -213,7 +213,7 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
     { step: 'Registered', count: totalPatients, fill: 'var(--chart-2)' },
     { step: 'Screened', count: totalScreened, fill: '#2473B5' },
     { step: 'Scheduled', count: totalScheduled, fill: 'var(--chart-3)' },
-    { step: 'Surgeries', count: totalCompleted, fill: 'var(--chart-1)' },
+    { step: 'Surgery Done', count: totalCompleted, fill: 'var(--chart-1)' },
     { step: 'Follow-ups', count: followUpsDone, fill: '#45B066' },
   ];
   const surgeryGap = Math.max(0, totalTarget - totalCompleted);
@@ -227,7 +227,7 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
               <p className="text-xs font-semibold uppercase tracking-wide text-[#647184]">National Command View</p>
               <h2 className="mt-2 text-2xl font-bold text-[#141920]">{totalPct}% surgery target reached</h2>
               <p className="mt-1 text-sm text-[#4B5666]">
-                {totalCompleted.toLocaleString()} completed of {totalTarget.toLocaleString()} targeted surgeries across {stats.length} regions.
+                {totalCompleted.toLocaleString()} patients surgery completed of {totalTarget.toLocaleString()} targeted patients across {stats.length} regions.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -258,19 +258,19 @@ function AllRegionsView({ stats }: { stats: RegionStats[] }) {
         registered={totalPatients}
         screened={totalScreened}
         surgeries={totalCompleted}
-        followUpsDue={followUpsDue + overdueFollowUps}
+        followUpsDue={followUpsDue}
         followUpsDone={followUpsDone}
       />
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <ChartCard title="Regional Surgery Progress" subtitle="Completed surgeries against remaining target">
+        <ChartCard title="Regional Surgery Progress" subtitle="Patients surgery completed against remaining target">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={regionalChart} layout="vertical" margin={{ left: 8, right: 28, top: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border-default)" />
               <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
               <YAxis type="category" dataKey="region" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={92} axisLine={{ stroke: 'var(--border-default)' }} tickLine={{ stroke: 'var(--border-default)' }} />
               <Tooltip
-                formatter={(value, name) => [Number(value).toLocaleString(), name === 'completed' ? 'Completed' : 'Target remaining']}
+                formatter={(value, name) => [Number(value).toLocaleString(), name === 'completed' ? 'Patients surgery completed' : 'Target remaining']}
                 labelFormatter={(label) => `${label}`}
               />
               <Bar dataKey="completed" stackId="surgeries" fill="#238038" radius={[0, 0, 0, 0]} />
@@ -344,9 +344,9 @@ function ActionRequiredPanel({
       tone: noCampaignCount > 0 ? 'amber' : 'green',
     },
     {
-      label: 'Surgeries remaining',
+      label: 'Patients remaining',
       value: surgeryGap,
-      detail: 'National target gap still to be delivered.',
+      detail: 'National patient surgery target gap still to be delivered.',
       tone: surgeryGap > 0 ? 'navy' : 'green',
     },
   ] as const;
@@ -396,10 +396,10 @@ function WorkflowProgress({
 }) {
   const steps = [
     { label: 'Registered', value: registered, Icon: Users },
-    { label: 'Screened', value: screened, Icon: Microscope },
-    { label: 'Surgery Completed', value: surgeries, Icon: CheckCircle },
-    { label: 'Follow-ups Due', value: followUpsDue, Icon: Calendar },
-    { label: 'Follow-up Completed', value: followUpsDone, Icon: CalendarCheck },
+    { label: 'Patients Screened', value: screened, Icon: Microscope },
+    { label: 'Patients Surgery Completed', value: surgeries, Icon: CheckCircle },
+    { label: 'Patients Follow-up Due', value: followUpsDue, Icon: Calendar },
+    { label: 'Patients Follow-up Done', value: followUpsDone, Icon: CalendarCheck },
   ];
 
   return (
@@ -518,7 +518,7 @@ function SingleRegionView({
         registered={stats.patients}
         screened={stats.screened}
         surgeries={stats.completed}
-        followUpsDue={stats.followUpsDue + stats.overdue}
+        followUpsDue={stats.followUpsDue}
         followUpsDone={stats.followUpsDone}
       />
 
@@ -538,7 +538,7 @@ function SingleRegionView({
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className={compact ? 'text-[#002E63]' : 'text-[#4B5666]'}>
-            <strong>{stats.completed.toLocaleString()}</strong> surgeries completed
+            <strong>{stats.completed.toLocaleString()}</strong> patients surgery completed
           </span>
           <span className={compact ? 'text-[#002E63]' : 'text-[#4B5666]'}>Target: <strong>{stats.target.toLocaleString()}</strong></span>
         </div>

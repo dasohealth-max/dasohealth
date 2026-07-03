@@ -70,32 +70,36 @@ describe('getReportAggregation', () => {
     vi.mocked(prisma.followUpMedication.count).mockResolvedValue(0);
   });
 
-  it('builds report totals from grouped database counts instead of full clinical rows', async () => {
+  it('builds report patient metrics from grouped database counts without inflating duplicate clinical rows', async () => {
     vi.mocked(prisma.patient.groupBy).mockResolvedValue([
       { region: 'Galmudug', campaignId: 'camp-galmudug-1', _count: { _all: 2 } },
       { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', _count: { _all: 3 } },
     ] as never);
     vi.mocked(prisma.screening.groupBy).mockResolvedValue([
-      { region: 'Galmudug', campaignId: 'camp-galmudug-1', _count: { _all: 1 } },
-      { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', _count: { _all: 2 } },
+      { region: 'Galmudug', campaignId: 'camp-galmudug-1', patientId: 'patient-1', _count: { _all: 2 } },
+      { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', patientId: 'patient-2', _count: { _all: 1 } },
+      { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', patientId: 'patient-3', _count: { _all: 3 } },
     ] as never);
     vi.mocked(prisma.surgery.groupBy).mockResolvedValue([
-      { region: 'Galmudug', campaignId: 'camp-galmudug-1', status: 'Scheduled', _count: { _all: 1 } },
-      { region: 'Galmudug', campaignId: 'camp-galmudug-1', status: 'Completed', _count: { _all: 1 } },
-      { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', status: 'Completed', _count: { _all: 2 } },
+      { region: 'Galmudug', campaignId: 'camp-galmudug-1', status: 'Scheduled', patientId: 'patient-1', _count: { _all: 2 } },
+      { region: 'Galmudug', campaignId: 'camp-galmudug-1', status: 'Completed', patientId: 'patient-1', _count: { _all: 1 } },
+      { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', status: 'Completed', patientId: 'patient-2', _count: { _all: 2 } },
+      { region: 'Banadir / Mogadishu', campaignId: 'camp-banadir-1', status: 'Completed', patientId: 'patient-3', _count: { _all: 1 } },
     ] as never);
     vi.mocked(prisma.followUp.groupBy).mockResolvedValue([
       {
         region: 'Galmudug',
         campaignId: 'camp-galmudug-1',
+        patientId: 'patient-1',
         milestone: 'Day1',
         status: 'Completed',
         doctorReviewStatus: 'Completed',
-        _count: { _all: 1 },
+        _count: { _all: 2 },
       },
       {
         region: 'Banadir / Mogadishu',
         campaignId: 'camp-banadir-1',
+        patientId: 'patient-2',
         milestone: 'Week1',
         status: 'Overdue',
         doctorReviewStatus: 'Pending',
@@ -110,10 +114,10 @@ describe('getReportAggregation', () => {
     expect(result.scoped.screeningCount).toBe(3);
     expect(result.scoped.surgeriesScheduled).toBe(1);
     expect(result.scoped.surgeriesCompleted).toBe(3);
-    expect(result.scoped.followUpCount).toBe(3);
+    expect(result.scoped.followUpCount).toBe(2);
     expect(result.scoped.completedFollowUps).toBe(1);
-    expect(result.scoped.overdueFollowUps).toBe(2);
-    expect(result.scoped.doctorReviewPending).toBe(2);
+    expect(result.scoped.overdueFollowUps).toBe(1);
+    expect(result.scoped.doctorReviewPending).toBe(1);
     expect(result.scoped.doctorReviewCompleted).toBe(1);
     expect(result.scoped.medications).toBe(4);
     expect(result.followUpByMilestone).toContainEqual({

@@ -41,13 +41,25 @@ type CountRow = {
   _count: { _all: number };
 };
 
+type PatientCountRow = CountRow & {
+  patientId: string;
+};
+
 type SurgeryCountRow = CountRow & {
   status: string;
+};
+
+type PatientSurgeryCountRow = SurgeryCountRow & {
+  patientId: string;
 };
 
 type FollowUpCountRow = CountRow & {
   status: string;
   needsDoctorReview: boolean;
+};
+
+type PatientFollowUpCountRow = FollowUpCountRow & {
+  patientId: string;
 };
 
 function computeStatus(campaignCount: number, patientCount: number, pct: number): DashboardRegionStatus {
@@ -119,12 +131,54 @@ function followUpCountMap(rows: FollowUpCountRow[]) {
   return map;
 }
 
+function patientSetMap<T extends PatientCountRow>(
+  rows: T[],
+  keyForRow: (row: T) => string,
+) {
+  const map = new Map<string, Set<string>>();
+  rows.forEach((row) => {
+    const key = keyForRow(row);
+    const set = map.get(key) ?? new Set<string>();
+    set.add(row.patientId);
+    map.set(key, set);
+  });
+  return map;
+}
+
 function sumCampaignCounts(map: Map<string, number>, region: string, campaignIds: Set<string>, status?: string) {
   let total = 0;
   campaignIds.forEach((campaignId) => {
     total += map.get(countKey(region, campaignId, status)) ?? 0;
   });
   return total;
+}
+
+function sumUniqueCampaignPatients(
+  map: Map<string, Set<string>>,
+  region: string,
+  campaignIds: Set<string>,
+  status?: string,
+) {
+  const patients = new Set<string>();
+  campaignIds.forEach((campaignId) => {
+    map.get(countKey(region, campaignId, status))?.forEach((patientId) => patients.add(patientId));
+  });
+  return patients.size;
+}
+
+function sumUniqueFollowUpPatients(
+  map: Map<string, Set<string>>,
+  region: string,
+  campaignIds: Set<string>,
+  statuses: string[],
+) {
+  const patients = new Set<string>();
+  campaignIds.forEach((campaignId) => {
+    statuses.forEach((status) => {
+      map.get(countKey(region, campaignId, status))?.forEach((patientId) => patients.add(patientId));
+    });
+  });
+  return patients.size;
 }
 
 function sumFollowUps(
@@ -167,8 +221,8 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
     .map((campaign) => scopeCampaignForActor(actor, campaign));
   const campaignIds = [...registeredCampaignIds(campaigns)];
 
-  const [patientRows, screeningRows, surgeryRows, followUpRows] = campaignIds.length === 0
-    ? [[], [], [], []]
+  const [patientRows, screeningRows, surgeryRows, followUpRows, followUpAlertRows] = campaignIds.length === 0
+    ? [[], [], [], [], []]
     : await Promise.all([
         prisma.patient.groupBy({
           by: ['region', 'campaignId'],
@@ -176,12 +230,17 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
           _count: { _all: true },
         }),
         prisma.screening.groupBy({
-          by: ['region', 'campaignId'],
+          by: ['region', 'campaignId', 'patientId'],
           where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
           _count: { _all: true },
         }),
         prisma.surgery.groupBy({
-          by: ['region', 'campaignId', 'status'],
+          by: ['region', 'campaignId', 'status', 'patientId'],
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          _count: { _all: true },
+        }),
+        prisma.followUp.groupBy({
+          by: ['region', 'campaignId', 'status', 'patientId'],
           where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
           _count: { _all: true },
         }),
@@ -193,9 +252,19 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
       ]);
 
   const patientCounts = countMap(patientRows as CountRow[]);
-  const screeningCounts = countMap(screeningRows as CountRow[]);
-  const surgeryCounts = surgeryCountMap(surgeryRows as SurgeryCountRow[]);
-  const followUpCounts = followUpCountMap(followUpRows as FollowUpCountRow[]);
+  const screeningPatientCounts = patientSetMap(
+    screeningRows as PatientCountRow[],
+    (row) => countKey(row.region, row.campaignId),
+  );
+  const surgeryPatientCounts = patientSetMap(
+    surgeryRows as PatientSurgeryCountRow[],
+    (row) => countKey(row.region, row.campaignId, row.status),
+  );
+  const followUpPatientCounts = patientSetMap(
+    followUpRows as PatientFollowUpCountRow[],
+    (row) => countKey(row.region, row.campaignId, row.status),
+  );
+  const followUpAlertCounts = followUpCountMap(followUpAlertRows as FollowUpCountRow[]);
 
   return REGIONAL_CAMPAIGN_AREAS.map((area) => {
     const regionCampaigns = campaignsForRegion(campaigns, area.region);
@@ -203,8 +272,8 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
     const primaryPlan = primary?.regions?.find((plan) => plan.region === area.region) ?? null;
     const regionCampaignIds = registeredCampaignIds(regionCampaigns);
 
-    const completed = sumCampaignCounts(surgeryCounts, area.region, regionCampaignIds, 'Completed');
-    const scheduled = sumCampaignCounts(surgeryCounts, area.region, regionCampaignIds, 'Scheduled');
+    const completed = sumUniqueCampaignPatients(surgeryPatientCounts, area.region, regionCampaignIds, 'Completed');
+    const scheduled = sumUniqueCampaignPatients(surgeryPatientCounts, area.region, regionCampaignIds, 'Scheduled');
     const target = campaignTargetSurgeriesForRegion(regionCampaigns, area.region);
     const pct = target ? Math.round((completed / target) * 100) : 0;
     const patients = sumCampaignCounts(patientCounts, area.region, regionCampaignIds);
@@ -219,15 +288,13 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
       campaignEnd: primary?.endDate ?? '',
       target,
       patients,
-      screened: sumCampaignCounts(screeningCounts, area.region, regionCampaignIds),
+      screened: sumUniqueCampaignPatients(screeningPatientCounts, area.region, regionCampaignIds),
       scheduled,
       completed,
-      followUpsDone: sumFollowUps(followUpCounts, area.region, regionCampaignIds, { status: 'Completed' }),
-      followUpsDue:
-        sumFollowUps(followUpCounts, area.region, regionCampaignIds, { status: 'Pending' }) +
-        sumFollowUps(followUpCounts, area.region, regionCampaignIds, { status: 'Due' }),
-      overdue: sumFollowUps(followUpCounts, area.region, regionCampaignIds, { status: 'Overdue' }),
-      doctorReview: sumFollowUps(followUpCounts, area.region, regionCampaignIds, { needsDoctorReview: true }),
+      followUpsDone: sumUniqueFollowUpPatients(followUpPatientCounts, area.region, regionCampaignIds, ['Completed']),
+      followUpsDue: sumUniqueFollowUpPatients(followUpPatientCounts, area.region, regionCampaignIds, ['Pending', 'Due', 'Overdue']),
+      overdue: sumFollowUps(followUpAlertCounts, area.region, regionCampaignIds, { status: 'Overdue' }),
+      doctorReview: sumFollowUps(followUpAlertCounts, area.region, regionCampaignIds, { needsDoctorReview: true }),
       pct,
       status: computeStatus(regionCampaigns.length, patients, pct),
     };

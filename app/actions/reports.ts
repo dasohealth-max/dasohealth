@@ -210,11 +210,17 @@ type RegionCampaignCountRow = {
   _count: { _all: number };
 };
 
+type PatientRegionCampaignCountRow = RegionCampaignCountRow & {
+  patientId: string;
+};
+
 type SurgeryStatusCountRow = RegionCampaignCountRow & {
   status: string;
+  patientId: string;
 };
 
 type FollowUpAggregateCountRow = RegionCampaignCountRow & {
+  patientId: string;
   milestone: string;
   status: string;
   doctorReviewStatus: string;
@@ -251,10 +257,7 @@ function sumSurgeryCounts(
   status: string,
   region?: string,
 ): number {
-  return rows.reduce(
-    (sum, row) => sum + (row.status === status && matchesRegionCampaign(row, region, campaignIds) ? row._count._all : 0),
-    0,
-  );
+  return uniquePatientCount(rows, campaignIds, { region, status });
 }
 
 function sumFollowUpCounts(
@@ -267,27 +270,46 @@ function sumFollowUpCounts(
     doctorReviewStatus?: string;
   } = {},
 ): number {
-  return rows.reduce((sum, row) => {
-    if (!matchesRegionCampaign(row, filters.region, campaignIds)) return sum;
-    if (filters.milestone && followUpMilestoneToApp(row.milestone) !== filters.milestone) return sum;
-    if (filters.status && row.status !== filters.status) return sum;
-    if (filters.doctorReviewStatus && doctorReviewStatusToApp(row.doctorReviewStatus) !== filters.doctorReviewStatus) return sum;
-    return sum + row._count._all;
-  }, 0);
+  return uniquePatientCount(rows, campaignIds, filters);
+}
+
+function uniquePatientCount<T extends PatientRegionCampaignCountRow>(
+  rows: T[],
+  campaignIds: Set<string>,
+  filters: {
+    region?: string;
+    milestone?: string;
+    status?: string;
+    doctorReviewStatus?: string;
+  } = {},
+): number {
+  const patients = new Set<string>();
+  rows.forEach((row) => {
+    if (!matchesRegionCampaign(row, filters.region, campaignIds)) return;
+    if (filters.milestone && 'milestone' in row && followUpMilestoneToApp(String(row.milestone)) !== filters.milestone) return;
+    if (filters.status && 'status' in row && row.status !== filters.status) return;
+    if (
+      filters.doctorReviewStatus &&
+      'doctorReviewStatus' in row &&
+      doctorReviewStatusToApp(String(row.doctorReviewStatus)) !== filters.doctorReviewStatus
+    ) return;
+    patients.add(row.patientId);
+  });
+  return patients.size;
 }
 
 function computeRegionPerfFromCounts(params: {
   regionName: string;
   scopedCampaigns: Campaign[];
   patientRows: RegionCampaignCountRow[];
-  screeningRows: RegionCampaignCountRow[];
+  screeningRows: PatientRegionCampaignCountRow[];
   surgeryRows: SurgeryStatusCountRow[];
   followUpRows: FollowUpAggregateCountRow[];
 }): RegionPerformanceItem {
   const rc = params.scopedCampaigns.filter((campaign) => campaignHasRegion(campaign, params.regionName));
   const campaignIds = registeredCampaignIds(rc);
   const patients = sumRegionCampaignCounts(params.patientRows, campaignIds, params.regionName);
-  const screenings = sumRegionCampaignCounts(params.screeningRows, campaignIds, params.regionName);
+  const screenings = uniquePatientCount(params.screeningRows, campaignIds, { region: params.regionName });
   const scheduled = sumSurgeryCounts(params.surgeryRows, campaignIds, 'Scheduled', params.regionName);
   const completed = sumSurgeryCounts(params.surgeryRows, campaignIds, 'Completed', params.regionName);
   const postponed = sumSurgeryCounts(params.surgeryRows, campaignIds, 'Postponed', params.regionName);
@@ -379,17 +401,17 @@ export async function getReportAggregation(params: {
           _count: { _all: true },
         }),
         prisma.screening.groupBy({
-          by: ['region', 'campaignId'],
+          by: ['region', 'campaignId', 'patientId'],
           where: baseEntityWhere,
           _count: { _all: true },
         }),
         prisma.surgery.groupBy({
-          by: ['region', 'campaignId', 'status'],
+          by: ['region', 'campaignId', 'status', 'patientId'],
           where: baseEntityWhere,
           _count: { _all: true },
         }),
         prisma.followUp.groupBy({
-          by: ['region', 'campaignId', 'milestone', 'status', 'doctorReviewStatus'],
+          by: ['region', 'campaignId', 'patientId', 'milestone', 'status', 'doctorReviewStatus'],
           where: followUpWhere,
           _count: { _all: true },
         }),
@@ -399,7 +421,7 @@ export async function getReportAggregation(params: {
       ]);
 
   const patientRows = patientCountRows as RegionCampaignCountRow[];
-  const screeningRows = screeningCountRows as RegionCampaignCountRow[];
+  const screeningRows = screeningCountRows as PatientRegionCampaignCountRow[];
   const surgeryRows = surgeryCountRows as SurgeryStatusCountRow[];
   const followUpRows = followUpCountRows as FollowUpAggregateCountRow[];
 
@@ -408,7 +430,7 @@ export async function getReportAggregation(params: {
     0,
   );
   const patientCount = sumRegionCampaignCounts(patientRows, scopedCampaignIds);
-  const screeningCount = sumRegionCampaignCounts(screeningRows, scopedCampaignIds);
+  const screeningCount = uniquePatientCount(screeningRows, scopedCampaignIds);
   const surgeriesScheduled = sumSurgeryCounts(surgeryRows, scopedCampaignIds, 'Scheduled');
   const surgeriesCompleted = sumSurgeryCounts(surgeryRows, scopedCampaignIds, 'Completed');
   const surgeriesPostponed = sumSurgeryCounts(surgeryRows, scopedCampaignIds, 'Postponed');
@@ -454,7 +476,7 @@ export async function getReportAggregation(params: {
       id: c.id,
       targetSurgeries,
       patients: sumRegionCampaignCounts(patientRows, campaignIds),
-      screenings: sumRegionCampaignCounts(screeningRows, campaignIds),
+      screenings: uniquePatientCount(screeningRows, campaignIds),
       scheduled: sumSurgeryCounts(surgeryRows, campaignIds, 'Scheduled'),
       completed: done,
       postponed: sumSurgeryCounts(surgeryRows, campaignIds, 'Postponed'),

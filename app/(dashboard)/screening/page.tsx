@@ -87,6 +87,7 @@ export default function ScreeningPage() {
 
   const [screenings,          setScreenings]          = useState<Screening[]>([]);
   const [screeningsTotal,     setScreeningsTotal]     = useState(0);
+  const [screenedPatientTotal, setScreenedPatientTotal] = useState(0);
   const [screeningsPage,      setScreeningsPage]      = useState(1);
   const [queueTotal,          setQueueTotal]          = useState(0);
   const [queuePage,           setQueuePage]           = useState(1);
@@ -147,13 +148,20 @@ export default function ScreeningPage() {
   useEffect(() => {
     let cancelled = false;
     getScreeningHistoryPaginated({ search: debouncedHistSearch, page: screeningsPage, pageSize: PAGE_SIZE })
-      .then(({ data, total }) => {
-        if (!cancelled) { setScreenings(data); setScreeningsTotal(total); setHistoryError(''); setHistLoading(false); }
+      .then(({ data, total, patientTotal }) => {
+        if (!cancelled) {
+          setScreenings(data);
+          setScreeningsTotal(total);
+          setScreenedPatientTotal(patientTotal);
+          setHistoryError('');
+          setHistLoading(false);
+        }
       })
       .catch((error) => {
         if (!cancelled) {
           setScreenings([]);
           setScreeningsTotal(0);
+          setScreenedPatientTotal(0);
           setHistoryError(error instanceof Error ? error.message : 'Could not load screening history');
           setHistLoading(false);
         }
@@ -470,7 +478,11 @@ export default function ScreeningPage() {
               </div>
               <div className="text-left">
                 <p className="text-sm font-bold text-[#141920]">Completed Screenings</p>
-                <p className="text-xs text-[#4B5666]">{screeningsTotal} screening{screeningsTotal === 1 ? '' : 's'} recorded — click to {historyOpen ? 'collapse' : 'expand'}</p>
+                <p className="text-xs text-[#4B5666]">
+                  {screenedPatientTotal} patient{screenedPatientTotal === 1 ? '' : 's'} screened
+                  {screeningsTotal !== screenedPatientTotal ? ` - ${screeningsTotal} screening record${screeningsTotal === 1 ? '' : 's'}` : ''}
+                  {' '}— click to {historyOpen ? 'collapse' : 'expand'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -492,7 +504,7 @@ export default function ScreeningPage() {
                   />
                 </div>
                 <span className="shrink-0 text-xs text-[#647184]">
-                  {screeningsTotal} records
+                  {screenedPatientTotal} patients · {screeningsTotal} records
                 </span>
               </div>
 

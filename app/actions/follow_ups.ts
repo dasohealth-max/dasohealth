@@ -194,15 +194,22 @@ export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number
   const base = scopedRegionWhere(actor);
 
   const [due, overdue, missed, needsReview, reviewCompleted, all] = await Promise.all([
-    prisma.followUp.count({ where: { ...base, ...tabWhere('due') } }),
-    prisma.followUp.count({ where: { ...base, ...tabWhere('overdue') } }),
-    prisma.followUp.count({ where: { ...base, ...tabWhere('missed') } }),
-    prisma.followUp.count({ where: { ...base, ...tabWhere('needs-review') } }),
-    prisma.followUp.count({ where: { ...base, ...tabWhere('review-completed') } }),
-    prisma.followUp.count({ where: base }),
+    prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('due') } }),
+    prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('overdue') } }),
+    prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('missed') } }),
+    prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('needs-review') } }),
+    prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('review-completed') } }),
+    prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('all') } }),
   ]);
 
-  return { due, overdue, missed, 'needs-review': needsReview, 'review-completed': reviewCompleted, all };
+  return {
+    due: due.length,
+    overdue: overdue.length,
+    missed: missed.length,
+    'needs-review': needsReview.length,
+    'review-completed': reviewCompleted.length,
+    all: all.length,
+  };
 }
 
 export async function getFollowUpsPaginated(params: {
@@ -222,7 +229,7 @@ export async function getFollowUpsPaginated(params: {
   const regionScope = scopedRegionWhere(actor) as { region?: string };
   const [pageGroups, totalRows] = await Promise.all([
     prisma.followUp.groupBy({
-      by: ['surgeryId'],
+      by: ['patientId'],
       where,
       skip,
       take: pageSize,
@@ -230,19 +237,19 @@ export async function getFollowUpsPaginated(params: {
       orderBy: { _min: { dueDate: 'asc' } },
     }),
     prisma.$queryRaw<{ total: bigint | number }[]>`
-      SELECT COUNT(DISTINCT surgery_id) AS total
+      SELECT COUNT(DISTINCT patient_id) AS total
       FROM follow_ups
       WHERE ${followUpDistinctGroupWhereSql({ tab: params.tab, search: params.search, region: regionScope.region })}
     `,
   ]);
   const total = Number(totalRows[0]?.total ?? 0);
-  const surgeryIds = pageGroups.map((group) => group.surgeryId);
-  if (surgeryIds.length === 0) return { data: [], total };
+  const patientIds = pageGroups.map((group) => group.patientId);
+  if (patientIds.length === 0) return { data: [], total };
 
   const rows = await prisma.followUp.findMany({
     where: {
       ...scopedRegionWhere(actor),
-      surgeryId: { in: surgeryIds },
+      patientId: { in: patientIds },
       milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] },
     },
     include: {
@@ -258,15 +265,15 @@ export async function getFollowUpsPaginated(params: {
   const items = await attachScreeningResultsToFollowUps(rows.map(followUpFromPrisma), screeningIdsBySurgeryId);
   const grouped = new Map<string, FollowUp[]>();
   items.forEach((item) => {
-    grouped.set(item.surgeryId, [...(grouped.get(item.surgeryId) ?? []), item]);
+    grouped.set(item.patientId, [...(grouped.get(item.patientId) ?? []), item]);
   });
 
-  const data = surgeryIds.flatMap((surgeryId) => {
-    const followUps = grouped.get(surgeryId) ?? [];
+  const data = patientIds.flatMap((patientId) => {
+    const followUps = grouped.get(patientId) ?? [];
     const first = followUps[0];
     if (!first) return [];
     return [{
-      surgeryId,
+      surgeryId: first.surgeryId,
       patientId: first.patientId,
       patientCode: first.patientCode,
       patientPhone: first.patientPhone,

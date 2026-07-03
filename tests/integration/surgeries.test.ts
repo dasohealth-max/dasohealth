@@ -15,7 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     patient: { findUnique: vi.fn() },
     screening: { findUnique: vi.fn() },
-    surgery: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    surgery: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
     followUp: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   },
 }));
@@ -99,6 +99,7 @@ describe('getSurgeriesPaginated', () => {
     vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Banadir / Mogadishu' });
     vi.mocked(prisma.surgery.findMany).mockResolvedValue([] as never);
     vi.mocked(prisma.surgery.count).mockResolvedValue(0);
+    vi.mocked(prisma.surgery.groupBy).mockResolvedValue([] as never);
     vi.mocked(surgeryApi.attachScreeningResults).mockResolvedValue([]);
   });
 
@@ -155,6 +156,7 @@ describe('actionCreateSurgery', () => {
     vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
     vi.mocked(surgeryApi.createSurgery).mockResolvedValue(galmudugSurgery);
     vi.mocked(prisma.followUp.findMany).mockResolvedValue(allFollowUpMilestoneRows as never);
+    vi.mocked(prisma.surgery.groupBy).mockResolvedValue([] as never);
   });
 
   it('creates a scheduled surgery successfully', async () => {

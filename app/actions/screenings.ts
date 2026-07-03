@@ -85,7 +85,7 @@ export async function getScreeningHistoryPaginated(params: {
   search?: string;
   page: number;
   pageSize: number;
-}): Promise<{ data: Screening[]; total: number }> {
+}): Promise<{ data: Screening[]; total: number; patientTotal: number }> {
   const actor = await requireActor('screening', 'view');
   if ('error' in actor) throw new Error(actor.error);
 
@@ -103,7 +103,7 @@ export async function getScreeningHistoryPaginated(params: {
   const pageSize = Math.min(Math.max(1, params.pageSize), 200);
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
-  const [rows, total] = await Promise.all([
+  const [rows, total, patientGroups] = await Promise.all([
     prisma.screening.findMany({
       where,
       skip,
@@ -112,9 +112,13 @@ export async function getScreeningHistoryPaginated(params: {
       orderBy: { screenedAt: 'desc' },
     }),
     prisma.screening.count({ where }),
+    prisma.screening.groupBy({
+      by: ['patientId'],
+      where,
+    }),
   ]);
 
-  return { data: rows.map(screeningFromPrisma), total };
+  return { data: rows.map(screeningFromPrisma), total, patientTotal: patientGroups.length };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
