@@ -17,7 +17,8 @@ import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { defaultRecommendationForSurgeryConsent } from '@/lib/screening-defaults';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Pencil, RefreshCw, Search, Stethoscope, Trash2 } from 'lucide-react';
+import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, MapPin, Pencil, RefreshCw, Search, Stethoscope, Trash2 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,8 @@ function blankForm(): ScreeningForm {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScreeningPage() {
-  const { can } = usePermissions();
+  const { can, role, user } = usePermissions();
+  const isSuperAdmin = role === 'Super Administrator';
 
   const [screenings,          setScreenings]          = useState<Screening[]>([]);
   const [screeningsTotal,     setScreeningsTotal]     = useState(0);
@@ -108,6 +110,7 @@ export default function ScreeningPage() {
   const [historyError,        setHistoryError]        = useState('');
   const [queueRefreshKey,     setQueueRefreshKey]     = useState(0);
   const [historyRefreshKey,   setHistoryRefreshKey]   = useState(0);
+  const [regionFilter,        setRegionFilter]        = useState('');
 
   // Debounce queue search, reset page
   useEffect(() => {
@@ -124,7 +127,8 @@ export default function ScreeningPage() {
   // Load paginated waiting queue
   useEffect(() => {
     let cancelled = false;
-    getScreeningQueuePaginated({ search: debouncedQueueSearch, page: queuePage, pageSize: PAGE_SIZE })
+    setIsLoading(true);
+    getScreeningQueuePaginated({ search: debouncedQueueSearch, region: regionFilter, page: queuePage, pageSize: PAGE_SIZE })
       .then(({ data, total }) => {
         if (!cancelled) {
           setPatients(data);
@@ -142,12 +146,13 @@ export default function ScreeningPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [debouncedQueueSearch, queuePage, queueRefreshKey]);
+  }, [debouncedQueueSearch, regionFilter, queuePage, queueRefreshKey]);
 
   // Load paginated screening history
   useEffect(() => {
     let cancelled = false;
-    getScreeningHistoryPaginated({ search: debouncedHistSearch, page: screeningsPage, pageSize: PAGE_SIZE })
+    setHistLoading(true);
+    getScreeningHistoryPaginated({ search: debouncedHistSearch, region: regionFilter, page: screeningsPage, pageSize: PAGE_SIZE })
       .then(({ data, total, patientTotal }) => {
         if (!cancelled) {
           setScreenings(data);
@@ -167,11 +172,20 @@ export default function ScreeningPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [debouncedHistSearch, screeningsPage, historyRefreshKey]);
+  }, [debouncedHistSearch, regionFilter, screeningsPage, historyRefreshKey]);
 
   // ── Derived lists ──────────────────────────────────────────────────────────
 
   const queuedPatients = patients;
+  const scopeLabel = isSuperAdmin
+    ? `Scope: ${regionFilter || 'All regions'}`
+    : `Scope: Assigned region - ${user?.assignedRegion ?? 'Not assigned'}`;
+
+  function changeRegionFilter(value: string) {
+    setRegionFilter(value);
+    setQueuePage(1);
+    setScreeningsPage(1);
+  }
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
@@ -366,6 +380,26 @@ export default function ScreeningPage() {
             {isLoading ? 'Loading...' : `${queueTotal} patient${queueTotal === 1 ? '' : 's'} waiting for screening`}
           </p>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm font-semibold text-[#4B5666]">
+          <MapPin size={14} className="shrink-0 text-[#647184]" />
+          <span>{scopeLabel}</span>
+        </div>
+        {isSuperAdmin && (
+          <Select value={regionFilter} onValueChange={(v) => changeRegionFilter(v ?? '')}>
+            <SelectTrigger className="w-56 rounded-md">
+              <SelectValue placeholder="All Regions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Regions</SelectItem>
+              {REGIONAL_CAMPAIGN_AREAS.map((area) => (
+                <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* ── Waiting Queue ── */}

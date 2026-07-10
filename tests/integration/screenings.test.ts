@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { banadiPM, galmudugScreener } from '../mocks/actors';
+import { banadiPM, galmudugScreener, superAdmin } from '../mocks/actors';
 import type { Screening } from '@/types';
 
 vi.mock('@/lib/auth-server', () => ({
@@ -27,6 +27,7 @@ vi.mock('@/lib/prisma', () => ({
     },
     screening: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
       count: vi.fn(),
       groupBy: vi.fn(),
     },
@@ -45,7 +46,7 @@ vi.mock('@/lib/api/patients', () => ({
   fromPrisma: vi.fn(),
 }));
 
-import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningQueuePaginated } from '@/app/actions/screenings';
+import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated, getScreeningQueuePaginated } from '@/app/actions/screenings';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as screeningApi from '@/lib/api/screenings';
@@ -152,6 +153,114 @@ describe('getScreeningQueuePaginated', () => {
         screeningStatus: 'Awaiting Screening',
       }),
     });
+  });
+
+  it('lets a super admin filter awaiting patients by region', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
+
+    await getScreeningQueuePaginated({ region: 'Jubaland', page: 1, pageSize: 50 });
+
+    expect(prisma.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          region: 'Jubaland',
+          screeningStatus: 'Awaiting Screening',
+        }),
+      }),
+    );
+    expect(prisma.patient.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        region: 'Jubaland',
+        screeningStatus: 'Awaiting Screening',
+      }),
+    });
+  });
+
+  it('lets a super admin load all-region awaiting patients when no region is selected', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
+
+    await getScreeningQueuePaginated({ page: 1, pageSize: 50 });
+
+    expect(prisma.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ region: expect.any(String) }),
+      }),
+    );
+    expect(prisma.patient.count).toHaveBeenCalledWith({
+      where: expect.not.objectContaining({ region: expect.any(String) }),
+    });
+  });
+
+  it('ignores a client-supplied region for assigned-region users', async () => {
+    await getScreeningQueuePaginated({ region: 'Jubaland', page: 1, pageSize: 50 });
+
+    expect(prisma.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          region: 'Galmudug',
+          screeningStatus: 'Awaiting Screening',
+        }),
+      }),
+    );
+  });
+});
+
+describe('getScreeningHistoryPaginated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
+    vi.mocked(prisma.screening.findMany).mockResolvedValue([createdScreening] as never);
+    vi.mocked(prisma.screening.count).mockResolvedValue(1);
+    vi.mocked(prisma.screening.groupBy).mockResolvedValue([{ patientId: 'patient-1' }] as never);
+    vi.mocked(screeningApi.fromPrisma).mockReturnValue(createdScreening);
+  });
+
+  it('lets a super admin filter completed screenings by region', async () => {
+    const result = await getScreeningHistoryPaginated({ region: 'Jubaland', page: 1, pageSize: 50 });
+
+    expect(result.total).toBe(1);
+    expect(result.patientTotal).toBe(1);
+    expect(prisma.screening.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ region: 'Jubaland' }),
+      }),
+    );
+    expect(prisma.screening.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ region: 'Jubaland' }),
+    });
+    expect(prisma.screening.groupBy).toHaveBeenCalledWith({
+      by: ['patientId'],
+      where: expect.objectContaining({ region: 'Jubaland' }),
+    });
+  });
+
+  it('lets a super admin load all-region completed screenings when no region is selected', async () => {
+    await getScreeningHistoryPaginated({ page: 1, pageSize: 50 });
+
+    expect(prisma.screening.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({ region: expect.any(String) }),
+      }),
+    );
+    expect(prisma.screening.count).toHaveBeenCalledWith({
+      where: expect.not.objectContaining({ region: expect.any(String) }),
+    });
+  });
+
+  it('keeps completed screenings scoped to assigned region for regional users', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.scopedRegionWhere).mockReturnValue({ region: 'Galmudug' });
+
+    await getScreeningHistoryPaginated({ region: 'Jubaland', page: 1, pageSize: 50 });
+
+    expect(prisma.screening.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ region: 'Galmudug' }),
+      }),
+    );
   });
 });
 

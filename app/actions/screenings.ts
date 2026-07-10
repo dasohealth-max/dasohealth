@@ -52,14 +52,18 @@ export async function getAllScreenings(): Promise<Screening[]> {
 
 export async function getScreeningQueuePaginated(params: {
   search?: string;
+  region?: string;
   page: number;
   pageSize: number;
 }): Promise<{ data: Patient[]; total: number }> {
   const actor = await requireActor('screening', 'view');
   if ('error' in actor) throw new Error(actor.error);
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const requestedRegion = params.region?.trim();
+  const region = regionScope.region ?? (requestedRegion || undefined);
 
   const where: Prisma.PatientWhereInput = {
-    ...scopedRegionWhere(actor),
+    ...(region && { region }),
     screeningStatus: 'Awaiting Screening',
     ...(params.search && {
       OR: [
@@ -83,14 +87,18 @@ export async function getScreeningQueuePaginated(params: {
 
 export async function getScreeningHistoryPaginated(params: {
   search?: string;
+  region?: string;
   page: number;
   pageSize: number;
 }): Promise<{ data: Screening[]; total: number; patientTotal: number }> {
   const actor = await requireActor('screening', 'view');
   if ('error' in actor) throw new Error(actor.error);
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const requestedRegion = params.region?.trim();
+  const region = regionScope.region ?? (requestedRegion || undefined);
 
   const where: Prisma.ScreeningWhereInput = {
-    ...scopedRegionWhere(actor),
+    ...(region && { region }),
     ...(params.search && {
       OR: [
         { patientName: { contains: params.search, mode: 'insensitive' } },
