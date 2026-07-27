@@ -26,6 +26,7 @@ vi.mock('@/lib/prisma', () => ({
       findUnique: vi.fn(),
     },
     screening: {
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
@@ -273,6 +274,7 @@ describe('actionCreateScreening', () => {
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
     vi.mocked(prisma.patient.update).mockResolvedValue({} as never);
+    vi.mocked(prisma.screening.findFirst).mockResolvedValue(null); // no duplicate screening
     vi.mocked(prisma.surgery.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.surgery.create).mockResolvedValue({} as never);
     vi.mocked(prisma.campaignRegion.findUnique).mockResolvedValue({ doctorName: 'Dr. Galmudug' } as never);

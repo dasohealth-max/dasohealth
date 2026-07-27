@@ -108,30 +108,30 @@ export default function ReportsPage() {
       });
       if (!auditResult.ok) throw new Error(auditResult.error);
 
-      const rawData = await getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId });
+      // Fetch deduped aggregation (for all summary/KPI numbers) and raw records (for detail sheets).
+      const [exportAgg, rawData] = await Promise.all([
+        getReportAggregation({ filterRegion: effectiveRegion, filterCampaignId: campaignId }),
+        getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId }),
+      ]);
       const { campaigns, patients, screenings, surgeries, followUps, medications, regionPerformance: rp } = rawData;
 
-      const surgeryTarget = campaigns.reduce((sum, c) => sum + campaignTargetSurgeries(c), 0);
-      const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
-      const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
-      const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
-      const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
-      const surgeryCompletionRate = completionRate(surgeriesCompleted, surgeryTarget);
-      const completedFollowUps = followUps.filter((fu) => fu.status === 'Completed').length;
-      const overdueFollowUps = followUps.filter((fu) => fu.status === 'Overdue').length;
-      const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
-      const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
-      const hasMedications = medications.length > 0;
-      const registered = patients.length;
-      const totalSurgeries = surgeries.length;
+      // All summary numbers come from the deduped aggregation — never from raw .length.
+      const sc = exportAgg.scoped;
+      const surgeryTarget = sc.surgeryTarget;
+      const surgeriesScheduled = sc.surgeriesScheduled;
+      const surgeriesCompleted = sc.surgeriesCompleted;
+      const surgeriesPostponed = sc.surgeriesPostponed;
+      const surgeriesCancelled = sc.surgeriesCancelled;
+      const surgeryCompletionRate = sc.surgeryCompletionRate;
+      const completedFollowUps = sc.completedFollowUps;
+      const overdueFollowUps = sc.overdueFollowUps;
+      const doctorReviewPending = sc.doctorReviewPending;
+      const doctorReviewCompleted = sc.doctorReviewCompleted;
+      const hasMedications = sc.hasMedications;
+      const registered = sc.patientCount;
+      const totalSurgeries = surgeriesScheduled + surgeriesCompleted + surgeriesPostponed + surgeriesCancelled;
 
-      const funnelExport = [
-        { step: 'Registered', count: registered },
-        { step: 'Screened', count: screenings.length },
-        { step: 'Surgery Booked', count: surgeriesScheduled + surgeriesCompleted },
-        { step: 'Surg. Completed', count: surgeriesCompleted },
-        { step: 'Follow-up Done', count: completedFollowUps },
-      ];
+      const funnelExport = exportAgg.funnelData.map((f) => ({ step: f.step, count: f.count }));
 
       const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
@@ -181,11 +181,10 @@ export default function ReportsPage() {
         'Dr. Review Completed': r.doctorReviewCompleted,
       }))), 'Region Performance');
 
-      // 3. Campaign Performance
+      // 3. Campaign Performance (deduped counts from aggregation)
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(campaigns.map((c) => {
-        const cSurgeries = surgeries.filter((s) => s.campaignId === c.id);
-        const cFollowUps = followUps.filter((fu) => fu.campaignId === c.id);
-        const cDone = cSurgeries.filter((s) => s.status === 'Completed').length;
+        const cs = exportAgg.campaignStats.find((s) => s.id === c.id);
+        const target = cs?.targetSurgeries ?? campaignTargetSurgeries(c);
         return {
           Campaign: c.name,
           Type: c.type,
@@ -195,18 +194,18 @@ export default function ReportsPage() {
           Managers: campaignManagersLabel(c),
           'Start Date': c.startDate,
           'End Date': c.endDate,
-          'Target Surgeries': campaignTargetSurgeries(c),
+          'Target Surgeries': target,
           'Target Follow-ups': c.targetFollowUps,
-          'Patients Registered': patients.filter((p) => p.campaignId === c.id).length,
-          Screenings: screenings.filter((s) => s.campaignId === c.id).length,
-          'Surgeries Scheduled': cSurgeries.filter((s) => s.status === 'Scheduled').length,
-          'Surgeries Completed': cDone,
-          'Surgeries Postponed': cSurgeries.filter((s) => s.status === 'Postponed').length,
-          'Surgeries Cancelled': cSurgeries.filter((s) => s.status === 'Cancelled').length,
-          'Completion Rate %': completionRate(cDone, campaignTargetSurgeries(c)),
-          'Follow-ups': cFollowUps.length,
-          'Follow-ups Completed': cFollowUps.filter((fu) => fu.status === 'Completed').length,
-          'Follow-ups Overdue': cFollowUps.filter((fu) => fu.status === 'Overdue').length,
+          'Patients Registered': cs?.patients ?? 0,
+          'Screened Patients': cs?.screenings ?? 0,
+          'Surgeries Scheduled': cs?.scheduled ?? 0,
+          'Surgeries Completed': cs?.completed ?? 0,
+          'Surgeries Postponed': cs?.postponed ?? 0,
+          'Surgeries Cancelled': cs?.cancelled ?? 0,
+          'Completion Rate %': cs?.completionRate ?? 0,
+          'Follow-up Patients': cs?.followUps ?? 0,
+          'Follow-ups Completed': cs?.completedFollowUps ?? 0,
+          'Follow-ups Overdue': cs?.overdueFollowUps ?? 0,
         };
       })), 'Campaign Performance');
 
@@ -233,24 +232,19 @@ export default function ReportsPage() {
         { Status: 'Total', Count: totalSurgeries, '% of Total': '100%' },
       ]), 'Surgery Status');
 
-      // 6. Follow-up Review
+      // 6. Follow-up Review (deduped counts from aggregation)
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-        ...MILESTONES.map((m) => {
-          const mFu = followUps.filter((fu) => fu.milestone === m);
-          return {
-            Milestone: m,
-            Total: mFu.length,
-            Completed: mFu.filter((fu) => fu.status === 'Completed').length,
-            Overdue: mFu.filter((fu) => fu.status === 'Overdue').length,
-            'Dr. Review Pending': mFu.filter((fu) => fu.doctorReviewStatus === 'Pending').length,
-            'Dr. Review Completed': mFu.filter((fu) => fu.doctorReviewStatus === 'Completed').length,
-          };
-        }),
+        ...exportAgg.followUpByMilestone.map((m) => ({
+          Milestone: m.milestone,
+          'Completed Patients': m.Completed,
+          'Overdue Patients': m.Overdue,
+          'Dr. Review Pending': m['Dr. Pending'],
+          'Dr. Review Completed': m['Dr. Completed'],
+        })),
         {
           Milestone: 'Total',
-          Total: followUps.length,
-          Completed: completedFollowUps,
-          Overdue: overdueFollowUps,
+          'Completed Patients': completedFollowUps,
+          'Overdue Patients': overdueFollowUps,
           'Dr. Review Pending': doctorReviewPending,
           'Dr. Review Completed': doctorReviewCompleted,
         },
@@ -372,34 +366,38 @@ export default function ReportsPage() {
       });
       if (!auditResult.ok) throw new Error(auditResult.error);
 
-      const rawData = await getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId });
-      const { campaigns, patients, screenings, surgeries, followUps, regionPerformance: rp } = rawData;
+      // Fetch deduped aggregation for all summary numbers; raw data only for region table.
+      const [pdfAgg, rawData] = await Promise.all([
+        getReportAggregation({ filterRegion: effectiveRegion, filterCampaignId: campaignId }),
+        getReportRawData({ filterRegion: effectiveRegion, filterCampaignId: campaignId }),
+      ]);
+      const { campaigns, regionPerformance: rp } = rawData;
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
 
-      const surgeryTarget = campaigns.reduce((sum, c) => sum + campaignTargetSurgeries(c), 0);
-      const surgeriesCompleted = surgeries.filter((s) => s.status === 'Completed').length;
-      const surgeriesScheduled = surgeries.filter((s) => s.status === 'Scheduled').length;
-      const surgeriesPostponed = surgeries.filter((s) => s.status === 'Postponed').length;
-      const surgeriesCancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
-      const completedFollowUps = followUps.filter((fu) => fu.status === 'Completed').length;
-      const overdueFollowUps = followUps.filter((fu) => fu.status === 'Overdue').length;
-      const doctorReviewPending = followUps.filter((fu) => fu.doctorReviewStatus === 'Pending').length;
-      const doctorReviewCompleted = followUps.filter((fu) => fu.doctorReviewStatus === 'Completed').length;
-      const registered = patients.length;
-      const workflowChartData = [
-        { label: 'Registered', value: registered, color: [0, 46, 99] as Rgb },
-        { label: 'Screened', value: screenings.length, color: [36, 115, 181] as Rgb },
-        { label: 'Surgery Booked', value: surgeriesScheduled + surgeriesCompleted, color: [245, 158, 11] as Rgb },
-        { label: 'Surgery Completed', value: surgeriesCompleted, color: [44, 153, 66] as Rgb },
-        { label: 'Follow-up Done', value: completedFollowUps, color: [69, 176, 102] as Rgb },
-      ];
-      const surgeryStatusChartData = [
-        { label: 'Scheduled', value: surgeriesScheduled, color: [245, 158, 11] as Rgb },
-        { label: 'Completed', value: surgeriesCompleted, color: [44, 153, 66] as Rgb },
-        { label: 'Postponed', value: surgeriesPostponed, color: [100, 113, 132] as Rgb },
-        { label: 'Cancelled', value: surgeriesCancelled, color: [229, 57, 53] as Rgb },
-      ].filter((item) => item.value > 0);
+      const psc = pdfAgg.scoped;
+      const surgeryTarget = psc.surgeryTarget;
+      const surgeriesCompleted = psc.surgeriesCompleted;
+      const surgeriesScheduled = psc.surgeriesScheduled;
+      const surgeriesPostponed = psc.surgeriesPostponed;
+      const surgeriesCancelled = psc.surgeriesCancelled;
+      const completedFollowUps = psc.completedFollowUps;
+      const overdueFollowUps = psc.overdueFollowUps;
+      const doctorReviewPending = psc.doctorReviewPending;
+      const doctorReviewCompleted = psc.doctorReviewCompleted;
+      const registered = psc.patientCount;
+      const workflowChartData = pdfAgg.funnelData.map((f, i) => ({
+        label: f.step,
+        value: f.count,
+        color: ([
+          [0, 46, 99], [36, 115, 181], [245, 158, 11], [44, 153, 66], [69, 176, 102],
+        ][i] ?? [100, 113, 132]) as Rgb,
+      }));
+      const surgeryStatusChartData = (pdfAgg.surgeryStatusData ?? []).map((item) => ({
+        label: item.name,
+        value: item.value,
+        color: (item.fill === '#4B5666' ? [75, 86, 102] : item.fill === '#2C9942' ? [44, 153, 66] : item.fill === '#F59E0B' ? [245, 158, 11] : [229, 57, 53]) as Rgb,
+      })).filter((item) => item.value > 0);
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -423,7 +421,7 @@ export default function ReportsPage() {
         head: [['Metric', 'Value', 'Metric', 'Value']],
         body: [
           ['Campaigns', campaigns.length, 'Patients Registered', registered],
-          ['Screenings', screenings.length, 'Surgery Target', surgeryTarget],
+          ['Screenings', psc.screeningCount, 'Surgery Target', surgeryTarget],
           ['Surgeries Scheduled', surgeriesScheduled, 'Surgeries Completed', surgeriesCompleted],
           ['Completion Rate', `${completionRate(surgeriesCompleted, surgeryTarget)}%`, '', ''],
           ['Surgeries Postponed', surgeriesPostponed, 'Surgeries Cancelled', surgeriesCancelled],
@@ -485,21 +483,20 @@ export default function ReportsPage() {
         startY: 58,
         head: [['Campaign', 'Type', 'Sub-regions', 'Managers', 'Patients', 'Screenings', 'Target', 'Completed', 'Rate %', 'FU Done', 'FU Overdue']],
         body: campaigns.map((c) => {
-          const cSurgeries = surgeries.filter((s) => s.campaignId === c.id);
-          const cFollowUps = followUps.filter((fu) => fu.campaignId === c.id);
-          const cDone = cSurgeries.filter((s) => s.status === 'Completed').length;
+          const cs = pdfAgg.campaignStats.find((s) => s.id === c.id);
+          const target = cs?.targetSurgeries ?? campaignTargetSurgeries(c);
           return [
             c.name,
             c.type,
             campaignRegionsLabel(c),
             campaignManagersLabel(c),
-            patients.filter((p) => p.campaignId === c.id).length,
-            screenings.filter((s) => s.campaignId === c.id).length,
-            campaignTargetSurgeries(c),
-            cDone,
-            completionRate(cDone, campaignTargetSurgeries(c)),
-            cFollowUps.filter((fu) => fu.status === 'Completed').length,
-            cFollowUps.filter((fu) => fu.status === 'Overdue').length,
+            cs?.patients ?? 0,
+            cs?.screenings ?? 0,
+            target,
+            cs?.completed ?? 0,
+            cs?.completionRate ?? 0,
+            cs?.completedFollowUps ?? 0,
+            cs?.overdueFollowUps ?? 0,
           ];
         }),
         theme: 'grid',
@@ -514,13 +511,11 @@ export default function ReportsPage() {
           ? (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 20
           : 300,
         head: [['Workflow Step', 'Count', '% of Registered']],
-        body: [
-          ['Registered', registered, registered ? '100%' : '0%'],
-          ['Screened', screenings.length, registered ? `${Math.round((screenings.length / registered) * 100)}%` : '0%'],
-          ['Surgery Booked', surgeriesScheduled + surgeriesCompleted, registered ? `${Math.round(((surgeriesScheduled + surgeriesCompleted) / registered) * 100)}%` : '0%'],
-          ['Surgery Completed', surgeriesCompleted, registered ? `${Math.round((surgeriesCompleted / registered) * 100)}%` : '0%'],
-          ['Follow-up Done', completedFollowUps, registered ? `${Math.round((completedFollowUps / registered) * 100)}%` : '0%'],
-        ],
+        body: pdfAgg.funnelData.map((f) => [
+          f.step,
+          f.count,
+          registered ? `${Math.round((f.count / registered) * 100)}%` : '0%',
+        ]),
         theme: 'striped',
         headStyles: { fillColor: [44, 153, 66], textColor: 255 },
         styles: { fontSize: 8, cellPadding: 5 },

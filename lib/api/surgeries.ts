@@ -64,6 +64,10 @@ export function fromPrisma(row: Row): Surgery {
     intraopNotes: row.intraopNotes,
     completedById: row.completedById,
     completedByName: row.completedByName,
+    archivedAt: row.archivedAt ? (row.archivedAt as Date).toISOString() : undefined,
+    archivedById: row.archivedById ?? undefined,
+    archivedByName: row.archivedByName ?? undefined,
+    archivedReason: row.archivedReason ?? undefined,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
@@ -72,7 +76,7 @@ export function fromPrisma(row: Row): Surgery {
 export const getAllSurgeries = unstable_cache(
   async (where: { region?: string } = {}): Promise<Surgery[]> => {
     const rows = await prisma.surgery.findMany({
-      where,
+      where: { ...where, archivedAt: null },
       include: { patient: { select: SURGERY_PATIENT_SELECT } },
       orderBy: { scheduledAt: 'desc' },
     });

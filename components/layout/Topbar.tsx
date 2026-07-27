@@ -7,6 +7,7 @@ import { Bell, ChevronDown, LogOut, Menu, Moon, Search, Sun } from 'lucide-react
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllPatients } from '@/app/actions/patients';
+import { getPendingChangeRequestCount } from '@/app/actions/change_requests';
 import { signOut, usePermissions } from '@/lib/auth';
 import { formatPatientBirthDateLabel } from '@/lib/utils';
 import {
@@ -41,14 +42,16 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [pendingRequests, setPendingRequests] = useState(0);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
-    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps()])
-      .then(([p, c, f]) => {
+    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps(), getPendingChangeRequestCount()])
+      .then(([p, c, f, pending]) => {
         setPatients(p);
         setCampaigns(c);
         setFollowUps(f);
+        setPendingRequests(pending);
       });
   }, [isSuperAdmin]);
 
@@ -89,7 +92,8 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     ? campaigns.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 3)
     : [];
   const hasResults = patientResults.length > 0 || campaignResults.length > 0;
-  const notifCount = followUps.filter((f) => f.status === 'Overdue').length;
+  const overdueCount = followUps.filter((f) => f.status === 'Overdue').length;
+  const notifCount = overdueCount + (isSuperAdmin ? pendingRequests : 0);
 
   return (
     <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 shadow-[var(--shadow-xs)]">

@@ -23,6 +23,7 @@ import { formatPatientBirthDateLabel } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { AlertTriangle, Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/forms/ChangeRequestDialog';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export default function PatientsPage() {
   const [regionFilter, setRegionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null);
+  const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
   const [highlightCode, setHighlightCode] = useState(() => {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('highlight') ?? '';
@@ -259,10 +261,21 @@ export default function PatientsPage() {
         setPatients(remaining);
       }
       toast({ title: 'Patient deleted', description: deletedName });
+      setDeleteTarget(null);
+    } else if (result.error.includes('surgery records')) {
+      // Patient has surgery records — offer a change request instead of a plain error
+      setDeleteTarget(null);
+      setChangeRequestTarget({
+        entity: 'Patient',
+        entityId: deleteTarget.id,
+        entityLabel: patientDisplayName(deleteTarget.fullName, deleteTarget.patientCode),
+        region: deleteTarget.region,
+        campaignId: deleteTarget.campaignId,
+      });
     } else {
       toast({ title: 'Patient delete failed', description: result.error, variant: 'error' });
+      setDeleteTarget(null);
     }
-    setDeleteTarget(null);
   }
 
   const hasFilters = !!search || !!regionFilter || !!statusFilter;
@@ -285,6 +298,13 @@ export default function PatientsPage() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {changeRequestTarget && (
+        <ChangeRequestDialog
+          target={changeRequestTarget}
+          onClose={() => setChangeRequestTarget(null)}
+        />
+      )}
 
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">

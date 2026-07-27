@@ -162,6 +162,10 @@ function scopeCampaignRegions(campaign: Campaign, regionScope: { region?: string
   };
 }
 
+function uniqueBy<T>(arr: T[], key: (item: T) => string): number {
+  return new Set(arr.map(key)).size;
+}
+
 function computeRegionPerf(
   regionName: string,
   scopedCampaigns: Campaign[],
@@ -176,29 +180,40 @@ function computeRegionPerf(
   const rsu = surgeries.filter((s) => s.region === regionName);
   const rfu = followUps.filter((fu) => fu.region === regionName);
   const target = campaignTargetSurgeriesForRegion(rc, regionName);
-  const done = rsu.filter((s) => s.status === 'Completed').length;
+
+  const uniqueScreened = uniqueBy(rs, (s) => s.patientId);
+  const done = uniqueBy(rsu.filter((s) => s.status === 'Completed'), (s) => s.patientId);
+  const scheduled = uniqueBy(rsu.filter((s) => s.status === 'Scheduled'), (s) => s.patientId);
+  const postponed = uniqueBy(rsu.filter((s) => s.status === 'Postponed'), (s) => s.patientId);
+  const cancelled = uniqueBy(rsu.filter((s) => s.status === 'Cancelled'), (s) => s.patientId);
+  const fuTotal = uniqueBy(rfu, (fu) => fu.patientId);
+  const fuCompleted = uniqueBy(rfu.filter((fu) => fu.status === 'Completed'), (fu) => fu.patientId);
+  const fuOverdue = uniqueBy(rfu.filter((fu) => fu.status === 'Overdue'), (fu) => fu.patientId);
+  const drPending = uniqueBy(rfu.filter((fu) => fu.doctorReviewStatus === 'Pending'), (fu) => fu.patientId);
+  const drCompleted = uniqueBy(rfu.filter((fu) => fu.doctorReviewStatus === 'Completed'), (fu) => fu.patientId);
+
   const rate = completionRate(done, target);
   const status = regionStatus({
     hasCampaigns: rc.length > 0,
-    activity: rp.length + rs.length + rsu.length,
+    activity: rp.length + uniqueScreened + done + scheduled + postponed + cancelled,
     rate,
-    screenings: rs.length,
+    screenings: uniqueScreened,
   });
   return {
     region: regionName,
     campaigns: rc.length,
     targetSurgeries: target,
     patients: rp.length,
-    screenings: rs.length,
-    scheduled: rsu.filter((s) => s.status === 'Scheduled').length,
+    screenings: uniqueScreened,
+    scheduled,
     completed: done,
-    postponed: rsu.filter((s) => s.status === 'Postponed').length,
-    cancelled: rsu.filter((s) => s.status === 'Cancelled').length,
-    followUps: rfu.length,
-    completedFollowUps: rfu.filter((fu) => fu.status === 'Completed').length,
-    overdueFollowUps: rfu.filter((fu) => fu.status === 'Overdue').length,
-    doctorReviewPending: rfu.filter((fu) => fu.doctorReviewStatus === 'Pending').length,
-    doctorReviewCompleted: rfu.filter((fu) => fu.doctorReviewStatus === 'Completed').length,
+    postponed,
+    cancelled,
+    followUps: fuTotal,
+    completedFollowUps: fuCompleted,
+    overdueFollowUps: fuOverdue,
+    doctorReviewPending: drPending,
+    doctorReviewCompleted: drCompleted,
     completionRate: rate,
     status,
   };
@@ -397,17 +412,17 @@ export async function getReportAggregation(params: {
     : await Promise.all([
         prisma.patient.groupBy({
           by: ['region', 'campaignId'],
-          where: baseEntityWhere,
+          where: { ...baseEntityWhere, archivedAt: null },
           _count: { _all: true },
         }),
         prisma.screening.groupBy({
           by: ['region', 'campaignId', 'patientId'],
-          where: baseEntityWhere,
+          where: { ...baseEntityWhere, patient: { archivedAt: null } },
           _count: { _all: true },
         }),
         prisma.surgery.groupBy({
           by: ['region', 'campaignId', 'status', 'patientId'],
-          where: baseEntityWhere,
+          where: { ...baseEntityWhere, archivedAt: null },
           _count: { _all: true },
         }),
         prisma.followUp.groupBy({
@@ -550,11 +565,11 @@ export async function getReportRawData(params: {
   const allCampaigns = allCampaignRows.map(campaignFromPrisma).map((campaign) => scopeCampaignRegions(campaign, regionScope));
 
   const [patientRows, screeningRows, surgeryRows, followUpRows, medRows] = await Promise.all([
-    prisma.patient.findMany({ where: entityWhere }),
-    prisma.screening.findMany({ where: entityWhere }),
-    prisma.surgery.findMany({ where: entityWhere }),
-    prisma.followUp.findMany({ where: entityWhere }),
-    prisma.followUpMedication.findMany({ where: { followUp: entityWhere } }),
+    prisma.patient.findMany({ where: { ...entityWhere, archivedAt: null } }),
+    prisma.screening.findMany({ where: { ...entityWhere, patient: { archivedAt: null } } }),
+    prisma.surgery.findMany({ where: { ...entityWhere, archivedAt: null } }),
+    prisma.followUp.findMany({ where: { ...entityWhere, patient: { archivedAt: null } } }),
+    prisma.followUpMedication.findMany({ where: { followUp: { ...entityWhere, patient: { archivedAt: null } } } }),
   ]);
 
   const campaigns = allCampaigns.filter(

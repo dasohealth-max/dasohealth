@@ -105,6 +105,10 @@ export interface Patient {
   registeredById: string;
   registeredByName: string;
   screeningStatus: 'Awaiting Screening' | 'Screened';
+  archivedAt?: string;
+  archivedById?: string;
+  archivedByName?: string;
+  archivedReason?: string;
   createdAt: string;
 }
 
@@ -185,6 +189,10 @@ export interface Surgery {
   completedById: string;
   completedByName: string;
   screeningResult?: ScreeningResultSnapshot;
+  archivedAt?: string;
+  archivedById?: string;
+  archivedByName?: string;
+  archivedReason?: string;
   createdAt: string;
 }
 
@@ -258,4 +266,28 @@ export interface AuditLog {
   before?: unknown;
   after?: unknown;
   createdAt: string;
+}
+
+export type ChangeRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Resolved';
+export type ChangeRequestType = 'archive' | 'correct' | 'other';
+
+export interface ChangeRequest {
+  id: string;
+  entity: string;
+  entityId: string;
+  entityLabel: string;
+  requestType: ChangeRequestType;
+  reason: string;
+  requestedById: string;
+  requestedByName: string;
+  requestedByRole: string;
+  status: ChangeRequestStatus;
+  region?: string;
+  campaignId?: string;
+  resolvedById?: string;
+  resolvedByName?: string;
+  resolutionNote: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }

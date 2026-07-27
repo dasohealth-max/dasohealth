@@ -513,9 +513,7 @@ export default function ScreeningPage() {
               <div className="text-left">
                 <p className="text-sm font-bold text-[#141920]">Completed Screenings</p>
                 <p className="text-xs text-[#4B5666]">
-                  {screenedPatientTotal} patient{screenedPatientTotal === 1 ? '' : 's'} screened
-                  {screeningsTotal !== screenedPatientTotal ? ` - ${screeningsTotal} screening record${screeningsTotal === 1 ? '' : 's'}` : ''}
-                  {' '}— click to {historyOpen ? 'collapse' : 'expand'}
+                  {screenedPatientTotal} patient{screenedPatientTotal === 1 ? '' : 's'} screened — click to {historyOpen ? 'collapse' : 'expand'}
                 </p>
               </div>
             </div>
@@ -538,7 +536,7 @@ export default function ScreeningPage() {
                   />
                 </div>
                 <span className="shrink-0 text-xs text-[#647184]">
-                  {screenedPatientTotal} patients · {screeningsTotal} records
+                  {screenedPatientTotal} patient{screenedPatientTotal === 1 ? '' : 's'}
                 </span>
               </div>
 

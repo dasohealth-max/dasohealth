@@ -295,6 +295,10 @@ model Patient {
   registeredById    String           @default("") @map("registered_by_id")
   registeredByName  String           @default("") @map("registered_by_name")
   screeningStatus   String           @default("Awaiting Screening") @map("screening_status")
+  archivedAt        DateTime?        @map("archived_at") @db.Timestamptz(3)
+  archivedById      String?          @map("archived_by_id")
+  archivedByName    String?          @map("archived_by_name")
+  archivedReason    String?          @map("archived_reason")
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   campaign       Campaign?       @relation(fields: [campaignId], references: [id])
@@ -311,6 +315,7 @@ model Patient {
   @@index([region, screeningStatus], map: "idx_patients_region_screening_status")
   @@index([createdAt(sort: Desc)], map: "idx_patients_created_at")
   @@index([fullName, phone, campaignId], map: "idx_patients_duplicate_guard")
+  @@index([archivedAt], map: "idx_patients_archived_at")
   @@map("patients")
 }
 
@@ -378,9 +383,14 @@ model Surgery {
   intraopNotes           String        @default("") @map("intraop_notes")
   completedById          String        @default("") @map("completed_by_id")
   completedByName        String        @default("") @map("completed_by_name")
+  archivedAt             DateTime?     @map("archived_at") @db.Timestamptz(3)
+  archivedById           String?       @map("archived_by_id")
+  archivedByName         String?       @map("archived_by_name")
+  archivedReason         String?       @map("archived_reason")
   createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // Restrict prevents cascading patient deletion when a surgery record exists.
+  patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Restrict)
   campaign       Campaign        @relation(fields: [campaignId], references: [id])
   campaignRegion CampaignRegion? @relation(fields: [campaignRegionId], references: [id])
   followUps      FollowUp[]
@@ -394,6 +404,7 @@ model Surgery {
   @@index([region, campaignId], map: "idx_surgeries_region_campaign_id")
   @@index([scheduledAt(sort: Desc)], map: "idx_surgeries_scheduled_at")
   @@index([createdAt(sort: Desc)], map: "idx_surgeries_created_at")
+  @@index([archivedAt], map: "idx_surgeries_archived_at")
   @@map("surgeries")
 }
 
@@ -465,6 +476,34 @@ model FollowUpMedication {
 
   @@index([followUpId], map: "idx_follow_up_medications_follow_up_id")
   @@map("follow_up_medications")
+}
+
+model ChangeRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entity          String
+  entityId        String    @map("entity_id")
+  entityLabel     String    @default("") @map("entity_label")
+  requestType     String    @map("request_type")
+  reason          String
+  requestedById   String    @default("") @map("requested_by_id")
+  requestedByName String    @default("") @map("requested_by_name")
+  requestedByRole String    @default("") @map("requested_by_role")
+  status          String    @default("Pending")
+  region          String?
+  campaignId      String?   @map("campaign_id") @db.Uuid
+  resolvedById    String?   @map("resolved_by_id")
+  resolvedByName  String?   @map("resolved_by_name")
+  resolutionNote  String    @default("") @map("resolution_note")
+  resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([entity, entityId], map: "idx_change_requests_entity")
+  @@index([status], map: "idx_change_requests_status")
+  @@index([region], map: "idx_change_requests_region")
+  @@index([requestedById], map: "idx_change_requests_requested_by_id")
+  @@index([createdAt(sort: Desc)], map: "idx_change_requests_created_at")
+  @@map("change_requests")
 }
 
 model AuditLog {

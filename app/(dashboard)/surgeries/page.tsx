@@ -15,6 +15,7 @@ import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/forms/ChangeRequestDialog';
 
 const PAGE_SIZE = 50;
 
@@ -123,6 +124,7 @@ export default function SurgeriesPage() {
   const [loadError,      setLoadError]      = useState('');
   const [refreshKey,     setRefreshKey]     = useState(0);
   const [deleteTarget,   setDeleteTarget]   = useState<Surgery | null>(null);
+  const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
   const [completeTarget, setCompleteTarget] = useState<Surgery | null>(null);
   const [viewing,        setViewing]        = useState<Surgery | null>(null);
   const [historyOpen,    setHistoryOpen]    = useState(false);
@@ -269,21 +271,15 @@ export default function SurgeriesPage() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
-    const result = await actionDeleteSurgery(deleteTarget.id);
-    if (result.ok) {
-      const deletedName = patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode);
-      const remaining = surgeries.filter((r) => r.id !== deleteTarget.id);
-      setTotal((t) => t - 1);
-      if (remaining.length === 0 && page > 1) {
-        setPage((p) => p - 1);
-      } else {
-        setSurgeries(remaining);
-      }
-      toast({ title: 'Surgery deleted', description: deletedName });
-    } else {
-      toast({ title: 'Surgery delete failed', description: result.error, variant: 'error' });
-    }
+    // Surgery deletion is permanently blocked — redirect to change request workflow
     setDeleteTarget(null);
+    setChangeRequestTarget({
+      entity: 'Surgery',
+      entityId: deleteTarget.id,
+      entityLabel: patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode),
+      region: deleteTarget.region,
+      campaignId: deleteTarget.campaignId,
+    });
   }
 
   const formInvalid = !form.patientId || !form.campaignId || !form.scheduledAt ||
@@ -308,18 +304,25 @@ export default function SurgeriesPage() {
         onCancel={() => setCompleteTarget(null)}
       />
 
-      {/* Confirm: delete */}
+      {/* Confirm: delete — redirects to change request since surgery deletion is blocked */}
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete Surgery Record"
+        title="Surgery Record Protected"
         description={deleteTarget
-          ? `Permanently delete the surgery record for "${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}"? All associated follow-up records will also be deleted. This cannot be undone.`
+          ? `Surgery records cannot be permanently deleted to prevent data loss. To request a change for ${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}, submit a change request for your Super Administrator to review.`
           : ''}
-        confirmLabel="Delete Surgery"
-        confirmationText="DELETE"
+        confirmLabel="Submit Change Request"
+        danger={false}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {changeRequestTarget && (
+        <ChangeRequestDialog
+          target={changeRequestTarget}
+          onClose={() => setChangeRequestTarget(null)}
+        />
+      )}
 
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -400,7 +403,7 @@ export default function SurgeriesPage() {
           <p className="text-sm text-[#4B5666]">
             {isLoading
               ? 'Loading...'
-              : `${patientTotal} patient${patientTotal === 1 ? '' : 's'}${total !== patientTotal ? ` - ${total} surgery record${total === 1 ? '' : 's'}` : ''}`}
+              : `${patientTotal} patient${patientTotal === 1 ? '' : 's'}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -479,7 +482,7 @@ export default function SurgeriesPage() {
         )}
 
         <span className="ml-auto shrink-0 text-sm text-[#647184]">
-          {patientTotal} patient{patientTotal === 1 ? '' : 's'} · {total} record{total === 1 ? '' : 's'}
+          {patientTotal} patient{patientTotal === 1 ? '' : 's'}
         </span>
       </div>
 
@@ -502,7 +505,7 @@ export default function SurgeriesPage() {
       {filteredMode ? (
         <SurgeryTable
           title={`${statusFilter} Surgeries`}
-          subtitle={`${patientTotal} matching patient${patientTotal === 1 ? '' : 's'} · ${total} ${statusFilter.toLowerCase()} record${total === 1 ? '' : 's'}`}
+          subtitle={`${patientTotal} matching patient${patientTotal === 1 ? '' : 's'}`}
           rows={visibleSurgeries}
           isLoading={isLoading}
           emptyMessage={hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}

@@ -63,6 +63,7 @@ export async function getScreeningQueuePaginated(params: {
   const region = regionScope.region ?? (requestedRegion || undefined);
 
   const where: Prisma.PatientWhereInput = {
+    archivedAt: null,
     ...(region && { region }),
     screeningStatus: 'Awaiting Screening',
     ...(params.search && {
@@ -162,9 +163,13 @@ function preOpVaForEye(screening: Screening) {
 
 async function routeSurgery(screening: Screening) {
   if (screening.recommendation !== 'Refer for Surgery') return;
-  const [existing, campaignRegion] = await Promise.all([
+  const [existingFromScreening, existingForPatient, campaignRegion] = await Promise.all([
     prisma.surgery.findFirst({
       where: { createdFromScreeningId: screening.id },
+      select: { id: true, status: true },
+    }),
+    prisma.surgery.findFirst({
+      where: { patientId: screening.patientId, status: { notIn: ['Cancelled'] as never[] } },
       select: { id: true, status: true },
     }),
     screening.campaignRegionId
@@ -193,13 +198,16 @@ async function routeSurgery(screening: Screening) {
     intraopNotes: `Created automatically from screening by ${screening.screenedByName || screening.screenedBy}. ${screening.notes}`.trim(),
   };
 
-  if (existing) {
-    if (String(existing.status) !== 'Completed') {
-      await prisma.surgery.update({ where: { id: existing.id }, data });
+  if (existingFromScreening) {
+    // Update the surgery that was previously auto-created from this exact screening.
+    if (String(existingFromScreening.status) !== 'Completed') {
+      await prisma.surgery.update({ where: { id: existingFromScreening.id }, data });
     }
-  } else {
+  } else if (!existingForPatient) {
+    // Patient has no surgery yet — create the auto-surgery.
     await prisma.surgery.create({ data });
   }
+  // If the patient already has a non-cancelled surgery from another path, skip silently.
 }
 
 export async function actionCreateScreening(
@@ -220,6 +228,15 @@ export async function actionCreateScreening(
     if (!scope) return { ok: false, error: 'Patient campaign not found' };
     const denied = ensureRegionAccess(actor, scope.region);
     if (denied) return denied;
+
+    const existingScreening = await prisma.screening.findFirst({
+      where: { patientId: data.patientId },
+      select: { id: true },
+    });
+    if (existingScreening) {
+      return { ok: false, error: 'This patient already has a screening record — edit the existing screening instead of creating a new one' };
+    }
+
     const surgeryConsentGiven = parsed.data.surgeryConsentGiven ?? scope.consentGiven;
     const surgeryConsentDate = surgeryConsentGiven
       ? (parsed.data.surgeryConsentDate || new Date().toISOString().split('T')[0])

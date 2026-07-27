@@ -8,7 +8,8 @@ export type AppModule =
   | 'surgeries'
   | 'followups'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'changeRequests';
 
 export type Action = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
 
@@ -28,6 +29,7 @@ const PERMISSIONS: Record<Role, Matrix> = {
     followups: ALL,
     reports: ALL,
     settings: ALL,
+    changeRequests: ALL,
   },
   'Project Manager': {
     dashboard: VIEW_ONLY,
@@ -38,16 +40,19 @@ const PERMISSIONS: Record<Role, Matrix> = {
     followups: ['view', 'create', 'edit', 'export'],
     reports: ['view', 'export'],
     settings: ['view', 'create', 'edit'],
+    changeRequests: ['view', 'create'],
   },
   'Data Clerk': {
     patients: CRE,
     screening: VIEW_ONLY,
+    changeRequests: ['view', 'create'],
   },
   'Screening Officer': {
     patients: VIEW_ONLY,
     screening: CRE,
     surgeries: ['view', 'edit'],
     followups: CRE,
+    changeRequests: ['view', 'create'],
   },
 };
 

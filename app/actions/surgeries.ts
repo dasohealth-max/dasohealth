@@ -50,6 +50,7 @@ function surgeryWhere(params: {
 }, scopedRegion?: string): Prisma.SurgeryWhereInput {
   const region = scopedRegion ?? (params.region || undefined);
   return {
+    archivedAt: null,
     ...(region && { region }),
     ...(params.status && { status: surgeryStatusFromApp(params.status) as never }),
     ...(params.search && {
@@ -240,6 +241,15 @@ export async function actionCreateSurgery(
     if (!scope) return { ok: false, error: 'Patient campaign not found' };
     const denied = ensureRegionAccess(actor, scope.region);
     if (denied) return denied;
+
+    const existingSurgery = await prisma.surgery.findFirst({
+      where: { patientId: data.patientId, status: { notIn: ['Cancelled'] as never[] } },
+      select: { id: true, status: true },
+    });
+    if (existingSurgery) {
+      return { ok: false, error: 'This patient already has a surgery record — update the existing surgery instead of creating a new one' };
+    }
+
     if (data.status === 'Completed' && !data.performedAt) {
       return { ok: false, error: 'Actual surgery completion date is required' };
     }
@@ -360,26 +370,48 @@ export async function actionUpdateSurgery(
   }
 }
 
-export async function actionDeleteSurgery(id: string): Promise<ActionResult> {
+export async function actionDeleteSurgery(_id: string): Promise<ActionResult> {
+  // Hard deletion of surgery records is permanently blocked to preserve accountability.
+  // Super Administrators must use actionArchiveSurgery with a mandatory reason instead.
+  return {
+    ok: false,
+    error: 'Surgery records cannot be permanently deleted. Contact your Super Administrator to archive this record if a correction is needed.',
+  };
+}
+
+export async function actionArchiveSurgery(id: string, reason: string): Promise<ActionResult> {
   const actor = await requireActor('surgeries', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can archive surgery records' };
+  }
+  if (!reason.trim()) return { ok: false, error: 'Archive reason is required' };
 
   try {
     const before = await prisma.surgery.findUnique({ where: { id } });
-    if (before) {
-      const denied = ensureRegionAccess(actor, before.region);
-      if (denied) return denied;
-    }
-    await deleteSurgery(id);
+    if (!before) return { ok: false, error: 'Surgery not found' };
+    const denied = ensureRegionAccess(actor, before.region);
+    if (denied) return denied;
+    if (before.archivedAt) return { ok: false, error: 'Surgery is already archived' };
+
+    await prisma.surgery.update({
+      where: { id },
+      data: {
+        archivedAt: new Date(),
+        archivedById: actor.id,
+        archivedByName: actor.name,
+        archivedReason: reason.trim(),
+      },
+    });
     updateTag('surgeries');
     after(() => auditLog({
       actor,
-      action: 'delete',
+      action: 'archive',
       entity: 'Surgery',
       entityId: id,
-      region: before?.region,
-      campaignId: before?.campaignId,
-      details: before ? `Deleted surgery for ${before.patientName}` : 'Deleted surgery',
+      region: before.region,
+      campaignId: before.campaignId,
+      details: `Archived surgery for ${before.patientName} — reason: ${reason.trim()}`,
       before,
     }));
     return { ok: true, data: null };

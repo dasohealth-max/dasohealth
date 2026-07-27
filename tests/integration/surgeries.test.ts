@@ -15,7 +15,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     patient: { findUnique: vi.fn() },
     screening: { findUnique: vi.fn() },
-    surgery: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+    surgery: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
     followUp: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   },
 }));
@@ -154,6 +154,7 @@ describe('actionCreateSurgery', () => {
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.patient.findUnique).mockResolvedValue(patientScope as never);
+    vi.mocked(prisma.surgery.findFirst).mockResolvedValue(null); // no duplicate surgery
     vi.mocked(surgeryApi.createSurgery).mockResolvedValue(galmudugSurgery);
     vi.mocked(prisma.followUp.findMany).mockResolvedValue(allFollowUpMilestoneRows as never);
     vi.mocked(prisma.surgery.groupBy).mockResolvedValue([] as never);

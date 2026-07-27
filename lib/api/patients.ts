@@ -35,6 +35,10 @@ export function fromPrisma(row: PrismaPatient): Patient {
     registeredById: row.registeredById,
     registeredByName: row.registeredByName,
     screeningStatus: row.screeningStatus as Patient['screeningStatus'],
+    archivedAt: row.archivedAt ? (row.archivedAt as Date).toISOString() : undefined,
+    archivedById: row.archivedById ?? undefined,
+    archivedByName: row.archivedByName ?? undefined,
+    archivedReason: row.archivedReason ?? undefined,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
@@ -43,7 +47,7 @@ export function fromPrisma(row: PrismaPatient): Patient {
 export const getAllPatients = unstable_cache(
   async (where: { region?: string } = {}): Promise<Patient[]> => {
     const rows = await prisma.patient.findMany({
-      where,
+      where: { ...where, archivedAt: null },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map(fromPrisma);

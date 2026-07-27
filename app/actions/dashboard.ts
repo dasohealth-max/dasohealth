@@ -226,17 +226,17 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
     : await Promise.all([
         prisma.patient.groupBy({
           by: ['region', 'campaignId'],
-          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds }, archivedAt: null },
           _count: { _all: true },
         }),
         prisma.screening.groupBy({
           by: ['region', 'campaignId', 'patientId'],
-          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds }, patient: { archivedAt: null } },
           _count: { _all: true },
         }),
         prisma.surgery.groupBy({
           by: ['region', 'campaignId', 'status', 'patientId'],
-          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds }, archivedAt: null },
           _count: { _all: true },
         }),
         prisma.followUp.groupBy({

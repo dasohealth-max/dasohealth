@@ -52,6 +52,7 @@ export async function getPatientsPaginated(params: {
   const region = regionScope.region ?? (params.region || undefined);
 
   const where: Prisma.PatientWhereInput = {
+    archivedAt: null,
     ...(region && { region }),
     ...(params.status && { screeningStatus: params.status }),
     ...(params.search && {
@@ -406,6 +407,15 @@ export async function actionDeletePatient(id: string): Promise<ActionResult<null
       const denied = ensureRegionAccess(actor, before.region);
       if (denied) return denied;
     }
+
+    const surgeryCount = await prisma.surgery.count({ where: { patientId: id } });
+    if (surgeryCount > 0) {
+      return {
+        ok: false,
+        error: 'This patient has surgery records and cannot be deleted. Use "Archive" to preserve the record for accountability, or submit a change request.',
+      };
+    }
+
     await prisma.patient.delete({ where: { id } });
     updateTag('patients');
     after(() => auditLog({
@@ -416,6 +426,47 @@ export async function actionDeletePatient(id: string): Promise<ActionResult<null
       region: before?.region,
       campaignId: before?.campaignId,
       details: before ? `Deleted patient ${before.fullName}` : 'Deleted patient',
+      before,
+    }));
+    return { ok: true, data: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function actionArchivePatient(id: string, reason: string): Promise<ActionResult<null>> {
+  const actor = await requireActor('patients', 'delete');
+  if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can archive patients' };
+  }
+  if (!reason.trim()) return { ok: false, error: 'Archive reason is required' };
+
+  try {
+    const before = await fetchPatientById(id);
+    if (!before) return { ok: false, error: 'Patient not found' };
+    const denied = ensureRegionAccess(actor, before.region);
+    if (denied) return denied;
+    if (before.archivedAt) return { ok: false, error: 'Patient is already archived' };
+
+    await prisma.patient.update({
+      where: { id },
+      data: {
+        archivedAt: new Date(),
+        archivedById: actor.id,
+        archivedByName: actor.name,
+        archivedReason: reason.trim(),
+      },
+    });
+    updateTag('patients');
+    after(() => auditLog({
+      actor,
+      action: 'archive',
+      entity: 'Patient',
+      entityId: id,
+      region: before.region,
+      campaignId: before.campaignId,
+      details: `Archived patient ${before.fullName} — reason: ${reason.trim()}`,
       before,
     }));
     return { ok: true, data: null };

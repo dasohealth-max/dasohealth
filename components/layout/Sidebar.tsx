@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Megaphone, Users, Microscope,
   Scissors, CalendarCheck,
   FileBarChart, Settings, ChevronLeft, ChevronRight,
-  X,
+  Inbox, X,
 } from 'lucide-react';
 
 const NAV: { label: string; href: string; icon: React.ElementType; module: AppModule }[] = [
@@ -20,6 +20,7 @@ const NAV: { label: string; href: string; icon: React.ElementType; module: AppMo
   { label: 'Surgery', href: '/surgeries', icon: Scissors, module: 'surgeries' },
   { label: 'Follow-ups', href: '/followups', icon: CalendarCheck, module: 'followups' },
   { label: 'Reports', href: '/reports', icon: FileBarChart, module: 'reports' },
+  { label: 'Inbox', href: '/inbox', icon: Inbox, module: 'changeRequests' },
   { label: 'Settings', href: '/settings', icon: Settings, module: 'settings' },
 ];
 
