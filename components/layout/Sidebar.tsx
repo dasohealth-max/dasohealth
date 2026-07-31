@@ -1,6 +1,7 @@
 ﻿'use client';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
@@ -11,6 +12,7 @@ import {
   FileBarChart, Settings, ChevronLeft, ChevronRight,
   Inbox, X,
 } from 'lucide-react';
+import { getPendingChangeRequestCount } from '@/app/actions/change_requests';
 
 const NAV: { label: string; href: string; icon: React.ElementType; module: AppModule }[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, module: 'dashboard' },
@@ -35,10 +37,24 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
   const path = usePathname();
   const { canAccess } = usePermissions();
   const visibleNav = NAV.filter(({ module }) => canAccess(module));
+
+  const [pendingCount, setPendingCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchCount() {
+      const count = await getPendingChangeRequestCount();
+      if (!cancelled) setPendingCount(count);
+    }
+    fetchCount();
+    const id = setInterval(fetchCount, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
       {visibleNav.map(({ label, href, icon: Icon }) => {
         const active = path === href || path.startsWith(href + '/');
+        const badge = href === '/inbox' && pendingCount > 0 ? pendingCount : null;
         return (
           <Link
             key={href}
@@ -56,14 +72,25 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
             {active && !collapsed && (
               <span className="absolute bottom-2 left-[-10px] top-2 w-1 rounded-full bg-[var(--sidebar-ring)]" />
             )}
-            <Icon
-              size={18}
-              className={cn(
-                'shrink-0',
-                active ? 'text-[var(--sidebar-primary-foreground)]' : 'text-[var(--sidebar-icon)] group-hover:text-[var(--sidebar-accent-foreground)]',
+            <span className="relative shrink-0">
+              <Icon
+                size={18}
+                className={cn(
+                  active ? 'text-[var(--sidebar-primary-foreground)]' : 'text-[var(--sidebar-icon)] group-hover:text-[var(--sidebar-accent-foreground)]',
+                )}
+              />
+              {badge && collapsed && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white">
+                  {badge > 99 ? '99+' : badge}
+                </span>
               )}
-            />
+            </span>
             {!collapsed && <span className="truncate">{label}</span>}
+            {badge && !collapsed && (
+              <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
           </Link>
         );
       })}

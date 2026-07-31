@@ -199,7 +199,6 @@ export default function InboxPage() {
                             <Button
                               size="sm"
                               onClick={() => openResolve(item, 'Approved')}
-                              className="bg-[var(--color-brand-primary)] text-white hover:bg-[var(--color-brand-primary-hover)]"
                             >
                               Approve
                             </Button>
