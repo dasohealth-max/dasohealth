@@ -10,6 +10,8 @@ import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@
 import type { Patient, Screening } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
 
+const PRINT_LIMIT = 1000;
+
 const VAGradeEnum = z.enum(['6/6', '6/9', '6/12', '6/18', '6/24', '6/36', '6/60', '<6/60', 'CF', 'CF 1M', 'CF 2M', 'CF 3M', 'HM', 'PL', 'NPL']);
 
 const ScreeningSchema = z.object({
@@ -53,6 +55,8 @@ export async function getAllScreenings(): Promise<Screening[]> {
 export async function getScreeningQueuePaginated(params: {
   search?: string;
   region?: string;
+  registeredFrom?: string;
+  registeredTo?: string;
   page: number;
   pageSize: number;
 }): Promise<{ data: Patient[]; total: number }> {
@@ -62,10 +66,16 @@ export async function getScreeningQueuePaginated(params: {
   const requestedRegion = params.region?.trim();
   const region = regionScope.region ?? (requestedRegion || undefined);
 
+  const createdAt = (params.registeredFrom || params.registeredTo) ? {
+    ...(params.registeredFrom ? { gte: new Date(params.registeredFrom) } : {}),
+    ...(params.registeredTo ? { lte: new Date(params.registeredTo + 'T23:59:59.999Z') } : {}),
+  } : undefined;
+
   const where: Prisma.PatientWhereInput = {
     archivedAt: null,
     ...(region && { region }),
     screeningStatus: 'Awaiting Screening',
+    ...(createdAt ? { createdAt } : {}),
     ...(params.search && {
       OR: [
         { fullName: { contains: params.search, mode: 'insensitive' } },
@@ -86,9 +96,50 @@ export async function getScreeningQueuePaginated(params: {
   return { data: rows.map(patientFromPrisma), total };
 }
 
+export async function getPrintableScreeningQueue(params: {
+  search?: string;
+  region?: string;
+  registeredFrom?: string;
+  registeredTo?: string;
+}): Promise<{ data: Patient[]; total: number; truncated: boolean; limit: number }> {
+  const actor = await requireActor('screening', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const requestedRegion = params.region?.trim();
+  const region = regionScope.region ?? (requestedRegion || undefined);
+
+  const createdAt = (params.registeredFrom || params.registeredTo) ? {
+    ...(params.registeredFrom ? { gte: new Date(params.registeredFrom) } : {}),
+    ...(params.registeredTo ? { lte: new Date(params.registeredTo + 'T23:59:59.999Z') } : {}),
+  } : undefined;
+
+  const where: Prisma.PatientWhereInput = {
+    archivedAt: null,
+    ...(region && { region }),
+    screeningStatus: 'Awaiting Screening',
+    ...(createdAt ? { createdAt } : {}),
+    ...(params.search && {
+      OR: [
+        { fullName: { contains: params.search, mode: 'insensitive' } },
+        { patientCode: { contains: params.search, mode: 'insensitive' } },
+        { phone: { contains: params.search } },
+      ],
+    }),
+  };
+
+  const [rows, total] = await Promise.all([
+    prisma.patient.findMany({ where, take: PRINT_LIMIT, orderBy: { createdAt: 'desc' } }),
+    prisma.patient.count({ where }),
+  ]);
+
+  return { data: rows.map(patientFromPrisma), total, truncated: total > rows.length, limit: PRINT_LIMIT };
+}
+
 export async function getScreeningHistoryPaginated(params: {
   search?: string;
   region?: string;
+  screenedFrom?: string;
+  screenedTo?: string;
   page: number;
   pageSize: number;
 }): Promise<{ data: Screening[]; total: number; patientTotal: number }> {
@@ -98,8 +149,14 @@ export async function getScreeningHistoryPaginated(params: {
   const requestedRegion = params.region?.trim();
   const region = regionScope.region ?? (requestedRegion || undefined);
 
+  const screenedAt = (params.screenedFrom || params.screenedTo) ? {
+    ...(params.screenedFrom ? { gte: new Date(params.screenedFrom) } : {}),
+    ...(params.screenedTo ? { lte: new Date(params.screenedTo + 'T23:59:59.999Z') } : {}),
+  } : undefined;
+
   const where: Prisma.ScreeningWhereInput = {
     ...(region && { region }),
+    ...(screenedAt ? { screenedAt } : {}),
     ...(params.search && {
       OR: [
         { patientName: { contains: params.search, mode: 'insensitive' } },
@@ -128,6 +185,53 @@ export async function getScreeningHistoryPaginated(params: {
   ]);
 
   return { data: rows.map(screeningFromPrisma), total, patientTotal: patientGroups.length };
+}
+
+export async function getPrintableScreeningHistory(params: {
+  search?: string;
+  region?: string;
+  screenedFrom?: string;
+  screenedTo?: string;
+}): Promise<{ data: Array<Screening & { patientPhone: string }>; total: number; truncated: boolean; limit: number }> {
+  const actor = await requireActor('screening', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const requestedRegion = params.region?.trim();
+  const region = regionScope.region ?? (requestedRegion || undefined);
+
+  const screenedAt = (params.screenedFrom || params.screenedTo) ? {
+    ...(params.screenedFrom ? { gte: new Date(params.screenedFrom) } : {}),
+    ...(params.screenedTo ? { lte: new Date(params.screenedTo + 'T23:59:59.999Z') } : {}),
+  } : undefined;
+
+  const where: Prisma.ScreeningWhereInput = {
+    ...(region && { region }),
+    ...(screenedAt ? { screenedAt } : {}),
+    ...(params.search && {
+      OR: [
+        { patientName: { contains: params.search, mode: 'insensitive' } },
+        { region: { contains: params.search, mode: 'insensitive' } },
+        { patient: { patientCode: { contains: params.search, mode: 'insensitive' } } },
+      ],
+    }),
+  };
+
+  const [rows, total] = await Promise.all([
+    prisma.screening.findMany({
+      where,
+      take: PRINT_LIMIT,
+      include: { patient: { select: { patientCode: true, phone: true } } },
+      orderBy: { screenedAt: 'desc' },
+    }),
+    prisma.screening.count({ where }),
+  ]);
+
+  return {
+    data: rows.map((row) => ({ ...screeningFromPrisma(row), patientPhone: row.patient?.phone ?? '' })),
+    total,
+    truncated: total > rows.length,
+    limit: PRINT_LIMIT,
+  };
 }
 
 type ActionResult<T = null> = { ok: true; data: T } | { ok: false; error: string };
