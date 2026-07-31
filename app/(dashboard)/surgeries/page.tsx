@@ -1073,7 +1073,7 @@ function ScheduledSurgeryRow({
               <Pencil size={13} />
             </button>
           )}
-          {canDelete && (
+          {canDelete && !onRemove && (
             <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
               <Trash2 size={13} />
             </button>
