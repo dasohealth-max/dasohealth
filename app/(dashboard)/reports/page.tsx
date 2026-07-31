@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { jsPDF } from 'jspdf';
-import { actionAuditReportExport, getReportAggregation, getReportRawData, type ReportAggregation } from '@/app/actions/reports';
+import { actionAuditReportExport, getDroppedSurgeryPatients, getReportAggregation, getReportRawData, type DroppedSurgeryPatient, type ReportAggregation } from '@/app/actions/reports';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,7 +18,7 @@ import {
   completionRate,
   type RegionStatus,
 } from '@/lib/reporting';
-import { AlertTriangle, CalendarDays, Download, MapPin, UserCheck } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Download, MapPin, Printer, UserCheck, UserMinus } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -38,6 +38,16 @@ export default function ReportsPage() {
   const [exportError, setExportError] = useState('');
   const [campaignId, setCampaignId] = useState('all');
   const [region, setRegion] = useState('all');
+
+  const [droppedRows, setDroppedRows] = useState<DroppedSurgeryPatient[] | null>(null);
+  const [droppedLoading, setDroppedLoading] = useState(false);
+  const [droppedRegion, setDroppedRegion] = useState('all');
+  const [droppedFrom, setDroppedFrom] = useState('');
+  const [droppedTo, setDroppedTo] = useState('');
+  const [droppedPrintRows, setDroppedPrintRows] = useState<DroppedSurgeryPatient[] | null>(null);
+  const [droppedPrintId, setDroppedPrintId] = useState(0);
+
+  const isReportViewer = role === 'Super Administrator' || role === 'Project Manager';
 
   const assignedRegion = user?.assignedRegion;
   const regionLocked = role !== 'Super Administrator' && !!assignedRegion;
@@ -63,6 +73,26 @@ export default function ReportsPage() {
     return () => { cancelled = true; };
   }, [effectiveRegion, campaignId, reloadVersion]);
 
+  useEffect(() => {
+    if (!isReportViewer) return;
+    let cancelled = false;
+    setDroppedLoading(true);
+    const effectiveDroppedRegion = assignedRegion ?? droppedRegion;
+    getDroppedSurgeryPatients({
+      filterRegion: effectiveDroppedRegion,
+      from: droppedFrom || undefined,
+      to: droppedTo || undefined,
+    })
+      .then((data) => { if (!cancelled) { setDroppedRows(data); setDroppedLoading(false); } })
+      .catch(() => { if (!cancelled) { setDroppedRows([]); setDroppedLoading(false); } });
+    return () => { cancelled = true; };
+  }, [isReportViewer, assignedRegion, droppedRegion, droppedFrom, droppedTo]);
+
+  useEffect(() => {
+    if (!droppedPrintId || !droppedPrintRows) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+  }, [droppedPrintId]);
+
   const prepareReportReload = () => {
     setLoading(true);
     setLoadError('');
@@ -72,6 +102,12 @@ export default function ReportsPage() {
     prepareReportReload();
     setReloadVersion((value) => value + 1);
   };
+
+  function printDropped() {
+    const rows = droppedRows ?? [];
+    setDroppedPrintRows(rows);
+    setDroppedPrintId((n) => n + 1);
+  }
 
   const availableRegions = agg?.availableRegions ?? [];
   const availableCampaigns = (agg?.allCampaigns ?? []).filter(
@@ -925,6 +961,118 @@ export default function ReportsPage() {
         </Card>
       </Section>
 
+      {/* ── Section: Patients Removed from Surgery Queue ──────────────── */}
+      {isReportViewer && (
+        <Section title="Patients Removed from Surgery Queue">
+          {droppedPrintRows && (
+            <DroppedPrintView
+              rows={droppedPrintRows}
+              region={assignedRegion ?? (droppedRegion === 'all' ? 'All regions' : droppedRegion)}
+              from={droppedFrom}
+              to={droppedTo}
+              printedBy={user?.name ?? ''}
+              today={today}
+            />
+          )}
+          <Card className="border-0 shadow-sm" data-print-hide>
+            <CardContent className="pt-4">
+              {/* Filters + print button */}
+              <div className="mb-4 flex flex-wrap items-end gap-3">
+                {!assignedRegion && (
+                  <div className="min-w-[180px]">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Region</label>
+                    <select
+                      value={droppedRegion}
+                      onChange={(e) => setDroppedRegion(e.target.value)}
+                      className="w-full rounded-xl border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] focus:border-[#2C9942] focus:outline-none"
+                    >
+                      <option value="all">All regions</option>
+                      {availableRegions.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Removed from</label>
+                  <input
+                    type="date"
+                    value={droppedFrom}
+                    onChange={(e) => setDroppedFrom(e.target.value)}
+                    className="rounded-xl border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] focus:border-[#2C9942] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">To</label>
+                  <input
+                    type="date"
+                    value={droppedTo}
+                    onChange={(e) => setDroppedTo(e.target.value)}
+                    className="rounded-xl border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] focus:border-[#2C9942] focus:outline-none"
+                  />
+                </div>
+                <div className="ml-auto flex items-end">
+                  <Button
+                    onClick={printDropped}
+                    disabled={droppedLoading || !droppedRows?.length}
+                    variant="outline"
+                    className="gap-2 rounded-xl"
+                  >
+                    <Printer size={15} />
+                    Print
+                  </Button>
+                </div>
+              </div>
+
+              {droppedLoading ? (
+                <div className="py-8 text-center text-sm text-[#647184]">Loading…</div>
+              ) : !droppedRows?.length ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-[#647184]">
+                  <UserMinus size={28} className="opacity-40" />
+                  <p className="text-sm">No patients have been removed from the surgery queue</p>
+                  {(droppedFrom || droppedTo) && (
+                    <p className="text-xs">Try widening the date range</p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <p className="mb-2 text-xs text-[#647184]">{droppedRows.length} patient{droppedRows.length !== 1 ? 's' : ''}{droppedRows.length === 1000 ? ' (capped at 1,000 — narrow the date range to see all)' : ''}</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-[#DDE3EA] bg-[#F5F7FA]">
+                        <tr>
+                          {['#', 'Patient Name', 'Phone', 'Region', 'Screened Date', 'Removal Reason', 'Removed By', 'Removal Date'].map((h) => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {droppedRows.map((row, i) => (
+                          <tr key={row.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
+                            <td className="px-4 py-3 text-[#4B5666]">{i + 1}</td>
+                            <td className="px-4 py-3 font-medium text-[#141920]">{row.fullName}</td>
+                            <td className="px-4 py-3 text-[#4B5666]">{row.phone}</td>
+                            <td className="px-4 py-3 text-[#4B5666]">{row.region}</td>
+                            <td className="px-4 py-3 text-[#4B5666]">
+                              {row.screenedAt ? new Date(row.screenedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-[#4B5666]">{row.archivedReason || '—'}</td>
+                            <td className="px-4 py-3 text-[#4B5666]">{row.archivedByName || '—'}</td>
+                            <td className="px-4 py-3 text-[#4B5666]">
+                              {new Date(row.archivedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Section>
+      )}
+
       {/* ── Section: Campaign Breakdown ───────────────────────────────── */}
       <Section title="Campaign Breakdown">
         <Card className="border-0 shadow-sm">
@@ -1275,6 +1423,70 @@ function CampaignStatusBadge({ status }: { status: string }) {
     <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status] ?? 'bg-[#EAEEF3] text-[#4B5666]'}`}>
       {status}
     </span>
+  );
+}
+
+function DroppedPrintView({
+  rows, region, from, to, printedBy, today,
+}: {
+  rows: DroppedSurgeryPatient[];
+  region: string;
+  from: string;
+  to: string;
+  printedBy: string;
+  today: string;
+}) {
+  const dateRange = from || to
+    ? `${from || '—'} to ${to || '—'}`
+    : 'All dates';
+
+  return (
+    <div className="print-report" data-print-only>
+      <div className="print-report-header">
+        <div>
+          <div className="print-report-title">Patients Removed from Surgery Queue</div>
+          <div className="print-report-meta">
+            Region: {region} · Removal date: {dateRange}
+          </div>
+          <div className="print-report-meta">
+            {rows.length} patient{rows.length !== 1 ? 's' : ''}
+            {rows.length === 1000 ? ' (capped at 1,000)' : ''}
+          </div>
+        </div>
+        <div className="text-right text-xs text-[#647184]">
+          <div>{today}</div>
+          <div>Printed by {printedBy}</div>
+        </div>
+      </div>
+      <table className="print-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Patient Name</th>
+            <th>Phone</th>
+            <th>Region</th>
+            <th>Screened Date</th>
+            <th>Removal Reason</th>
+            <th>Removed By</th>
+            <th>Removal Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row.id}>
+              <td>{i + 1}</td>
+              <td>{row.fullName}</td>
+              <td>{row.phone}</td>
+              <td>{row.region}</td>
+              <td>{row.screenedAt ? new Date(row.screenedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+              <td>{row.archivedReason || '—'}</td>
+              <td>{row.archivedByName || '—'}</td>
+              <td>{new Date(row.archivedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

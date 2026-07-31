@@ -601,3 +601,60 @@ export async function getReportRawData(params: {
 
   return { campaigns, patients, screenings, surgeries, followUps, medications, regionPerformance };
 }
+
+// ─── Dropped surgery patients ─────────────────────────────────────────────────
+
+export type DroppedSurgeryPatient = {
+  id: string;
+  fullName: string;
+  phone: string;
+  region: string;
+  screenedAt: string | null;
+  archivedAt: string;
+  archivedReason: string;
+  archivedByName: string;
+};
+
+export async function getDroppedSurgeryPatients(params: {
+  filterRegion: string;
+  from?: string;
+  to?: string;
+}): Promise<DroppedSurgeryPatient[]> {
+  const actor = await requireActor('reports', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const regionScope = scopedRegionWhere(actor);
+  const region = regionScope.region ?? (params.filterRegion !== 'all' ? params.filterRegion : undefined);
+
+  const rows = await prisma.patient.findMany({
+    where: {
+      AND: [
+        { archivedAt: { not: null } },
+        ...(params.from ? [{ archivedAt: { gte: new Date(params.from) } }] : []),
+        ...(params.to ? [{ archivedAt: { lt: new Date(new Date(params.to).getTime() + 86400000) } }] : []),
+      ],
+      ...(region && { region }),
+      surgeries: { some: { archivedAt: { not: null } } },
+    },
+    include: {
+      screenings: {
+        orderBy: { screenedAt: 'asc' },
+        take: 1,
+        select: { screenedAt: true },
+      },
+    },
+    orderBy: { archivedAt: 'desc' },
+    take: 1000,
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    fullName: row.fullName,
+    phone: row.phone,
+    region: row.region,
+    screenedAt: row.screenings[0]?.screenedAt?.toISOString() ?? null,
+    archivedAt: (row.archivedAt as Date).toISOString(),
+    archivedReason: row.archivedReason ?? '',
+    archivedByName: row.archivedByName ?? '',
+  }));
+}
