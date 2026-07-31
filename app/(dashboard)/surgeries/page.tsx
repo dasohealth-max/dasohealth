@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { LensType, Surgery, SurgeryStatus } from '@/types';
-import { actionUpdateSurgery, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { actionUpdateSurgery, actionRemoveSurgeryPatient, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated, REMOVAL_REASONS } from '@/app/actions/surgeries';
+import { actionCreateChangeRequest } from '@/app/actions/change_requests';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
@@ -14,7 +15,7 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, UserMinus, X } from 'lucide-react';
 import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/forms/ChangeRequestDialog';
 
 const PAGE_SIZE = 50;
@@ -115,6 +116,14 @@ export default function SurgeriesPage() {
   const [deleteTarget,    setDeleteTarget]    = useState<Surgery | null>(null);
   const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
   const [completeTarget,  setCompleteTarget]  = useState<Surgery | null>(null);
+  const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
+  const [removeReason,    setRemoveReason]    = useState('');
+  const [removeNotes,     setRemoveNotes]     = useState('');
+  const [isRemoving,      setIsRemoving]      = useState(false);
+  const [pmRemoveTarget,  setPmRemoveTarget]  = useState<Surgery | null>(null);
+  const [pmRemoveReason,  setPmRemoveReason]  = useState('');
+  const [pmRemoveNotes,   setPmRemoveNotes]   = useState('');
+  const [isPmRequesting,  setIsPmRequesting]  = useState(false);
   const [viewing,         setViewing]         = useState<Surgery | null>(null);
 
   // ── Waiting section ────────────────────────────────────────────────────────
@@ -296,6 +305,45 @@ export default function SurgeriesPage() {
     });
   }
 
+  async function confirmRemove() {
+    if (!removeTarget) return;
+    setIsRemoving(true);
+    const result = await actionRemoveSurgeryPatient(removeTarget.id, removeReason, removeNotes);
+    setIsRemoving(false);
+    if (result.ok) {
+      toast({ title: 'Patient removed from surgery queue', description: patientDisplayName(removeTarget.patientName, removeTarget.patientCode) });
+      setWaitingSurgeries((rows) => rows.filter((r) => r.id !== removeTarget.id));
+      setWaitingTotal((n) => Math.max(0, n - 1));
+      setRemoveTarget(null);
+    } else {
+      toast({ title: 'Could not remove patient', description: result.error, variant: 'error' });
+    }
+  }
+
+  async function submitPmRemoval() {
+    if (!pmRemoveTarget) return;
+    setIsPmRequesting(true);
+    const reasonText = pmRemoveNotes.trim()
+      ? `${pmRemoveReason} — ${pmRemoveNotes.trim()}`
+      : pmRemoveReason;
+    const result = await actionCreateChangeRequest({
+      entity: 'Surgery',
+      entityId: pmRemoveTarget.id,
+      entityLabel: patientDisplayName(pmRemoveTarget.patientName, pmRemoveTarget.patientCode),
+      requestType: 'archive',
+      reason: reasonText,
+      region: pmRemoveTarget.region,
+      campaignId: pmRemoveTarget.campaignId,
+    });
+    setIsPmRequesting(false);
+    if (result.ok) {
+      toast({ title: 'Removal request submitted', description: 'Your Super Administrator will review and action this request.' });
+      setPmRemoveTarget(null);
+    } else {
+      toast({ title: 'Could not submit request', description: result.error, variant: 'error' });
+    }
+  }
+
   // ── Print actions ──────────────────────────────────────────────────────────
   async function printWaiting() {
     setIsPrintingWaiting(true);
@@ -394,6 +442,34 @@ export default function SurgeriesPage() {
         <ChangeRequestDialog
           target={changeRequestTarget}
           onClose={() => setChangeRequestTarget(null)}
+        />
+      )}
+
+      {removeTarget && (
+        <RemoveSurgeryDialog
+          surgery={removeTarget}
+          reason={removeReason}
+          notes={removeNotes}
+          isSaving={isRemoving}
+          onReasonChange={setRemoveReason}
+          onNotesChange={setRemoveNotes}
+          onConfirm={confirmRemove}
+          onClose={() => setRemoveTarget(null)}
+          mode="direct"
+        />
+      )}
+
+      {pmRemoveTarget && (
+        <RemoveSurgeryDialog
+          surgery={pmRemoveTarget}
+          reason={pmRemoveReason}
+          notes={pmRemoveNotes}
+          isSaving={isPmRequesting}
+          onReasonChange={setPmRemoveReason}
+          onNotesChange={setPmRemoveNotes}
+          onConfirm={submitPmRemoval}
+          onClose={() => setPmRemoveTarget(null)}
+          mode="request"
         />
       )}
 
@@ -613,6 +689,8 @@ export default function SurgeriesPage() {
               onComplete={setCompleteTarget}
               onEdit={openEdit}
               onDelete={setDeleteTarget}
+              onRemove={isSuperAdmin ? (s) => { setRemoveTarget(s); setRemoveReason(''); setRemoveNotes(''); } : undefined}
+              onRequestRemoval={role === 'Project Manager' ? (s) => { setPmRemoveTarget(s); setPmRemoveReason(''); setPmRemoveNotes(''); } : undefined}
               compactScheduled
             />
           </CardContent>
@@ -856,6 +934,8 @@ function SurgeryTableBody({
   onComplete,
   onEdit,
   onDelete,
+  onRemove,
+  onRequestRemoval,
   compactScheduled = false,
   compactHistory = false,
 }: {
@@ -869,6 +949,8 @@ function SurgeryTableBody({
   onComplete: (surgery: Surgery) => void;
   onEdit: (surgery: Surgery) => void;
   onDelete: (surgery: Surgery) => void;
+  onRemove?: (surgery: Surgery) => void;
+  onRequestRemoval?: (surgery: Surgery) => void;
   compactScheduled?: boolean;
   compactHistory?: boolean;
 }) {
@@ -904,6 +986,8 @@ function SurgeryTableBody({
                 onComplete={onComplete}
                 onEdit={onEdit}
                 onDelete={onDelete}
+                onRemove={onRemove}
+                onRequestRemoval={onRequestRemoval}
               />
             ) : compactHistory ? (
               <HistorySurgeryRow
@@ -937,7 +1021,7 @@ function SurgeryTableBody({
 }
 
 function ScheduledSurgeryRow({
-  surgery, canEdit, canDelete, onView, onComplete, onEdit, onDelete,
+  surgery, canEdit, canDelete, onView, onComplete, onEdit, onDelete, onRemove, onRequestRemoval,
 }: {
   surgery: Surgery;
   canEdit: boolean;
@@ -946,6 +1030,8 @@ function ScheduledSurgeryRow({
   onComplete: (surgery: Surgery) => void;
   onEdit: (surgery: Surgery) => void;
   onDelete: (surgery: Surgery) => void;
+  onRemove?: (surgery: Surgery) => void;
+  onRequestRemoval?: (surgery: Surgery) => void;
 }) {
   return (
     <tr className="border-b border-[#EAEEF3] transition-colors hover:bg-[#F5F7FA]">
@@ -989,6 +1075,16 @@ function ScheduledSurgeryRow({
           {canDelete && (
             <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
               <Trash2 size={13} />
+            </button>
+          )}
+          {onRemove && (
+            <button onClick={() => onRemove(surgery)} className="flex items-center gap-1 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-2 py-1 text-xs font-medium text-[#E53935] transition hover:bg-[#E53935] hover:text-white" title="Remove patient from surgery queue">
+              <UserMinus size={11} /> Remove
+            </button>
+          )}
+          {onRequestRemoval && (
+            <button onClick={() => onRequestRemoval(surgery)} className="flex items-center gap-1 rounded-md border border-[#DDE3EA] bg-white px-2 py-1 text-xs font-medium text-[#4B5666] transition hover:bg-[#EAEEF3]" title="Request removal of this patient">
+              <UserMinus size={11} /> Request Removal
             </button>
           )}
         </div>
@@ -1247,6 +1343,115 @@ function ReadOnlyValue({ label, value, wide = false }: { label: string; value: s
       <p className="min-h-10 break-words rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#4B5666]">
         {value}
       </p>
+    </div>
+  );
+}
+
+// ─── Remove Surgery Dialog ─────────────────────────────────────────────────────
+
+function RemoveSurgeryDialog({
+  surgery, reason, notes, isSaving, onReasonChange, onNotesChange, onConfirm, onClose, mode,
+}: {
+  surgery: Surgery;
+  reason: string;
+  notes: string;
+  isSaving: boolean;
+  onReasonChange: (v: string) => void;
+  onNotesChange: (v: string) => void;
+  onConfirm: () => void;
+  onClose: () => void;
+  mode: 'direct' | 'request';
+}) {
+  const canSubmit = !!reason && !isSaving;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-[#141920]">
+              {mode === 'direct' ? 'Remove Patient from Surgery Queue' : 'Request Patient Removal'}
+            </h2>
+            <p className="mt-0.5 text-sm text-[#647184]">
+              {patientDisplayName(surgery.patientName, surgery.patientCode)}
+              {' · '}Scheduled {new Date(surgery.scheduledAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3]">
+            <X size={15} />
+          </button>
+        </div>
+
+        {mode === 'request' && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+            This request will be sent to your Super Administrator for review. The patient will remain in the queue until it is approved.
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#647184]">
+              Reason <span className="text-[#E53935]">*</span>
+            </label>
+            <div className="space-y-2">
+              {REMOVAL_REASONS.map((r) => (
+                <label
+                  key={r}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                    reason === r ? 'border-[#E53935] bg-[#FDECEB]' : 'border-[#DDE3EA] hover:bg-[#F5F7FA]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="removeReason"
+                    value={r}
+                    checked={reason === r}
+                    onChange={() => onReasonChange(r)}
+                    className="accent-[#E53935]"
+                  />
+                  <span className="text-sm text-[#141920]">{r}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#647184]">
+              Additional notes <span className="text-[#94A0AE]">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              placeholder="Any additional context..."
+              className="w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-[#DDE3EA] px-4 py-2 text-sm font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!canSubmit}
+            className={`rounded-md px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              mode === 'direct'
+                ? 'bg-[#E53935] hover:bg-[#C62828]'
+                : 'bg-[#1A7A46] hover:bg-[#0F4D2A]'
+            }`}
+          >
+            {isSaving
+              ? mode === 'direct' ? 'Removing...' : 'Submitting...'
+              : mode === 'direct' ? 'Remove Patient' : 'Submit Request'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

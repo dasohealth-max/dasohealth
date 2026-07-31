@@ -13,6 +13,16 @@ import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays as addScheduleDays } from '@/lib/fol
 
 const PRINT_LIMIT = 1000;
 
+export const REMOVAL_REASONS = [
+  'Did not show up',
+  'Refused the surgery',
+  'Cannot be reached',
+  'Patient has passed away',
+  'Other reason',
+] as const;
+
+export type RemovalReason = typeof REMOVAL_REASONS[number];
+
 const SurgerySchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
   campaignId: z.string().min(1, 'Campaign is required'),
@@ -446,6 +456,68 @@ export async function actionDeleteSurgery(_id: string): Promise<ActionResult> {
     ok: false,
     error: 'Surgery records cannot be permanently deleted. Contact your Super Administrator to archive this record if a correction is needed.',
   };
+}
+
+export async function actionRemoveSurgeryPatient(
+  surgeryId: string,
+  reason: string,
+  notes?: string,
+): Promise<ActionResult<null>> {
+  const actor = await requireActor('surgeries', 'delete');
+  if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can remove patients from the surgery queue' };
+  }
+  if (!reason.trim()) return { ok: false, error: 'Removal reason is required' };
+
+  const fullReason = notes?.trim() ? `${reason} — ${notes.trim()}` : reason;
+
+  try {
+    const surgery = await prisma.surgery.findUnique({ where: { id: surgeryId } });
+    if (!surgery) return { ok: false, error: 'Surgery record not found' };
+    if (surgery.archivedAt) return { ok: false, error: 'This surgery is already archived' };
+    if (String(surgery.status) !== 'Scheduled') {
+      return { ok: false, error: 'Only patients in the waiting queue (Scheduled status) can be removed this way' };
+    }
+    const denied = ensureRegionAccess(actor, surgery.region);
+    if (denied) return denied;
+
+    const patient = await prisma.patient.findUnique({ where: { id: surgery.patientId } });
+    if (!patient) return { ok: false, error: 'Patient record not found' };
+
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.surgery.update({
+        where: { id: surgeryId },
+        data: { archivedAt: now, archivedById: actor.id, archivedByName: actor.name, archivedReason: fullReason },
+      }),
+      prisma.patient.update({
+        where: { id: surgery.patientId },
+        data: { archivedAt: now, archivedById: actor.id, archivedByName: actor.name, archivedReason: fullReason },
+      }),
+    ]);
+
+    updateTag('surgeries');
+    updateTag('patients');
+    after(() => Promise.all([
+      auditLog({
+        actor, action: 'archive', entity: 'Surgery', entityId: surgeryId,
+        region: surgery.region, campaignId: surgery.campaignId,
+        details: `Removed from surgery queue — ${fullReason} (patient: ${surgery.patientName})`,
+        before: surgery,
+      }),
+      auditLog({
+        actor, action: 'archive', entity: 'Patient', entityId: surgery.patientId,
+        region: surgery.region, campaignId: surgery.campaignId,
+        details: `Archived with surgery removal — ${fullReason} (patient: ${surgery.patientName})`,
+        before: patient,
+      }),
+    ]));
+
+    return { ok: true, data: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function actionArchiveSurgery(id: string, reason: string): Promise<ActionResult> {

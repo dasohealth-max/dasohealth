@@ -160,6 +160,7 @@ export async function actionResolveChangeRequest(
     if (!existing) return { ok: false, error: 'Change request not found' };
     if (existing.status !== 'Pending') return { ok: false, error: 'This request has already been resolved' };
 
+    const now = new Date();
     const row = await prisma.changeRequest.update({
       where: { id },
       data: {
@@ -167,9 +168,29 @@ export async function actionResolveChangeRequest(
         resolvedById: actor.id,
         resolvedByName: actor.name,
         resolutionNote: parsed.data.resolutionNote.trim(),
-        resolvedAt: new Date(),
+        resolvedAt: now,
       },
     });
+
+    if (parsed.data.resolution === 'Approved' && existing.entity === 'Surgery' && existing.requestType === 'archive') {
+      const surgery = await prisma.surgery.findUnique({ where: { id: existing.entityId } });
+      if (surgery && !surgery.archivedAt) {
+        const archiveReason = `Approved via change request — ${parsed.data.resolutionNote.trim()}`;
+        await prisma.$transaction([
+          prisma.surgery.update({
+            where: { id: existing.entityId },
+            data: { archivedAt: now, archivedById: actor.id, archivedByName: actor.name, archivedReason: archiveReason },
+          }),
+          prisma.patient.update({
+            where: { id: surgery.patientId },
+            data: { archivedAt: now, archivedById: actor.id, archivedByName: actor.name, archivedReason: archiveReason },
+          }),
+        ]);
+        updateTag('surgeries');
+        updateTag('patients');
+      }
+    }
+
     updateTag('change-requests');
     after(() => auditLog({
       actor,
