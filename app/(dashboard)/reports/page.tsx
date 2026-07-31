@@ -18,7 +18,7 @@ import {
   completionRate,
   type RegionStatus,
 } from '@/lib/reporting';
-import { AlertTriangle, CalendarDays, Download, MapPin, Printer, UserCheck, UserMinus } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronDown, Download, MapPin, Printer, UserCheck, UserMinus } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -46,6 +46,7 @@ export default function ReportsPage() {
   const [droppedTo, setDroppedTo] = useState('');
   const [droppedPrintRows, setDroppedPrintRows] = useState<DroppedSurgeryPatient[] | null>(null);
   const [droppedPrintId, setDroppedPrintId] = useState(0);
+  const [droppedOpen, setDroppedOpen] = useState(false);
 
   const isReportViewer = role === 'Super Administrator' || role === 'Project Manager';
 
@@ -74,7 +75,7 @@ export default function ReportsPage() {
   }, [effectiveRegion, campaignId, reloadVersion]);
 
   useEffect(() => {
-    if (!isReportViewer) return;
+    if (!isReportViewer || !droppedOpen) return;
     let cancelled = false;
     setDroppedLoading(true);
     const effectiveDroppedRegion = assignedRegion ?? droppedRegion;
@@ -86,7 +87,7 @@ export default function ReportsPage() {
       .then((data) => { if (!cancelled) { setDroppedRows(data); setDroppedLoading(false); } })
       .catch(() => { if (!cancelled) { setDroppedRows([]); setDroppedLoading(false); } });
     return () => { cancelled = true; };
-  }, [isReportViewer, assignedRegion, droppedRegion, droppedFrom, droppedTo]);
+  }, [isReportViewer, droppedOpen, assignedRegion, droppedRegion, droppedFrom, droppedTo]);
 
   useEffect(() => {
     if (!droppedPrintId || !droppedPrintRows) return;
@@ -963,7 +964,22 @@ export default function ReportsPage() {
 
       {/* ── Section: Patients Removed from Surgery Queue ──────────────── */}
       {isReportViewer && (
-        <Section title="Patients Removed from Surgery Queue">
+        <div>
+          <button
+            type="button"
+            onClick={() => setDroppedOpen((v) => !v)}
+            className="mb-3 flex w-full items-center gap-2 text-left"
+          >
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#647184]">
+              Patients Removed from Surgery Queue
+            </span>
+            <ChevronDown
+              size={14}
+              className={`ml-1 shrink-0 text-[#647184] transition-transform duration-200 ${droppedOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {droppedOpen && (
+            <>
           {droppedPrintRows && (
             <DroppedPrintView
               rows={droppedPrintRows}
@@ -1070,7 +1086,9 @@ export default function ReportsPage() {
               )}
             </CardContent>
           </Card>
-        </Section>
+            </>
+          )}
+        </div>
       )}
 
       {/* ── Section: Campaign Breakdown ───────────────────────────────── */}
