@@ -16,7 +16,7 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, UserMinus, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, UserMinus, X } from 'lucide-react';
 import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/forms/ChangeRequestDialog';
 
 const PAGE_SIZE = 50;
@@ -116,8 +116,7 @@ export default function SurgeriesPage() {
   const [saveError,       setSaveError]       = useState('');
   const [deleteTarget,    setDeleteTarget]    = useState<Surgery | null>(null);
   const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
-  const [completeTarget,  setCompleteTarget]  = useState<Surgery | null>(null);
-  const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
+const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
   const [removeReason,    setRemoveReason]    = useState('');
   const [removeNotes,     setRemoveNotes]     = useState('');
   const [isRemoving,      setIsRemoving]      = useState(false);
@@ -278,22 +277,6 @@ export default function SurgeriesPage() {
     setRefreshKey((k) => k + 1);
   }
 
-  async function confirmComplete() {
-    if (!completeTarget) return;
-    const result = await actionUpdateSurgery(completeTarget.id, {
-      ...completeTarget,
-      status:      'Completed',
-      performedAt: completeTarget.performedAt ?? nowLocal(),
-    });
-    if (result.ok) {
-      toast({ title: 'Surgery completed', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
-      setRefreshKey((k) => k + 1);
-    } else {
-      toast({ title: 'Could not complete surgery', description: result.error, variant: 'error' });
-    }
-    setCompleteTarget(null);
-  }
-
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleteTarget(null);
@@ -415,19 +398,7 @@ export default function SurgeriesPage() {
   return (
     <div className="space-y-5">
       {/* ── Dialogs ──────────────────────────────────────────────────────────── */}
-      <ConfirmDialog
-        open={!!completeTarget}
-        title="Mark Surgery as Completed"
-        description={completeTarget
-          ? `Mark "${patientDisplayName(completeTarget.patientName, completeTarget.patientCode)}"'s surgery as completed? This will automatically create Day 1 and Week 1 follow-up records.`
-          : ''}
-        confirmLabel="Mark Completed"
-        danger={false}
-        onConfirm={confirmComplete}
-        onCancel={() => setCompleteTarget(null)}
-      />
-
-      <ConfirmDialog
+<ConfirmDialog
         open={!!deleteTarget}
         title="Surgery Record Protected"
         description={deleteTarget
@@ -687,7 +658,6 @@ export default function SurgeriesPage() {
               canEdit={can('surgeries', 'edit')}
               canDelete={can('surgeries', 'delete')}
               onView={setViewing}
-              onComplete={setCompleteTarget}
               onEdit={openEdit}
               onDelete={setDeleteTarget}
               onRemove={isSuperAdmin ? (s) => { setRemoveTarget(s); setRemoveReason(''); setRemoveNotes(''); } : undefined}
@@ -797,7 +767,6 @@ export default function SurgeriesPage() {
                 canEdit={can('surgeries', 'edit')}
                 canDelete={can('surgeries', 'delete')}
                 onView={setViewing}
-                onComplete={setCompleteTarget}
                 onEdit={openEdit}
                 onDelete={setDeleteTarget}
                 compactHistory
@@ -932,7 +901,6 @@ function SurgeryTableBody({
   canEdit,
   canDelete,
   onView,
-  onComplete,
   onEdit,
   onDelete,
   onRemove,
@@ -947,7 +915,6 @@ function SurgeryTableBody({
   canEdit: boolean;
   canDelete: boolean;
   onView: (surgery: Surgery) => void;
-  onComplete: (surgery: Surgery) => void;
   onEdit: (surgery: Surgery) => void;
   onDelete: (surgery: Surgery) => void;
   onRemove?: (surgery: Surgery) => void;
@@ -984,7 +951,6 @@ function SurgeryTableBody({
                 canEdit={canEdit}
                 canDelete={canDelete}
                 onView={onView}
-                onComplete={onComplete}
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onRemove={onRemove}
@@ -997,7 +963,6 @@ function SurgeryTableBody({
                 canEdit={canEdit}
                 canDelete={canDelete}
                 onView={onView}
-                onComplete={onComplete}
                 onEdit={onEdit}
                 onDelete={onDelete}
               />
@@ -1009,7 +974,6 @@ function SurgeryTableBody({
                 canEdit={canEdit}
                 canDelete={canDelete}
                 onView={onView}
-                onComplete={onComplete}
                 onEdit={onEdit}
                 onDelete={onDelete}
               />
@@ -1022,13 +986,12 @@ function SurgeryTableBody({
 }
 
 function ScheduledSurgeryRow({
-  surgery, canEdit, canDelete, onView, onComplete, onEdit, onDelete, onRemove, onRequestRemoval,
+  surgery, canEdit, canDelete, onView, onEdit, onDelete, onRemove, onRequestRemoval,
 }: {
   surgery: Surgery;
   canEdit: boolean;
   canDelete: boolean;
   onView: (surgery: Surgery) => void;
-  onComplete: (surgery: Surgery) => void;
   onEdit: (surgery: Surgery) => void;
   onDelete: (surgery: Surgery) => void;
   onRemove?: (surgery: Surgery) => void;
@@ -1064,11 +1027,6 @@ function ScheduledSurgeryRow({
             <Eye size={13} />
           </button>
           {canEdit && (
-            <button onClick={() => onComplete(surgery)} className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]">
-              <CheckCircle size={11} /> Complete
-            </button>
-          )}
-          {canEdit && (
             <button onClick={() => onEdit(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]" title="Edit surgery">
               <Pencil size={13} />
             </button>
@@ -1095,13 +1053,12 @@ function ScheduledSurgeryRow({
 }
 
 function HistorySurgeryRow({
-  surgery, canEdit, canDelete, onView, onComplete, onEdit, onDelete,
+  surgery, canEdit, canDelete, onView, onEdit, onDelete,
 }: {
   surgery: Surgery;
   canEdit: boolean;
   canDelete: boolean;
   onView: (surgery: Surgery) => void;
-  onComplete: (surgery: Surgery) => void;
   onEdit: (surgery: Surgery) => void;
   onDelete: (surgery: Surgery) => void;
 }) {
@@ -1127,11 +1084,6 @@ function HistorySurgeryRow({
           <button onClick={() => onView(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]" title="View details">
             <Eye size={13} />
           </button>
-          {surgery.status !== 'Completed' && canEdit && (
-            <button onClick={() => onComplete(surgery)} className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]">
-              <CheckCircle size={11} /> Complete
-            </button>
-          )}
           {canEdit && (
             <button onClick={() => onEdit(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]" title="Edit surgery">
               <Pencil size={13} />
@@ -1149,14 +1101,13 @@ function HistorySurgeryRow({
 }
 
 function SurgeryRow({
-  surgery, rowNumber, canEdit, canDelete, onView, onComplete, onEdit, onDelete,
+  surgery, rowNumber, canEdit, canDelete, onView, onEdit, onDelete,
 }: {
   surgery: Surgery;
   rowNumber: number;
   canEdit: boolean;
   canDelete: boolean;
   onView: (surgery: Surgery) => void;
-  onComplete: (surgery: Surgery) => void;
   onEdit: (surgery: Surgery) => void;
   onDelete: (surgery: Surgery) => void;
 }) {
@@ -1202,11 +1153,6 @@ function SurgeryRow({
           <button onClick={() => onView(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]" title="View details">
             <Eye size={13} />
           </button>
-          {surgery.status !== 'Completed' && canEdit && (
-            <button onClick={() => onComplete(surgery)} className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]">
-              <CheckCircle size={11} /> Complete
-            </button>
-          )}
           {canEdit && (
             <button onClick={() => onEdit(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]" title="Edit surgery">
               <Pencil size={13} />
