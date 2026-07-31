@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { LensType, Surgery, SurgeryStatus } from '@/types';
-import { actionUpdateSurgery, actionRemoveSurgeryPatient, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated, REMOVAL_REASONS } from '@/app/actions/surgeries';
+import { actionUpdateSurgery, actionRemoveSurgeryPatient, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { REMOVAL_REASONS } from '@/lib/surgery-constants';
 import { actionCreateChangeRequest } from '@/app/actions/change_requests';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

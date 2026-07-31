@@ -13,16 +13,6 @@ import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays as addScheduleDays } from '@/lib/fol
 
 const PRINT_LIMIT = 1000;
 
-export const REMOVAL_REASONS = [
-  'Did not show up',
-  'Refused the surgery',
-  'Cannot be reached',
-  'Patient has passed away',
-  'Other reason',
-] as const;
-
-export type RemovalReason = typeof REMOVAL_REASONS[number];
-
 const SurgerySchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
   campaignId: z.string().min(1, 'Campaign is required'),
