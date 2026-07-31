@@ -1037,13 +1037,13 @@ function ScheduledSurgeryRow({
             </button>
           )}
           {onRemove && (
-            <button onClick={() => onRemove(surgery)} className="flex items-center gap-1 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-2 py-1 text-xs font-medium text-[#E53935] transition hover:bg-[#E53935] hover:text-white" title="Remove patient from surgery queue">
-              <UserMinus size={11} /> Remove
+            <button onClick={() => onRemove(surgery)} className="rounded-md p-1.5 text-[#E53935] transition hover:bg-[#FDECEB]" title="Remove patient from surgery queue">
+              <UserMinus size={13} />
             </button>
           )}
           {onRequestRemoval && (
-            <button onClick={() => onRequestRemoval(surgery)} className="flex items-center gap-1 rounded-md border border-[#DDE3EA] bg-white px-2 py-1 text-xs font-medium text-[#4B5666] transition hover:bg-[#EAEEF3]" title="Request removal of this patient">
-              <UserMinus size={11} /> Request Removal
+            <button onClick={() => onRequestRemoval(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#E53935]" title="Request removal of this patient">
+              <UserMinus size={13} />
             </button>
           )}
         </div>
