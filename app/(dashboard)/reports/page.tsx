@@ -153,8 +153,8 @@ export default function ReportsPage() {
     win.document.write(html);
     win.document.close();
     win.focus();
+    win.addEventListener('afterprint', () => win.close());
     win.print();
-    win.close();
   }
 
   const availableRegions = agg?.availableRegions ?? [];
