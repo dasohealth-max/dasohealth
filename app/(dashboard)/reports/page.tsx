@@ -44,8 +44,6 @@ export default function ReportsPage() {
   const [droppedRegion, setDroppedRegion] = useState('all');
   const [droppedFrom, setDroppedFrom] = useState('');
   const [droppedTo, setDroppedTo] = useState('');
-  const [droppedPrintRows, setDroppedPrintRows] = useState<DroppedSurgeryPatient[] | null>(null);
-  const [droppedPrintId, setDroppedPrintId] = useState(0);
   const [droppedOpen, setDroppedOpen] = useState(false);
 
   const isReportViewer = role === 'Super Administrator' || role === 'Project Manager';
@@ -89,11 +87,6 @@ export default function ReportsPage() {
     return () => { cancelled = true; };
   }, [isReportViewer, droppedOpen, assignedRegion, droppedRegion, droppedFrom, droppedTo]);
 
-  useEffect(() => {
-    if (!droppedPrintId || !droppedPrintRows) return;
-    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
-  }, [droppedPrintId]);
-
   const prepareReportReload = () => {
     setLoading(true);
     setLoadError('');
@@ -106,8 +99,62 @@ export default function ReportsPage() {
 
   function printDropped() {
     const rows = droppedRows ?? [];
-    setDroppedPrintRows(rows);
-    setDroppedPrintId((n) => n + 1);
+    const regionLabel = assignedRegion ?? (droppedRegion === 'all' ? 'All regions' : droppedRegion);
+    const dateRange = droppedFrom || droppedTo
+      ? `${droppedFrom || '—'} to ${droppedTo || '—'}`
+      : 'All dates';
+
+    const tableRows = rows.map((row, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${esc(row.fullName)}</td>
+        <td>${esc(row.phone)}</td>
+        <td>${esc(row.region)}</td>
+        <td>${row.screenedAt ? new Date(row.screenedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+        <td>${esc(row.archivedReason || '—')}</td>
+        <td>${esc(row.archivedByName || '—')}</td>
+        <td>${new Date(row.archivedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>Patients Removed from Surgery Queue</title>
+<style>
+  @page{size:A4 landscape;margin:15mm}
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:10px;color:#111827;margin:0}
+  .hdr{display:flex;justify-content:space-between;margin-bottom:12px}
+  .title{font-size:18px;font-weight:700;margin:0}
+  .meta{color:#4b5563;font-size:10px;margin:4px 0 0}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:top;word-break:break-word}
+  th{background:#f1f5f9;font-size:9px;font-weight:700;text-transform:uppercase}
+  tr{break-inside:avoid;page-break-inside:avoid}
+</style>
+</head><body>
+<div class="hdr">
+  <div>
+    <p class="title">Patients Removed from Surgery Queue</p>
+    <p class="meta">Region: ${esc(regionLabel)} · Removal date: ${esc(dateRange)}</p>
+    <p class="meta">${rows.length} patient${rows.length !== 1 ? 's' : ''}${rows.length === 1000 ? ' (capped at 1,000)' : ''}</p>
+  </div>
+  <div style="text-align:right;font-size:10px;color:#4b5563">
+    <div>${esc(today)}</div>
+    <div>Printed by ${esc(user?.name ?? '')}</div>
+  </div>
+</div>
+<table>
+  <thead><tr><th>#</th><th>Patient Name</th><th>Phone</th><th>Region</th><th>Screened Date</th><th>Removal Reason</th><th>Removed By</th><th>Removal Date</th></tr></thead>
+  <tbody>${tableRows}</tbody>
+</table>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=1200,height=800');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
   }
 
   const availableRegions = agg?.availableRegions ?? [];
@@ -980,17 +1027,7 @@ export default function ReportsPage() {
           </button>
           {droppedOpen && (
             <>
-          {droppedPrintRows && (
-            <DroppedPrintView
-              rows={droppedPrintRows}
-              region={assignedRegion ?? (droppedRegion === 'all' ? 'All regions' : droppedRegion)}
-              from={droppedFrom}
-              to={droppedTo}
-              printedBy={user?.name ?? ''}
-              today={today}
-            />
-          )}
-          <Card className="border-0 shadow-sm" data-print-hide>
+          <Card className="border-0 shadow-sm">
             <CardContent className="pt-4">
               {/* Filters + print button */}
               <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -1444,68 +1481,8 @@ function CampaignStatusBadge({ status }: { status: string }) {
   );
 }
 
-function DroppedPrintView({
-  rows, region, from, to, printedBy, today,
-}: {
-  rows: DroppedSurgeryPatient[];
-  region: string;
-  from: string;
-  to: string;
-  printedBy: string;
-  today: string;
-}) {
-  const dateRange = from || to
-    ? `${from || '—'} to ${to || '—'}`
-    : 'All dates';
-
-  return (
-    <div className="print-report" data-print-only>
-      <div className="print-report-header">
-        <div>
-          <div className="print-report-title">Patients Removed from Surgery Queue</div>
-          <div className="print-report-meta">
-            Region: {region} · Removal date: {dateRange}
-          </div>
-          <div className="print-report-meta">
-            {rows.length} patient{rows.length !== 1 ? 's' : ''}
-            {rows.length === 1000 ? ' (capped at 1,000)' : ''}
-          </div>
-        </div>
-        <div className="text-right text-xs text-[#647184]">
-          <div>{today}</div>
-          <div>Printed by {printedBy}</div>
-        </div>
-      </div>
-      <table className="print-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Patient Name</th>
-            <th>Phone</th>
-            <th>Region</th>
-            <th>Screened Date</th>
-            <th>Removal Reason</th>
-            <th>Removed By</th>
-            <th>Removal Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={row.id}>
-              <td>{i + 1}</td>
-              <td>{row.fullName}</td>
-              <td>{row.phone}</td>
-              <td>{row.region}</td>
-              <td>{row.screenedAt ? new Date(row.screenedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
-              <td>{row.archivedReason || '—'}</td>
-              <td>{row.archivedByName || '—'}</td>
-              <td>{new Date(row.archivedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+function esc(str: string) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function shortRegion(region: string) {
