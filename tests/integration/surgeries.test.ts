@@ -359,9 +359,10 @@ describe('actionUpdateSurgery', () => {
       status: 'Completed',
       performedAt: '2025-03-01T10:00:00.000Z',
     });
-    vi.mocked(prisma.followUp.findFirst).mockImplementation(async ({ where }) => {
-      return where.milestone === 'Week1' ? null : ({ id: `existing-${where.milestone}` } as never);
-    });
+    vi.mocked(prisma.followUp.findFirst).mockImplementation(((args: any) => {
+      const milestone = args?.where?.milestone;
+      return Promise.resolve(milestone === 'Week1' ? null : { id: `existing-${milestone}` });
+    }) as never);
     vi.mocked(prisma.followUp.create).mockResolvedValue({} as never);
 
     await actionUpdateSurgery('surgery-1', {

@@ -21,12 +21,14 @@ describe('AuthGuard inactivity timeout', () => {
     replace: vi.fn(),
     back: vi.fn(),
     prefetch: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
   };
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.mocked(useRouter).mockReturnValue(router);
-    vi.mocked(getUser).mockResolvedValue({ id: 'user-1' });
+    vi.mocked(getUser).mockResolvedValue({ id: 'user-1' } as never);
     vi.mocked(signOut).mockResolvedValue(undefined);
   });
 
