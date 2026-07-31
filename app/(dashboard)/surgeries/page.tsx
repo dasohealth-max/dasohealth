@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import type { LensType, Surgery, SurgeryStatus } from '@/types';
-import { actionDeleteSurgery, actionUpdateSurgery, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { actionUpdateSurgery, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
@@ -19,8 +19,6 @@ import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/form
 
 const PAGE_SIZE = 50;
 
-type PrintMode = 'current' | 'all';
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUSES: SurgeryStatus[] = ['Scheduled', 'Completed', 'Cancelled', 'Postponed'];
@@ -33,11 +31,11 @@ const STATUS_STYLE: Record<SurgeryStatus, string> = {
   Postponed: 'bg-[#FFF5E6] text-[#F59E0B]',
 };
 
-// Shared field styles
 const F = {
   label: 'block text-[11px] font-semibold uppercase tracking-wide text-[#647184] mb-1.5',
   input: 'w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10 disabled:bg-[#EAEEF3] disabled:text-[#647184]',
   sel:   'w-full rounded-md',
+  dateInput: 'h-8 rounded-md border border-[#DDE3EA] bg-white px-2 text-xs text-[#141920] outline-none focus:border-[#2C9942] focus:ring-1 focus:ring-[#2C9942]/10',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,26 +72,11 @@ function surgeryFindingLabel(surgery: Surgery) {
   return surgery.screeningResult ? screeningFindingLabel(surgery.screeningResult) : '-';
 }
 
-function surgeryVaSummary(surgery: Surgery) {
+function surgeryPreOpVA(surgery: Surgery) {
   if (surgery.screeningResult) {
     return `${surgery.screeningResult.vaRightUnaided} / ${surgery.screeningResult.vaLeftUnaided}`;
   }
   return surgery.preOpVA || '-';
-}
-
-function sortScheduledQueue(surgeries: Surgery[]) {
-  return [...surgeries].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
-}
-
-function sortHistory(surgeries: Surgery[]) {
-  return [...surgeries].sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
-}
-
-function historySummary(surgeries: Surgery[]) {
-  const completed = surgeries.filter((surgery) => surgery.status === 'Completed').length;
-  const postponed = surgeries.filter((surgery) => surgery.status === 'Postponed').length;
-  const cancelled = surgeries.filter((surgery) => surgery.status === 'Cancelled').length;
-  return `${completed} completed, ${postponed} postponed, ${cancelled} cancelled`;
 }
 
 function printAfterRender() {
@@ -102,118 +85,156 @@ function printAfterRender() {
   });
 }
 
+function historySummary(surgeries: Surgery[]) {
+  const completed = surgeries.filter((s) => s.status === 'Completed').length;
+  const postponed = surgeries.filter((s) => s.status === 'Postponed').length;
+  const cancelled = surgeries.filter((s) => s.status === 'Cancelled').length;
+  return `${completed} completed, ${postponed} postponed, ${cancelled} cancelled`;
+}
+
+function formatDateShort(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SurgeriesPage() {
   const { can, role } = usePermissions();
   const isSuperAdmin  = role === 'Super Administrator';
 
-  const [surgeries,      setSurgeries]      = useState<Surgery[]>([]);
-  const [total,          setTotal]          = useState(0);
-  const [patientTotal,   setPatientTotal]   = useState(0);
-  const [page,           setPage]           = useState(1);
-  const [form,           setForm]           = useState<SurgeryForm>(BLANK);
-  const [editing,        setEditing]        = useState<Surgery | null>(null);
-  const [showForm,       setShowForm]       = useState(false);
-  const [saveError,      setSaveError]      = useState('');
-  const [search,         setSearch]         = useState('');
+  // ── Shared ─────────────────────────────────────────────────────────────────
+  const [search,          setSearch]          = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter,   setStatusFilter]   = useState('');
-  const [regionFilter,   setRegionFilter]   = useState('');
-  const [isLoading,      setIsLoading]      = useState(true);
-  const [loadError,      setLoadError]      = useState('');
-  const [refreshKey,     setRefreshKey]     = useState(0);
-  const [deleteTarget,   setDeleteTarget]   = useState<Surgery | null>(null);
+  const [refreshKey,      setRefreshKey]      = useState(0);
+  const [form,            setForm]            = useState<SurgeryForm>(BLANK);
+  const [editing,         setEditing]         = useState<Surgery | null>(null);
+  const [showForm,        setShowForm]        = useState(false);
+  const [saveError,       setSaveError]       = useState('');
+  const [deleteTarget,    setDeleteTarget]    = useState<Surgery | null>(null);
   const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
-  const [completeTarget, setCompleteTarget] = useState<Surgery | null>(null);
-  const [viewing,        setViewing]        = useState<Surgery | null>(null);
-  const [historyOpen,    setHistoryOpen]    = useState(false);
-  const [printRows,      setPrintRows]      = useState<Surgery[] | null>(null);
-  const [printMode,      setPrintMode]      = useState<PrintMode>('current');
-  const [printTotal,     setPrintTotal]     = useState(0);
-  const [printLimit,     setPrintLimit]     = useState(0);
-  const [printTruncated, setPrintTruncated] = useState(false);
-  const [printRequestId, setPrintRequestId] = useState(0);
-  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+  const [completeTarget,  setCompleteTarget]  = useState<Surgery | null>(null);
+  const [viewing,         setViewing]         = useState<Surgery | null>(null);
 
+  // ── Waiting section ────────────────────────────────────────────────────────
+  const [waitingRegion,     setWaitingRegion]     = useState('');
+  const [waitingFrom,       setWaitingFrom]       = useState('');
+  const [waitingTo,         setWaitingTo]         = useState('');
+  const [waitingSurgeries,  setWaitingSurgeries]  = useState<Surgery[]>([]);
+  const [waitingTotal,      setWaitingTotal]      = useState(0);
+  const [waitingPage,       setWaitingPage]       = useState(1);
+  const [waitingLoading,    setWaitingLoading]    = useState(true);
+  const [waitingError,      setWaitingError]      = useState('');
+  const [waitingPrintRows,  setWaitingPrintRows]  = useState<Surgery[] | null>(null);
+  const [waitingPrintTotal, setWaitingPrintTotal] = useState(0);
+  const [waitingPrintTrunc, setWaitingPrintTrunc] = useState(false);
+  const [waitingPrintLimit, setWaitingPrintLimit] = useState(0);
+  const [waitingPrintId,    setWaitingPrintId]    = useState(0);
+  const [isPrintingWaiting, setIsPrintingWaiting] = useState(false);
+
+  // ── History section ────────────────────────────────────────────────────────
+  const [historyOpen,       setHistoryOpen]       = useState(false);
+  const [historyRegion,     setHistoryRegion]     = useState('');
+  const [historyFrom,       setHistoryFrom]       = useState('');
+  const [historyTo,         setHistoryTo]         = useState('');
+  const [historySurgeries,  setHistorySurgeries]  = useState<Surgery[]>([]);
+  const [historyTotal,      setHistoryTotal]      = useState(0);
+  const [historyPage,       setHistoryPage]       = useState(1);
+  const [historyLoading,    setHistoryLoading]    = useState(true);
+  const [historyPrintRows,  setHistoryPrintRows]  = useState<Surgery[] | null>(null);
+  const [historyPrintTotal, setHistoryPrintTotal] = useState(0);
+  const [historyPrintTrunc, setHistoryPrintTrunc] = useState(false);
+  const [historyPrintLimit, setHistoryPrintLimit] = useState(0);
+  const [historyPrintId,    setHistoryPrintId]    = useState(0);
+  const [isPrintingHistory, setIsPrintingHistory] = useState(false);
+
+  // ── Search debounce ────────────────────────────────────────────────────────
   useEffect(() => {
-    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setWaitingPage(1);
+      setHistoryPage(1);
+    }, 400);
     return () => clearTimeout(t);
   }, [search]);
 
+  // ── Fetch waiting ──────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    getSurgeriesPaginated({ search: debouncedSearch, region: regionFilter, status: statusFilter, page, pageSize: PAGE_SIZE })
-      .then(({ data, total: t, patientTotal: pt }) => {
+    setWaitingLoading(true);
+    getSurgeriesPaginated({
+      search: debouncedSearch,
+      region: waitingRegion,
+      status: 'Scheduled',
+      scheduledFrom: waitingFrom,
+      scheduledTo: waitingTo,
+      page: waitingPage,
+      pageSize: PAGE_SIZE,
+      sortAsc: true,
+    })
+      .then(({ data, total }) => {
         if (!cancelled) {
-          setSurgeries(data);
-          setTotal(t);
-          setPatientTotal(pt);
-          setLoadError('');
-          setIsLoading(false);
+          setWaitingSurgeries(data);
+          setWaitingTotal(total);
+          setWaitingError('');
+          setWaitingLoading(false);
         }
       })
       .catch((error) => {
         if (!cancelled) {
-          setSurgeries([]);
-          setTotal(0);
-          setPatientTotal(0);
-          setLoadError(error instanceof Error ? error.message : 'Could not load surgeries');
-          setIsLoading(false);
+          setWaitingSurgeries([]);
+          setWaitingTotal(0);
+          setWaitingError(error instanceof Error ? error.message : 'Could not load surgeries');
+          setWaitingLoading(false);
         }
       });
     return () => { cancelled = true; };
-  }, [debouncedSearch, regionFilter, statusFilter, page, refreshKey]);
+  }, [debouncedSearch, waitingRegion, waitingFrom, waitingTo, waitingPage, refreshKey]);
+
+  // ── Fetch history ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoading(true);
+    getSurgeriesPaginated({
+      search: debouncedSearch,
+      region: historyRegion,
+      statuses: ['Completed', 'Cancelled', 'Postponed'],
+      performedFrom: historyFrom,
+      performedTo: historyTo,
+      page: historyPage,
+      pageSize: PAGE_SIZE,
+      sortAsc: false,
+    })
+      .then(({ data, total }) => {
+        if (!cancelled) {
+          setHistorySurgeries(data);
+          setHistoryTotal(total);
+          setHistoryLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHistorySurgeries([]);
+          setHistoryTotal(0);
+          setHistoryLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [debouncedSearch, historyRegion, historyFrom, historyTo, historyPage, refreshKey]);
+
+  // ── Print triggers ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (waitingPrintId === 0) return;
+    printAfterRender();
+  }, [waitingPrintId]);
 
   useEffect(() => {
-    if (printRequestId === 0) return;
+    if (historyPrintId === 0) return;
     printAfterRender();
-  }, [printRequestId]);
-
-  const hasFilters = !!search || !!statusFilter || !!regionFilter;
-
-  function printCurrentQueue() {
-    setPrintRows(null);
-    setPrintMode('current');
-    setPrintTotal(0);
-    setPrintLimit(0);
-    setPrintTruncated(false);
-    setPrintRequestId((id) => id + 1);
-  }
-
-  async function printAllMatchingQueue() {
-    setIsPreparingPrint(true);
-    try {
-      const result = await getPrintableWaitingSurgeries({
-        search: debouncedSearch,
-        region: regionFilter,
-      });
-      setPrintRows(result.data);
-      setPrintMode('all');
-      setPrintTotal(result.total);
-      setPrintLimit(result.limit);
-      setPrintTruncated(result.truncated);
-      if (result.truncated) {
-        toast({
-          title: 'Print list limited',
-          description: `Showing the first ${result.limit} matching waiting surgeries. Narrow the filters to print fewer records.`,
-          variant: 'info',
-        });
-      }
-      setPrintRequestId((id) => id + 1);
-    } catch (error) {
-      toast({
-        title: 'Could not prepare print list',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'error',
-      });
-    } finally {
-      setIsPreparingPrint(false);
-    }
-  }
+  }, [historyPrintId]);
 
   // ── Form helpers ───────────────────────────────────────────────────────────
-
   function set<K extends keyof SurgeryForm>(key: K, value: SurgeryForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -232,8 +253,6 @@ export default function SurgeriesPage() {
     setShowForm(true);
   }
 
-  // ── Save edit ──────────────────────────────────────────────────────────────
-
   async function save() {
     if (!editing) return;
     setSaveError('');
@@ -243,13 +262,11 @@ export default function SurgeriesPage() {
       toast({ title: 'Surgery update failed', description: result.error, variant: 'error' });
       return;
     }
-    setSurgeries((rows) => rows.map((r) => r.id === editing.id ? result.data : r));
     toast({ title: 'Surgery updated', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
     setShowForm(false);
     setEditing(null);
+    setRefreshKey((k) => k + 1);
   }
-
-  // ── Quick complete ─────────────────────────────────────────────────────────
 
   async function confirmComplete() {
     if (!completeTarget) return;
@@ -259,19 +276,16 @@ export default function SurgeriesPage() {
       performedAt: completeTarget.performedAt ?? nowLocal(),
     });
     if (result.ok) {
-      setSurgeries((rows) => rows.map((r) => r.id === completeTarget.id ? result.data : r));
       toast({ title: 'Surgery completed', description: patientDisplayName(result.data.patientName, result.data.patientCode) });
+      setRefreshKey((k) => k + 1);
     } else {
       toast({ title: 'Could not complete surgery', description: result.error, variant: 'error' });
     }
     setCompleteTarget(null);
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
-
   async function confirmDelete() {
     if (!deleteTarget) return;
-    // Surgery deletion is permanently blocked — redirect to change request workflow
     setDeleteTarget(null);
     setChangeRequestTarget({
       entity: 'Surgery',
@@ -282,16 +296,76 @@ export default function SurgeriesPage() {
     });
   }
 
+  // ── Print actions ──────────────────────────────────────────────────────────
+  async function printWaiting() {
+    setIsPrintingWaiting(true);
+    setHistoryPrintRows(null);
+    try {
+      const result = await getPrintableWaitingSurgeries({
+        search: debouncedSearch,
+        region: waitingRegion,
+        scheduledFrom: waitingFrom,
+        scheduledTo: waitingTo,
+      });
+      setWaitingPrintRows(result.data);
+      setWaitingPrintTotal(result.total);
+      setWaitingPrintTrunc(result.truncated);
+      setWaitingPrintLimit(result.limit);
+      if (result.truncated) {
+        toast({
+          title: 'Print list limited',
+          description: `Showing the first ${result.limit} records. Narrow the filters to print the full list.`,
+          variant: 'info',
+        });
+      }
+      setWaitingPrintId((id) => id + 1);
+    } catch (error) {
+      toast({ title: 'Could not prepare print list', description: error instanceof Error ? error.message : 'Please try again.', variant: 'error' });
+    } finally {
+      setIsPrintingWaiting(false);
+    }
+  }
+
+  async function printHistory() {
+    setIsPrintingHistory(true);
+    setWaitingPrintRows(null);
+    try {
+      const result = await getPrintableHistorySurgeries({
+        search: debouncedSearch,
+        region: historyRegion,
+        performedFrom: historyFrom,
+        performedTo: historyTo,
+      });
+      setHistoryPrintRows(result.data);
+      setHistoryPrintTotal(result.total);
+      setHistoryPrintTrunc(result.truncated);
+      setHistoryPrintLimit(result.limit);
+      if (result.truncated) {
+        toast({
+          title: 'Print list limited',
+          description: `Showing the first ${result.limit} records. Narrow the filters to print the full list.`,
+          variant: 'info',
+        });
+      }
+      setHistoryPrintId((id) => id + 1);
+    } catch (error) {
+      toast({ title: 'Could not prepare print list', description: error instanceof Error ? error.message : 'Please try again.', variant: 'error' });
+    } finally {
+      setIsPrintingHistory(false);
+    }
+  }
+
   const formInvalid = !form.patientId || !form.campaignId || !form.scheduledAt ||
     (form.status === 'Completed' && !form.performedAt);
-  const filteredMode = !!statusFilter;
-  const scheduledSurgeries = sortScheduledQueue(surgeries.filter((surgery) => surgery.status === 'Scheduled'));
-  const otherSurgeries = sortHistory(surgeries.filter((surgery) => surgery.status !== 'Scheduled'));
-  const visibleSurgeries = filteredMode ? sortHistory(surgeries) : scheduledSurgeries;
+
+  const waitingHasFilters = !!waitingRegion || !!waitingFrom || !!waitingTo;
+  const historyHasFilters = !!historyRegion || !!historyFrom || !!historyTo;
+
+  const printedAt = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
   return (
     <div className="space-y-5">
-      {/* Confirm: mark complete */}
+      {/* ── Dialogs ──────────────────────────────────────────────────────────── */}
       <ConfirmDialog
         open={!!completeTarget}
         title="Mark Surgery as Completed"
@@ -304,7 +378,6 @@ export default function SurgeriesPage() {
         onCancel={() => setCompleteTarget(null)}
       />
 
-      {/* Confirm: delete — redirects to change request since surgery deletion is blocked */}
       <ConfirmDialog
         open={!!deleteTarget}
         title="Surgery Record Protected"
@@ -341,7 +414,6 @@ export default function SurgeriesPage() {
                 <X size={16} />
               </button>
             </div>
-
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <DetailValue label="Phone" value={viewing.patientPhone || '—'} />
               <DetailValue label="Emergency Phone" value={viewing.patientEmergencyPhone || '—'} />
@@ -356,7 +428,6 @@ export default function SurgeriesPage() {
               <DetailValue label="Complications" value={viewing.complications || '—'} wide />
               <DetailValue label="Surgery Notes" value={viewing.intraopNotes || '—'} wide />
             </div>
-
             {viewing.screeningResult && (
               <div className="mt-4 rounded-lg border border-[#EAEEF3] bg-[#F8FAFC] p-4">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#647184]">Screening Snapshot</p>
@@ -376,7 +447,6 @@ export default function SurgeriesPage() {
         </div>
       )}
 
-      {/* Edit modal */}
       {showForm && editing && (
         <ModalForm
           title={`Edit Surgery - ${patientDisplayName(editing.patientName, editing.patientCode)}`}
@@ -396,243 +466,322 @@ export default function SurgeriesPage() {
         </ModalForm>
       )}
 
-      {/* Page header */}
-      <div className="flex items-center justify-between gap-3" data-print-hide="">
-        <div>
-          <h1 className="text-xl font-bold text-[#141920]">Surgeries</h1>
-          <p className="text-sm text-[#4B5666]">
-            {isLoading
-              ? 'Loading...'
-              : `${patientTotal} patient${patientTotal === 1 ? '' : 's'}`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={printCurrentQueue}
-            className="inline-flex items-center gap-2 rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm font-semibold text-[#4B5666] shadow-sm transition hover:bg-[#F5F7FA] hover:text-[#141920]"
-          >
-            <Printer size={15} /> Print Page
-          </button>
-          <button
-            type="button"
-            onClick={printAllMatchingQueue}
-            disabled={isPreparingPrint}
-            className="inline-flex items-center gap-2 rounded-md bg-[#2C9942] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#238038] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Printer size={15} /> {isPreparingPrint ? 'Preparing...' : 'Print All Matching'}
-          </button>
-        </div>
-      </div>
+      {/* ── Print views (hidden on-screen, revealed when printing) ───────────── */}
+      {waitingPrintRows !== null && (
+        <WaitingPrintView
+          rows={waitingPrintRows}
+          total={waitingPrintTotal}
+          truncated={waitingPrintTrunc}
+          limit={waitingPrintLimit}
+          filters={{ region: waitingRegion, scheduledFrom: waitingFrom, scheduledTo: waitingTo }}
+          printedAt={printedAt}
+        />
+      )}
+      {historyPrintRows !== null && (
+        <HistoryPrintView
+          rows={historyPrintRows}
+          total={historyPrintTotal}
+          truncated={historyPrintTrunc}
+          limit={historyPrintLimit}
+          filters={{ region: historyRegion, performedFrom: historyFrom, performedTo: historyTo }}
+          printedAt={printedAt}
+        />
+      )}
 
-      <SurgeryWaitingPrintView
-        rows={printRows ?? scheduledSurgeries}
-        mode={printMode}
-        total={printTotal}
-        limit={printLimit}
-        truncated={printTruncated}
-        hasFilters={hasFilters}
-      />
-
+      {/* ── Main UI ──────────────────────────────────────────────────────────── */}
       <div className="space-y-5" data-print-hide="">
-      {/* Filters bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative min-w-56 flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#647184]" size={13} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search patient, doctor, or region..."
-            className={`${F.input} pl-9`}
-          />
-        </div>
 
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? ''); setPage(1); }}>
-          <SelectTrigger className="w-52 rounded-md">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All Statuses</SelectItem>
-            {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        {isSuperAdmin && (
-          <Select value={regionFilter} onValueChange={(v) => { setRegionFilter(v ?? ''); setPage(1); }}>
-            <SelectTrigger className="w-56 rounded-md">
-              <SelectValue placeholder="All Regions" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All Regions</SelectItem>
-              {REGIONAL_CAMPAIGN_AREAS.map((a) => (
-                <SelectItem key={a.region} value={a.region}>{a.region}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {hasFilters && (
-          <button
-            onClick={() => { setSearch(''); setStatusFilter(''); setRegionFilter(''); setPage(1); }}
-            className="flex items-center gap-1.5 rounded-md border border-[#DDE3EA] px-3 py-2 text-xs font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
-          >
-            <X size={12} /> Clear
-          </button>
-        )}
-
-        <span className="ml-auto shrink-0 text-sm text-[#647184]">
-          {patientTotal} patient{patientTotal === 1 ? '' : 's'}
-        </span>
-      </div>
-
-      {loadError && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
-          <span className="flex min-w-0 items-center gap-2">
-            <AlertTriangle size={15} className="shrink-0" />
-            <span className="min-w-0">{loadError}</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => { setIsLoading(true); setLoadError(''); setRefreshKey((key) => key + 1); }}
-            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
-          >
-            <RefreshCw size={12} /> Retry
-          </button>
-        </div>
-      )}
-
-      {filteredMode ? (
-        <SurgeryTable
-          title={`${statusFilter} Surgeries`}
-          subtitle={`${patientTotal} matching patient${patientTotal === 1 ? '' : 's'}`}
-          rows={visibleSurgeries}
-          isLoading={isLoading}
-          emptyMessage={hasFilters ? 'No surgeries match the current filters.' : 'No surgery records yet.'}
-          page={page}
-          canEdit={can('surgeries', 'edit')}
-          canDelete={can('surgeries', 'delete')}
-          onView={setViewing}
-          onComplete={setCompleteTarget}
-          onEdit={openEdit}
-          onDelete={setDeleteTarget}
-          compactScheduled
-        />
-      ) : (
-        <>
-          <SurgeryTable
-            title="Scheduled Surgery Queue"
-            subtitle="Patients waiting for surgery, sorted by nearest scheduled time"
-            rows={scheduledSurgeries}
-            isLoading={isLoading}
-            emptyMessage={hasFilters ? 'No scheduled surgeries match the current filters.' : 'No scheduled surgeries waiting.'}
-            page={page}
-            canEdit={can('surgeries', 'edit')}
-            canDelete={can('surgeries', 'delete')}
-          onView={setViewing}
-          onComplete={setCompleteTarget}
-          onEdit={openEdit}
-          onDelete={setDeleteTarget}
-          compactScheduled
-        />
-
-          <Card className="overflow-hidden border-0 shadow-sm">
+        {/* Page header + global search */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="mr-auto">
+            <h1 className="text-xl font-bold text-[#141920]">Surgeries</h1>
+          </div>
+          <div className="relative min-w-56 flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#647184]" size={13} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search patient, doctor, or region..."
+              className={`${F.input} pl-9`}
+            />
+          </div>
+          {search && (
             <button
-              type="button"
-              onClick={() => setHistoryOpen((open) => !open)}
-              className="flex w-full items-center justify-between gap-3 border-b border-[#EAEEF3] bg-white px-4 py-3 text-left transition hover:bg-[#F8FAFC]"
+              onClick={() => setSearch('')}
+              className="flex items-center gap-1.5 rounded-md border border-[#DDE3EA] px-3 py-2 text-xs font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
             >
-              <span>
-                <span className="block text-sm font-bold text-[#141920]">Other Surgeries</span>
-                <span className="mt-0.5 block text-xs text-[#647184]">{historySummary(otherSurgeries)}</span>
-              </span>
-              <span className="flex items-center gap-2 text-xs font-semibold text-[#4B5666]">
-                {otherSurgeries.length} record{otherSurgeries.length === 1 ? '' : 's'}
-                {historyOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-              </span>
+              <X size={12} /> Clear search
             </button>
-            {historyOpen && (
-              <CardContent className="p-0">
-                <SurgeryTableBody
-                  rows={otherSurgeries}
-                  isLoading={false}
-                  emptyMessage="No completed, postponed, or cancelled surgeries on this page."
-                  page={page}
-                  canEdit={can('surgeries', 'edit')}
-                  canDelete={can('surgeries', 'delete')}
-                  onView={setViewing}
-                  onComplete={setCompleteTarget}
-                  onEdit={openEdit}
-                  onDelete={setDeleteTarget}
-                  compactHistory
-                />
-              </CardContent>
-            )}
-          </Card>
-        </>
-      )}
+          )}
+        </div>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+        {/* ── Scheduled Surgery Queue ───────────────────────────────────────── */}
+        <Card className="overflow-hidden border-0 shadow-sm">
+          {/* Section header */}
+          <div className="border-b border-[#EAEEF3] bg-white px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-[#141920]">Scheduled Surgery Queue</h2>
+                <p className="mt-0.5 text-xs text-[#647184]">
+                  {waitingLoading
+                    ? 'Loading...'
+                    : `${waitingTotal} patient${waitingTotal === 1 ? '' : 's'} waiting for surgery`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={printWaiting}
+                disabled={isPrintingWaiting}
+                className="inline-flex items-center gap-2 rounded-md border border-[#DDE3EA] bg-white px-3 py-1.5 text-xs font-semibold text-[#4B5666] shadow-sm transition hover:bg-[#F5F7FA] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Printer size={13} /> {isPrintingWaiting ? 'Preparing...' : 'Print'}
+              </button>
+            </div>
+
+            {/* Waiting filters */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {isSuperAdmin && (
+                <Select
+                  value={waitingRegion}
+                  onValueChange={(v) => { setWaitingRegion(v ?? ''); setWaitingPage(1); }}
+                >
+                  <SelectTrigger className="h-8 w-44 text-xs rounded-md">
+                    <SelectValue placeholder="All Regions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Regions</SelectItem>
+                    {REGIONAL_CAMPAIGN_AREAS.map((a) => (
+                      <SelectItem key={a.region} value={a.region}>{a.region}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-[#647184]">Scheduled</span>
+                <input
+                  type="date"
+                  value={waitingFrom}
+                  onChange={(e) => { setWaitingFrom(e.target.value); setWaitingPage(1); }}
+                  className={F.dateInput}
+                />
+                <span className="text-xs text-[#647184]">–</span>
+                <input
+                  type="date"
+                  value={waitingTo}
+                  onChange={(e) => { setWaitingTo(e.target.value); setWaitingPage(1); }}
+                  className={F.dateInput}
+                />
+              </div>
+              {waitingHasFilters && (
+                <button
+                  onClick={() => { setWaitingRegion(''); setWaitingFrom(''); setWaitingTo(''); setWaitingPage(1); }}
+                  className="flex items-center gap-1 rounded-md border border-[#DDE3EA] px-2 py-1 text-xs font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
+                >
+                  <X size={11} /> Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {waitingError && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#FACDCB] bg-[#FDECEB] px-4 py-3 text-sm text-[#8A1F1D]">
+              <span className="flex min-w-0 items-center gap-2">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span className="min-w-0">{waitingError}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => { setWaitingLoading(true); setWaitingError(''); setRefreshKey((k) => k + 1); }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#8A1F1D] shadow-sm transition hover:bg-[#FFF5F5]"
+              >
+                <RefreshCw size={12} /> Retry
+              </button>
+            </div>
+          )}
+
+          <CardContent className="p-0">
+            <SurgeryTableBody
+              rows={waitingSurgeries}
+              isLoading={waitingLoading}
+              emptyMessage={waitingHasFilters || !!debouncedSearch
+                ? 'No scheduled surgeries match the current filters.'
+                : 'No scheduled surgeries waiting.'}
+              page={waitingPage}
+              canEdit={can('surgeries', 'edit')}
+              canDelete={can('surgeries', 'delete')}
+              onView={setViewing}
+              onComplete={setCompleteTarget}
+              onEdit={openEdit}
+              onDelete={setDeleteTarget}
+              compactScheduled
+            />
+          </CardContent>
+        </Card>
+
+        <Pagination page={waitingPage} pageSize={PAGE_SIZE} total={waitingTotal} onPageChange={setWaitingPage} />
+
+        {/* ── Surgery History ───────────────────────────────────────────────── */}
+        <Card className="overflow-hidden border-0 shadow-sm">
+          {/* Collapsible header with print button */}
+          <div className="border-b border-[#EAEEF3] bg-white">
+            <div className="flex w-full items-center justify-between gap-3 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((o) => !o)}
+                className="flex flex-1 items-center gap-3 text-left"
+              >
+                <span>
+                  <span className="block text-sm font-bold text-[#141920]">Surgery History</span>
+                  <span className="mt-0.5 block text-xs text-[#647184]">
+                    {historyLoading ? 'Loading...' : historySummary(historySurgeries)}
+                  </span>
+                </span>
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={printHistory}
+                  disabled={isPrintingHistory}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#DDE3EA] bg-white px-3 py-1.5 text-xs font-semibold text-[#4B5666] shadow-sm transition hover:bg-[#F5F7FA] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Printer size={13} /> {isPrintingHistory ? 'Preparing...' : 'Print'}
+                </button>
+                <span className="text-xs font-semibold text-[#4B5666]">
+                  {historyTotal} record{historyTotal === 1 ? '' : 's'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen((o) => !o)}
+                  className="rounded-md p-1 text-[#647184] transition hover:bg-[#EAEEF3]"
+                >
+                  {historyOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                </button>
+              </div>
+            </div>
+
+            {/* History filters (visible when expanded) */}
+            {historyOpen && (
+              <div className="border-t border-[#EAEEF3] px-4 py-2.5 flex flex-wrap items-center gap-2">
+                {isSuperAdmin && (
+                  <Select
+                    value={historyRegion}
+                    onValueChange={(v) => { setHistoryRegion(v ?? ''); setHistoryPage(1); }}
+                  >
+                    <SelectTrigger className="h-8 w-44 text-xs rounded-md">
+                      <SelectValue placeholder="All Regions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Regions</SelectItem>
+                      {REGIONAL_CAMPAIGN_AREAS.map((a) => (
+                        <SelectItem key={a.region} value={a.region}>{a.region}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[#647184]">Performed</span>
+                  <input
+                    type="date"
+                    value={historyFrom}
+                    onChange={(e) => { setHistoryFrom(e.target.value); setHistoryPage(1); }}
+                    className={F.dateInput}
+                  />
+                  <span className="text-xs text-[#647184]">–</span>
+                  <input
+                    type="date"
+                    value={historyTo}
+                    onChange={(e) => { setHistoryTo(e.target.value); setHistoryPage(1); }}
+                    className={F.dateInput}
+                  />
+                </div>
+                {historyHasFilters && (
+                  <button
+                    onClick={() => { setHistoryRegion(''); setHistoryFrom(''); setHistoryTo(''); setHistoryPage(1); }}
+                    className="flex items-center gap-1 rounded-md border border-[#DDE3EA] px-2 py-1 text-xs font-medium text-[#4B5666] transition hover:bg-[#F5F7FA]"
+                  >
+                    <X size={11} /> Clear
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {historyOpen && (
+            <CardContent className="p-0">
+              <SurgeryTableBody
+                rows={historySurgeries}
+                isLoading={historyLoading}
+                emptyMessage={historyHasFilters || !!debouncedSearch
+                  ? 'No history surgeries match the current filters.'
+                  : 'No completed, postponed, or cancelled surgeries yet.'}
+                page={historyPage}
+                canEdit={can('surgeries', 'edit')}
+                canDelete={can('surgeries', 'delete')}
+                onView={setViewing}
+                onComplete={setCompleteTarget}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+                compactHistory
+              />
+            </CardContent>
+          )}
+        </Card>
+
+        {historyOpen && (
+          <Pagination page={historyPage} pageSize={PAGE_SIZE} total={historyTotal} onPageChange={setHistoryPage} />
+        )}
       </div>
     </div>
   );
 }
 
-function SurgeryWaitingPrintView({
-  rows,
-  mode,
-  total,
-  limit,
-  truncated,
-  hasFilters,
+// ─── Print views ───────────────────────────────────────────────────────────────
+
+function WaitingPrintView({
+  rows, total, truncated, limit, filters, printedAt,
 }: {
   rows: Surgery[];
-  mode: PrintMode;
   total: number;
-  limit: number;
   truncated: boolean;
-  hasFilters: boolean;
+  limit: number;
+  filters: { region: string; scheduledFrom: string; scheduledTo: string };
+  printedAt: string;
 }) {
+  const regionLabel = filters.region || 'All regions';
+  const dateLabel = filters.scheduledFrom || filters.scheduledTo
+    ? `${filters.scheduledFrom ? formatDateShort(filters.scheduledFrom) : '…'} – ${filters.scheduledTo ? formatDateShort(filters.scheduledTo) : '…'}`
+    : 'All dates';
+
   return (
     <section data-print-only="" className="print-report">
       <div className="print-report-header">
         <h1>Waiting Surgery List</h1>
-        {mode === 'all' ? (
-          <p>
-            {rows.length} of {total} matching scheduled patient{total === 1 ? '' : 's'}
-            {truncated ? ` (limited to first ${limit}; narrow filters to print the full list)` : ''}
-          </p>
-        ) : (
-          <p>
-            {rows.length} scheduled patient{rows.length === 1 ? '' : 's'} on this page
-            {hasFilters ? ' with current filters' : ''}
-          </p>
-        )}
+        <p>
+          Region: {regionLabel} | Scheduled: {dateLabel} | Printed: {printedAt} | {rows.length} of {total} patient{total === 1 ? '' : 's'}
+          {truncated ? ` (limited to first ${limit} — narrow filters for full list)` : ''}
+        </p>
       </div>
-
       <table>
         <thead>
           <tr>
-            {['#', 'Patient Name', 'Age', 'Phone', 'Region / City', 'Eye', 'Screening Finding', 'VA R / L'].map((header) => (
-              <th key={header}>{header}</th>
+            {['#', 'Patient Name', 'Phone', 'Region', 'Eye', 'Screening Finding', 'VA Pre-op R / L', 'Status'].map((h) => (
+              <th key={h}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr>
-              <td colSpan={8}>No scheduled surgeries waiting on this page.</td>
-            </tr>
-          ) : rows.map((surgery, index) => (
+            <tr><td colSpan={8}>No scheduled surgeries match the selected filters.</td></tr>
+          ) : rows.map((surgery, i) => (
             <tr key={surgery.id}>
-              <td>{index + 1}</td>
+              <td>{i + 1}</td>
               <td>{surgery.patientName || '-'}</td>
-              <td>{typeof surgery.patientAge === 'number' ? surgery.patientAge : '-'}</td>
               <td>{surgery.patientPhone || '-'}</td>
               <td>{surgery.region}{surgery.operationDistrict ? ` / ${surgery.operationDistrict}` : ''}</td>
               <td>{surgery.eye || '-'}</td>
               <td>{surgeryFindingLabel(surgery)}</td>
-              <td>{surgeryVaSummary(surgery)}</td>
+              <td>{surgeryPreOpVA(surgery)}</td>
+              <td>{surgery.status}</td>
             </tr>
           ))}
         </tbody>
@@ -641,59 +790,60 @@ function SurgeryWaitingPrintView({
   );
 }
 
-function SurgeryTable({
-  title,
-  subtitle,
-  rows,
-  isLoading,
-  emptyMessage,
-  page,
-  canEdit,
-  canDelete,
-  onView,
-  onComplete,
-  onEdit,
-  onDelete,
-  compactScheduled = false,
+function HistoryPrintView({
+  rows, total, truncated, limit, filters, printedAt,
 }: {
-  title: string;
-  subtitle: string;
   rows: Surgery[];
-  isLoading: boolean;
-  emptyMessage: string;
-  page: number;
-  canEdit: boolean;
-  canDelete: boolean;
-  onView: (surgery: Surgery) => void;
-  onComplete: (surgery: Surgery) => void;
-  onEdit: (surgery: Surgery) => void;
-  onDelete: (surgery: Surgery) => void;
-  compactScheduled?: boolean;
+  total: number;
+  truncated: boolean;
+  limit: number;
+  filters: { region: string; performedFrom: string; performedTo: string };
+  printedAt: string;
 }) {
+  const regionLabel = filters.region || 'All regions';
+  const dateLabel = filters.performedFrom || filters.performedTo
+    ? `${filters.performedFrom ? formatDateShort(filters.performedFrom) : '…'} – ${filters.performedTo ? formatDateShort(filters.performedTo) : '…'}`
+    : 'All dates';
+
   return (
-    <Card className="overflow-hidden border-0 shadow-sm">
-      <div className="border-b border-[#EAEEF3] bg-white px-4 py-3">
-        <h2 className="text-sm font-bold text-[#141920]">{title}</h2>
-        <p className="mt-0.5 text-xs text-[#647184]">{subtitle}</p>
+    <section data-print-only="" className="print-report">
+      <div className="print-report-header">
+        <h1>Surgery History</h1>
+        <p>
+          Region: {regionLabel} | Performed: {dateLabel} | Printed: {printedAt} | {rows.length} of {total} record{total === 1 ? '' : 's'}
+          {truncated ? ` (limited to first ${limit} — narrow filters for full list)` : ''}
+        </p>
       </div>
-      <CardContent className="p-0">
-        <SurgeryTableBody
-          rows={rows}
-          isLoading={isLoading}
-          emptyMessage={emptyMessage}
-          page={page}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          onView={onView}
-          onComplete={onComplete}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          compactScheduled={compactScheduled}
-        />
-      </CardContent>
-    </Card>
+      <table>
+        <thead>
+          <tr>
+            {['#', 'Patient Name', 'Phone', 'Region', 'Eye', 'VA Pre-op R / L', 'VA Post-op', 'Status'].map((h) => (
+              <th key={h}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={8}>No history surgeries match the selected filters.</td></tr>
+          ) : rows.map((surgery, i) => (
+            <tr key={surgery.id}>
+              <td>{i + 1}</td>
+              <td>{surgery.patientName || '-'}</td>
+              <td>{surgery.patientPhone || '-'}</td>
+              <td>{surgery.region}{surgery.operationDistrict ? ` / ${surgery.operationDistrict}` : ''}</td>
+              <td>{surgery.eye || '-'}</td>
+              <td>{surgeryPreOpVA(surgery)}</td>
+              <td>{surgery.postOpVA || '-'}</td>
+              <td>{surgery.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
+
+// ─── Table body ────────────────────────────────────────────────────────────────
 
 function SurgeryTableBody({
   rows,
@@ -726,7 +876,7 @@ function SurgeryTableBody({
     ? ['Patient', 'Phone', 'Region / City', 'Eye · Lens', 'Scheduled', 'Actions']
     : compactHistory
       ? ['Patient', 'Status', 'Region / City', 'Scheduled', 'Performed', 'Actions']
-    : ['#', 'Patient', 'Phone', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''];
+      : ['#', 'Patient', 'Phone', 'Region / City', 'Status', 'Eye · Lens', 'Scheduled', 'Performed', 'Surgeon', 'Notes', ''];
 
   return (
     <div className="overflow-x-auto">
@@ -787,13 +937,7 @@ function SurgeryTableBody({
 }
 
 function ScheduledSurgeryRow({
-  surgery,
-  canEdit,
-  canDelete,
-  onView,
-  onComplete,
-  onEdit,
-  onDelete,
+  surgery, canEdit, canDelete, onView, onComplete, onEdit, onDelete,
 }: {
   surgery: Surgery;
   canEdit: boolean;
@@ -829,36 +973,21 @@ function ScheduledSurgeryRow({
       <td className="px-4 py-3.5 text-xs text-[#4B5666]">{formatDateTime(surgery.scheduledAt)}</td>
       <td className="px-4 py-3.5">
         <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={() => onView(surgery)}
-            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]"
-            title="View patient and surgery details"
-          >
+          <button onClick={() => onView(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]" title="View details">
             <Eye size={13} />
           </button>
           {canEdit && (
-            <button
-              onClick={() => onComplete(surgery)}
-              className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
-            >
+            <button onClick={() => onComplete(surgery)} className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]">
               <CheckCircle size={11} /> Complete
             </button>
           )}
           {canEdit && (
-            <button
-              onClick={() => onEdit(surgery)}
-              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
-              title="Edit surgery"
-            >
+            <button onClick={() => onEdit(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]" title="Edit surgery">
               <Pencil size={13} />
             </button>
           )}
           {canDelete && (
-            <button
-              onClick={() => onDelete(surgery)}
-              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
-              title="Delete surgery"
-            >
+            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
               <Trash2 size={13} />
             </button>
           )}
@@ -869,13 +998,7 @@ function ScheduledSurgeryRow({
 }
 
 function HistorySurgeryRow({
-  surgery,
-  canEdit,
-  canDelete,
-  onView,
-  onComplete,
-  onEdit,
-  onDelete,
+  surgery, canEdit, canDelete, onView, onComplete, onEdit, onDelete,
 }: {
   surgery: Surgery;
   canEdit: boolean;
@@ -904,36 +1027,21 @@ function HistorySurgeryRow({
       <td className="px-4 py-3.5 text-xs text-[#4B5666]">{surgery.performedAt ? formatDateTime(surgery.performedAt) : '-'}</td>
       <td className="px-4 py-3.5">
         <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={() => onView(surgery)}
-            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]"
-            title="View patient and surgery details"
-          >
+          <button onClick={() => onView(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]" title="View details">
             <Eye size={13} />
           </button>
           {surgery.status !== 'Completed' && canEdit && (
-            <button
-              onClick={() => onComplete(surgery)}
-              className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
-            >
+            <button onClick={() => onComplete(surgery)} className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]">
               <CheckCircle size={11} /> Complete
             </button>
           )}
           {canEdit && (
-            <button
-              onClick={() => onEdit(surgery)}
-              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
-              title="Edit surgery"
-            >
+            <button onClick={() => onEdit(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]" title="Edit surgery">
               <Pencil size={13} />
             </button>
           )}
           {canDelete && (
-            <button
-              onClick={() => onDelete(surgery)}
-              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
-              title="Delete surgery"
-            >
+            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
               <Trash2 size={13} />
             </button>
           )}
@@ -944,14 +1052,7 @@ function HistorySurgeryRow({
 }
 
 function SurgeryRow({
-  surgery,
-  rowNumber,
-  canEdit,
-  canDelete,
-  onView,
-  onComplete,
-  onEdit,
-  onDelete,
+  surgery, rowNumber, canEdit, canDelete, onView, onComplete, onEdit, onDelete,
 }: {
   surgery: Surgery;
   rowNumber: number;
@@ -1001,36 +1102,21 @@ function SurgeryRow({
       </td>
       <td className="px-4 py-3.5">
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => onView(surgery)}
-            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]"
-            title="View patient and surgery details"
-          >
+          <button onClick={() => onView(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#002E63]" title="View details">
             <Eye size={13} />
           </button>
           {surgery.status !== 'Completed' && canEdit && (
-            <button
-              onClick={() => onComplete(surgery)}
-              className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]"
-            >
+            <button onClick={() => onComplete(surgery)} className="flex items-center gap-1 rounded-md bg-[#EBF7EE] px-2 py-1 text-xs font-medium text-[#2C9942] transition hover:bg-[#A6DCB5]">
               <CheckCircle size={11} /> Complete
             </button>
           )}
           {canEdit && (
-            <button
-              onClick={() => onEdit(surgery)}
-              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]"
-              title="Edit surgery"
-            >
+            <button onClick={() => onEdit(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EBF7EE] hover:text-[#2C9942]" title="Edit surgery">
               <Pencil size={13} />
             </button>
           )}
           {canDelete && (
-            <button
-              onClick={() => onDelete(surgery)}
-              className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
-              title="Delete surgery"
-            >
+            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
               <Trash2 size={13} />
             </button>
           )}
@@ -1049,7 +1135,7 @@ function DetailValue({ label, value, wide = false }: { label: string; value: str
   );
 }
 
-// ─── Surgery edit form ────────────────────────────────────────────────────────
+// ─── Surgery edit form ─────────────────────────────────────────────────────────
 
 function SurgeryFormBody({
   form, set,
@@ -1059,7 +1145,6 @@ function SurgeryFormBody({
 }) {
   return (
     <div className="grid grid-cols-1 gap-4">
-      {/* Section 1: Patient (locked) */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Patient</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -1078,18 +1163,12 @@ function SurgeryFormBody({
         </div>
       </section>
 
-      {/* Section 2: Surgery Details */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Surgery Details</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div className="md:col-span-2">
             <label className={F.label}>Surgeon / Doctor Name</label>
-            <input
-              value={form.surgeonName}
-              disabled
-              placeholder="Assigned doctor from sub-region"
-              className={F.input}
-            />
+            <input value={form.surgeonName} disabled placeholder="Assigned doctor from sub-region" className={F.input} />
           </div>
           <div>
             <label className={F.label}>Eye</label>
@@ -1105,27 +1184,16 @@ function SurgeryFormBody({
         </div>
       </section>
 
-      {/* Section 3: Schedule & Status */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Schedule & Status</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className={F.label}>Scheduled Date & Time *</label>
-            <input
-              type="datetime-local"
-              value={form.scheduledAt}
-              onChange={(e) => set('scheduledAt', e.target.value)}
-              className={F.input}
-            />
+            <input type="datetime-local" value={form.scheduledAt} onChange={(e) => set('scheduledAt', e.target.value)} className={F.input} />
           </div>
           <div>
             <label className={F.label}>Actual Surgery Date & Time</label>
-            <input
-              type="datetime-local"
-              value={form.performedAt ?? ''}
-              onChange={(e) => set('performedAt', e.target.value)}
-              className={F.input}
-            />
+            <input type="datetime-local" value={form.performedAt ?? ''} onChange={(e) => set('performedAt', e.target.value)} className={F.input} />
           </div>
           <div>
             <label className={F.label}>Status</label>
@@ -1155,27 +1223,16 @@ function SurgeryFormBody({
         </section>
       )}
 
-      {/* Section 4: Clinical */}
       <section className="rounded-lg border border-[#EAEEF3] bg-white p-3">
         <p className={`${F.label} mb-3`}>Clinical</p>
         <div className="grid grid-cols-1 gap-3">
           <div>
             <label className={F.label}>Complications</label>
-            <input
-              value={form.complications}
-              onChange={(e) => set('complications', e.target.value)}
-              placeholder="e.g. Posterior capsule rupture, None"
-              className={F.input}
-            />
+            <input value={form.complications} onChange={(e) => set('complications', e.target.value)} placeholder="e.g. Posterior capsule rupture, None" className={F.input} />
           </div>
           <div>
             <label className={F.label}>Intraoperative Notes</label>
-            <input
-              value={form.intraopNotes}
-              onChange={(e) => set('intraopNotes', e.target.value)}
-              placeholder="Any additional intraoperative observations..."
-              className={F.input}
-            />
+            <input value={form.intraopNotes} onChange={(e) => set('intraopNotes', e.target.value)} placeholder="Any additional intraoperative observations..." className={F.input} />
           </div>
         </div>
       </section>

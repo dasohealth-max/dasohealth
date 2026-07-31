@@ -473,8 +473,12 @@
   display: none !important;
 }
 
-/* â”€â”€ Print styles: hide shell, show only page content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Print styles: hide shell, show only page content ──────────────────────── */
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 15mm;
+  }
   /* Hide navigation chrome */
   aside,
   header,

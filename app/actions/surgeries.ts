@@ -47,12 +47,40 @@ function surgeryWhere(params: {
   search?: string;
   region?: string;
   status?: string;
+  statuses?: string[];
+  scheduledFrom?: string;
+  scheduledTo?: string;
+  performedFrom?: string;
+  performedTo?: string;
 }, scopedRegion?: string): Prisma.SurgeryWhereInput {
   const region = scopedRegion ?? (params.region || undefined);
+
+  const statusClause = params.statuses && params.statuses.length > 0
+    ? { status: { in: params.statuses.map((s) => surgeryStatusFromApp(s)) as never[] } }
+    : params.status
+      ? { status: surgeryStatusFromApp(params.status) as never }
+      : {};
+
+  const scheduledAtClause = (params.scheduledFrom || params.scheduledTo) ? {
+    scheduledAt: {
+      ...(params.scheduledFrom ? { gte: new Date(params.scheduledFrom) } : {}),
+      ...(params.scheduledTo ? { lte: new Date(params.scheduledTo + 'T23:59:59.999Z') } : {}),
+    },
+  } : {};
+
+  const performedAtClause = (params.performedFrom || params.performedTo) ? {
+    performedAt: {
+      ...(params.performedFrom ? { gte: new Date(params.performedFrom) } : {}),
+      ...(params.performedTo ? { lte: new Date(params.performedTo + 'T23:59:59.999Z') } : {}),
+    },
+  } : {};
+
   return {
     archivedAt: null,
     ...(region && { region }),
-    ...(params.status && { status: surgeryStatusFromApp(params.status) as never }),
+    ...statusClause,
+    ...scheduledAtClause,
+    ...performedAtClause,
     ...(params.search && {
       OR: [
         { patientName: { contains: params.search, mode: 'insensitive' } },
@@ -75,8 +103,14 @@ export async function getSurgeriesPaginated(params: {
   search?: string;
   region?: string;
   status?: string;
+  statuses?: string[];
+  scheduledFrom?: string;
+  scheduledTo?: string;
+  performedFrom?: string;
+  performedTo?: string;
   page: number;
   pageSize: number;
+  sortAsc?: boolean;
 }): Promise<{ data: Surgery[]; total: number; patientTotal: number }> {
   const actor = await requireActor('surgeries', 'view');
   if ('error' in actor) throw new Error(actor.error);
@@ -94,7 +128,7 @@ export async function getSurgeriesPaginated(params: {
       include: {
         patient: { select: SURGERY_PATIENT_SELECT },
       },
-      orderBy: { scheduledAt: 'desc' },
+      orderBy: { scheduledAt: params.sortAsc ? 'asc' : 'desc' },
     }),
     prisma.surgery.count({ where }),
     prisma.surgery.groupBy({
@@ -109,6 +143,8 @@ export async function getSurgeriesPaginated(params: {
 export async function getPrintableWaitingSurgeries(params: {
   search?: string;
   region?: string;
+  scheduledFrom?: string;
+  scheduledTo?: string;
 }): Promise<{ data: Surgery[]; total: number; truncated: boolean; limit: number }> {
   const actor = await requireActor('surgeries', 'view');
   if ('error' in actor) throw new Error(actor.error);
@@ -122,6 +158,39 @@ export async function getPrintableWaitingSurgeries(params: {
       take: PRINT_LIMIT,
       include: { patient: { select: SURGERY_PATIENT_SELECT } },
       orderBy: { scheduledAt: 'asc' },
+    }),
+    prisma.surgery.count({ where }),
+  ]);
+
+  return {
+    data: await attachScreeningResults(rows),
+    total,
+    truncated: total > rows.length,
+    limit: PRINT_LIMIT,
+  };
+}
+
+export async function getPrintableHistorySurgeries(params: {
+  search?: string;
+  region?: string;
+  performedFrom?: string;
+  performedTo?: string;
+}): Promise<{ data: Surgery[]; total: number; truncated: boolean; limit: number }> {
+  const actor = await requireActor('surgeries', 'view');
+  if ('error' in actor) throw new Error(actor.error);
+
+  const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const where = surgeryWhere(
+    { ...params, statuses: ['Completed', 'Cancelled', 'Postponed'] },
+    regionScope.region,
+  );
+
+  const [rows, total] = await Promise.all([
+    prisma.surgery.findMany({
+      where,
+      take: PRINT_LIMIT,
+      include: { patient: { select: SURGERY_PATIENT_SELECT } },
+      orderBy: { scheduledAt: 'desc' },
     }),
     prisma.surgery.count({ where }),
   ]);
