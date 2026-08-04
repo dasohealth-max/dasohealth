@@ -3,22 +3,17 @@ import { PrismaPg } from '@prisma/adapter-pg';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-function buildConnectionString(rawUrl: string) {
-  const url = new URL(rawUrl);
-  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
-
-  url.searchParams.set('sslmode', rejectUnauthorized ? 'require' : 'no-verify');
-  return url.toString();
-}
-
 function createPrismaClient() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required to connect to the production database.');
   }
 
-  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
+  // Default false: Supabase's pooler uses a certificate chain that Node.js does
+  // not trust by default. Set DATABASE_SSL_REJECT_UNAUTHORIZED=true only when
+  // connecting to a database whose certificate chain is fully trusted.
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true';
   const adapter = new PrismaPg({
-    connectionString: buildConnectionString(process.env.DATABASE_URL),
+    connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized },
     // Keep pool size within Supabase PgBouncer limits.
     // Each Next.js worker opens its own Pool; 10 is safe for the free tier.
