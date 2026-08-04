@@ -52,7 +52,8 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         setPatients(p);
         setCampaigns(c);
         setFollowUps(f);
-      });
+      })
+      .catch(() => {});
   }, [isSuperAdmin]);
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     let cancelled = false;
     const loadInboxCount = () => getInboxBadgeCount().then((count) => {
       if (!cancelled) setInboxCount(count);
-    });
+    }).catch(() => {});
     loadInboxCount();
     const interval = setInterval(loadInboxCount, 60_000);
     return () => { cancelled = true; clearInterval(interval); };
