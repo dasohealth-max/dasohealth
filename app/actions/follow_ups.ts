@@ -131,11 +131,13 @@ function tabWhere(tab: FollowUpTab): Prisma.FollowUpWhereInput {
 function followUpWhere(params: {
   tab: FollowUpTab;
   search?: string;
+  region?: string;
 }, regionWhere: Prisma.FollowUpWhereInput): Prisma.FollowUpWhereInput {
   return {
     ...regionWhere,
     voidedAt: null,
     ...tabWhere(params.tab),
+    ...(params.region && { region: params.region }),
     ...(params.search && {
       OR: [
         { patientName: { contains: params.search, mode: 'insensitive' } },
@@ -215,6 +217,7 @@ export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number
 export async function getFollowUpsPaginated(params: {
   tab: FollowUpTab;
   search?: string;
+  region?: string;
   page: number;
   pageSize: number;
 }): Promise<{ data: FollowUpGroup[]; total: number }> {
@@ -227,6 +230,7 @@ export async function getFollowUpsPaginated(params: {
   const page = Math.max(1, params.page);
   const skip = (page - 1) * pageSize;
   const regionScope = scopedRegionWhere(actor) as { region?: string };
+  const sqlRegion = params.region || regionScope.region;
   const [pageGroups, totalRows] = await Promise.all([
     prisma.followUp.groupBy({
       by: ['patientId'],
@@ -239,7 +243,7 @@ export async function getFollowUpsPaginated(params: {
     prisma.$queryRaw<{ total: bigint | number }[]>`
       SELECT COUNT(DISTINCT patient_id) AS total
       FROM follow_ups
-      WHERE ${followUpDistinctGroupWhereSql({ tab: params.tab, search: params.search, region: regionScope.region })}
+      WHERE ${followUpDistinctGroupWhereSql({ tab: params.tab, search: params.search, region: sqlRegion })}
     `,
   ]);
   const total = Number(totalRows[0]?.total ?? 0);
@@ -297,6 +301,7 @@ export async function getFollowUpsPaginated(params: {
 export async function getPrintableFollowUps(params: {
   tab: FollowUpTab;
   search?: string;
+  region?: string;
 }): Promise<{ data: FollowUp[]; total: number; truncated: boolean; limit: number }> {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);

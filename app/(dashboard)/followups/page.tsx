@@ -23,6 +23,7 @@ import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { ACTIVE_FOLLOW_UP_SCHEDULE } from '@/lib/follow-up-schedule';
+import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { AlertTriangle, Ban, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Printer, RefreshCw, UserX, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
@@ -226,6 +227,7 @@ export default function FollowUpsPage() {
   const [editing, setEditing] = useState<FollowUp | null>(null);
   const [tab, setTab] = useState<Tab>('due');
   const [search, setSearch] = useState('');
+  const [region, setRegion] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -288,7 +290,7 @@ export default function FollowUpsPage() {
   // Load paginated data
   useEffect(() => {
     let cancelled = false;
-    getFollowUpsPaginated({ tab, search: debouncedSearch, page, pageSize: PAGE_SIZE })
+    getFollowUpsPaginated({ tab, search: debouncedSearch, region, page, pageSize: PAGE_SIZE })
       .then(({ data, total: t }) => {
         if (!cancelled) { setFollowUpGroups(data); setTotal(t); setLoadError(''); setIsLoading(false); }
       })
@@ -301,7 +303,7 @@ export default function FollowUpsPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [tab, debouncedSearch, page, statusRefreshKey]);
+  }, [tab, debouncedSearch, region, page, statusRefreshKey]);
 
   useEffect(() => {
     if (printRequestId === 0) return;
@@ -554,7 +556,7 @@ export default function FollowUpsPage() {
   async function printAllMatchingList() {
     setIsPreparingPrint(true);
     try {
-      const result = await getPrintableFollowUps({ tab, search: debouncedSearch });
+      const result = await getPrintableFollowUps({ tab, search: debouncedSearch, region });
       setPrintRows(result.data);
       setPrintMode('all');
       setPrintTotal(result.total);
@@ -1034,7 +1036,7 @@ export default function FollowUpsPage() {
       </div>
 
       {/* Search bar */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -1045,6 +1047,19 @@ export default function FollowUpsPage() {
           <button onClick={() => setSearch('')} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EAEEF3]">
             <X size={14} />
           </button>
+        )}
+        {isSuperAdmin && (
+          <Select value={region} onValueChange={(v) => { setRegion(v ?? ''); setPage(1); }}>
+            <SelectTrigger className="h-9 w-44 text-xs rounded-xl">
+              <SelectValue placeholder="All Regions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Regions</SelectItem>
+              {REGIONAL_CAMPAIGN_AREAS.map((area) => (
+                <SelectItem key={area.region} value={area.region}>{area.region}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
         <span className="text-xs text-[#647184]">{total} patient follow-up group{total !== 1 ? 's' : ''}</span>
       </div>
