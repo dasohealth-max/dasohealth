@@ -5,7 +5,7 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function buildConnectionString(rawUrl: string) {
   const url = new URL(rawUrl);
-  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true';
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
 
   url.searchParams.set('sslmode', rejectUnauthorized ? 'require' : 'no-verify');
   return url.toString();
@@ -16,7 +16,7 @@ function createPrismaClient() {
     throw new Error('DATABASE_URL is required to connect to the production database.');
   }
 
-  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true';
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
   const adapter = new PrismaPg({
     connectionString: buildConnectionString(process.env.DATABASE_URL),
     ssl: { rejectUnauthorized },

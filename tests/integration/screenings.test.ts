@@ -10,7 +10,8 @@ vi.mock('@/lib/auth-server', () => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({
-  prisma: {
+  prisma: (() => {
+    const db = {
     patient: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -31,8 +32,14 @@ vi.mock('@/lib/prisma', () => ({
       findMany: vi.fn(),
       count: vi.fn(),
       groupBy: vi.fn(),
+      update: vi.fn(),
     },
-  },
+    };
+    return {
+      ...db,
+      $transaction: vi.fn((callback: (tx: typeof db) => unknown) => callback(db)),
+    };
+  })(),
 }));
 
 vi.mock('@/lib/api/screenings', () => ({
@@ -47,7 +54,7 @@ vi.mock('@/lib/api/patients', () => ({
   fromPrisma: vi.fn(),
 }));
 
-import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, getScreeningHistoryPaginated, getScreeningQueuePaginated } from '@/app/actions/screenings';
+import { actionCreateScreening, actionDeleteScreening, actionUpdateScreening, actionVoidScreening, getScreeningHistoryPaginated, getScreeningQueuePaginated } from '@/app/actions/screenings';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as screeningApi from '@/lib/api/screenings';
@@ -296,7 +303,15 @@ describe('actionCreateScreening', () => {
         screenedById: 'actor-screener-1',
         screenedByName: 'Screener Galmudug',
       }),
+      expect.anything(),
     );
+  });
+
+  it('commits the screening workflow through one database transaction', async () => {
+    const result = await actionCreateScreening(screeningInput);
+
+    expect(result.ok).toBe(true);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
   });
 
   it('marks the registered patient as screened', async () => {
@@ -389,6 +404,7 @@ describe('actionCreateScreening', () => {
         vaRightCorrected: 'CF 2M',
         vaLeftCorrected: 'CF',
       }),
+      expect.anything(),
     );
   });
 
@@ -421,6 +437,7 @@ describe('actionCreateScreening', () => {
     expect(result.ok).toBe(true);
     expect(screeningApi.createScreening).toHaveBeenCalledWith(
       expect.objectContaining({ recommendation: 'Discharge' }),
+      expect.anything(),
     );
     expect(prisma.surgery.create).not.toHaveBeenCalled();
   });
@@ -508,11 +525,11 @@ describe('actionUpdateScreening', () => {
   });
 });
 
-describe('actionDeleteScreening', () => {
+describe('screening archive-only lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(authServer.scopedRegionWhere).mockReturnValue({});
-    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
     vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
     vi.mocked(authServer.auditLog).mockResolvedValue(undefined);
     vi.mocked(prisma.screening.findUnique).mockResolvedValue({
@@ -522,15 +539,22 @@ describe('actionDeleteScreening', () => {
       region: 'Galmudug',
     } as never);
     vi.mocked(prisma.patient.update).mockResolvedValue({} as never);
-    vi.mocked(screeningApi.deleteScreening).mockResolvedValue(undefined);
+    vi.mocked(prisma.screening.update).mockResolvedValue({} as never);
   });
 
-  it('returns patient to awaiting screening when deleting their last screening', async () => {
+  it('voids the last screening and returns the patient to awaiting screening', async () => {
     vi.mocked(prisma.screening.count).mockResolvedValue(0);
 
-    const result = await actionDeleteScreening('screening-1');
+    const result = await actionVoidScreening('screening-1', 'Duplicate screening entered in error');
 
     expect(result.ok).toBe(true);
+    expect(prisma.screening.update).toHaveBeenCalledWith({
+      where: { id: 'screening-1' },
+      data: expect.objectContaining({
+        voidedById: superAdmin.id,
+        voidedReason: 'Duplicate screening entered in error',
+      }),
+    });
     expect(prisma.patient.update).toHaveBeenCalledWith({
       where: { id: 'patient-1' },
       data: { screeningStatus: 'Awaiting Screening' },
@@ -543,15 +567,21 @@ describe('actionDeleteScreening', () => {
     }
   });
 
-  it('keeps patient screened when other screenings remain', async () => {
+  it('keeps patient screened when another active screening remains', async () => {
     vi.mocked(prisma.screening.count).mockResolvedValue(1);
 
-    const result = await actionDeleteScreening('screening-1');
+    const result = await actionVoidScreening('screening-1', 'Duplicate screening entered in error');
 
     expect(result.ok).toBe(true);
     expect(prisma.patient.update).toHaveBeenCalledWith({
       where: { id: 'patient-1' },
       data: { screeningStatus: 'Screened' },
     });
+  });
+
+  it('keeps the old hard-delete action permanently blocked', async () => {
+    const result = await actionDeleteScreening('screening-1');
+
+    expect(result).toEqual({ ok: false, error: 'Screening records cannot be permanently deleted. Void the record instead.' });
   });
 });

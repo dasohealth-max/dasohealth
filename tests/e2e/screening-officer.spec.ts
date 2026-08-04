@@ -1,19 +1,13 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { hasE2ECredentials, loginAs } from './auth';
 
-const EMAIL = process.env.E2E_SCREENER_EMAIL ?? 'screener@demo.eyecare.org';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Demo1234!';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(/email/i).fill(EMAIL);
-  await page.getByLabel(/password/i).fill(PASSWORD);
-  await page.getByRole('button', { name: /sign in|log in/i }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-}
+const EMAIL = process.env.E2E_SCREENER_EMAIL;
+const PASSWORD = process.env.E2E_PASSWORD;
 
 test.describe('Screening Officer – full workflow', () => {
+  test.skip(!hasE2ECredentials(EMAIL, PASSWORD), 'E2E Screening Officer credentials are not configured');
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await loginAs(page, EMAIL!, PASSWORD!, '/screening');
   });
 
   test('can see the screening queue', async ({ page }) => {

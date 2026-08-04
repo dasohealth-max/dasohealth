@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { galmudugScreener, banadiPM } from '../mocks/actors';
+import { galmudugScreener, banadiPM, superAdmin } from '../mocks/actors';
 import { galmudugFollowUp } from '../mocks/data';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -12,13 +12,16 @@ vi.mock('@/lib/auth-server', () => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({
-  prisma: {
+  prisma: (() => {
+    const db = {
     $queryRaw: vi.fn(),
     surgery: { findUnique: vi.fn() },
     screening: { findMany: vi.fn() },
-    followUp: { findUnique: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), count: vi.fn() },
-    followUpMedication: { findUnique: vi.fn() },
-  },
+    followUp: { findUnique: vi.fn(), groupBy: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
+    followUpMedication: { findUnique: vi.fn(), update: vi.fn() },
+    };
+    return { ...db, $transaction: vi.fn((callback: (tx: typeof db) => unknown) => callback(db)) };
+  })(),
 }));
 
 vi.mock('@/lib/api/follow_ups', () => ({
@@ -36,7 +39,7 @@ vi.mock('@/lib/api/follow_ups', () => ({
 }));
 
 // Imports after mocks
-import { actionCreateFollowUp, actionUpdateFollowUp, actionCreateMedication, getFollowUpsPaginated, getPrintableFollowUps } from '@/app/actions/follow_ups';
+import { actionCreateFollowUp, actionMarkMedicationEnteredInError, actionVoidFollowUp, actionUpdateFollowUp, actionCreateMedication, getFollowUpsPaginated, getPrintableFollowUps } from '@/app/actions/follow_ups';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as followUpApi from '@/lib/api/follow_ups';
@@ -358,5 +361,85 @@ describe('actionCreateMedication', () => {
     });
     const result = await actionCreateMedication(medicationData);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('actionMarkMedicationEnteredInError', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(prisma.followUpMedication.findUnique).mockResolvedValue({
+      id: 'med-1',
+      drugName: 'Prednisolone',
+      enteredInErrorAt: null,
+      followUp: { region: 'Galmudug', campaignId: 'campaign-1' },
+    } as never);
+    vi.mocked(prisma.followUpMedication.update).mockResolvedValue({} as never);
+  });
+
+  it('preserves the medication and audits the entered-in-error reason', async () => {
+    const result = await actionMarkMedicationEnteredInError('med-1', 'Medication added to the wrong follow-up');
+
+    expect(result).toEqual({ ok: true, data: null });
+    expect(prisma.followUpMedication.update).toHaveBeenCalledWith({
+      where: { id: 'med-1' },
+      data: expect.objectContaining({
+        enteredInErrorById: superAdmin.id,
+        enteredInErrorReason: 'Medication added to the wrong follow-up',
+      }),
+    });
+    expect(authServer.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'void', entity: 'FollowUpMedication', entityId: 'med-1' }),
+      expect.anything(),
+    );
+  });
+
+  it('does not allow a Screening Officer to void medication history', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(galmudugScreener);
+
+    const result = await actionMarkMedicationEnteredInError('med-1', 'Medication added to the wrong follow-up');
+
+    expect(result).toEqual({ ok: false, error: 'Only Super Administrators can mark medications as entered in error' });
+    expect(prisma.followUpMedication.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('actionVoidFollowUp', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(prisma.followUp.findUnique).mockResolvedValue({
+      id: 'followup-1', patientName: 'Amina Hassan', region: 'Galmudug',
+      campaignId: 'campaign-1', voidedAt: null,
+    } as never);
+    vi.mocked(prisma.followUp.update).mockResolvedValue({} as never);
+  });
+
+  it('preserves and audits a voided follow-up', async () => {
+    const result = await actionVoidFollowUp('followup-1', 'Follow-up was recorded for the wrong patient');
+
+    expect(result).toEqual({ ok: true, data: null });
+    expect(prisma.followUp.update).toHaveBeenCalledWith({
+      where: { id: 'followup-1' },
+      data: expect.objectContaining({
+        voidedById: superAdmin.id,
+        voidedReason: 'Follow-up was recorded for the wrong patient',
+      }),
+    });
+    expect(authServer.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'void', entity: 'FollowUp', entityId: 'followup-1' }),
+      expect.anything(),
+    );
+  });
+
+  it('rejects follow-up voiding by non-super-admin users', async () => {
+    vi.mocked(authServer.requireActor).mockResolvedValue(banadiPM);
+
+    const result = await actionVoidFollowUp('followup-1', 'Follow-up was recorded for the wrong patient');
+
+    expect(result).toEqual({ ok: false, error: 'Only Super Administrators can void follow-ups' });
+    expect(prisma.followUp.update).not.toHaveBeenCalled();
   });
 });

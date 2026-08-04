@@ -12,12 +12,18 @@ vi.mock('@/lib/auth-server', () => ({
 }));
 
 vi.mock('@/lib/prisma', () => ({
-  prisma: {
-    patient: { findUnique: vi.fn() },
+  prisma: (() => {
+    const db = {
+    patient: { findUnique: vi.fn(), update: vi.fn() },
     screening: { findUnique: vi.fn() },
-    surgery: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+    surgery: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn() },
     followUp: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
-  },
+    };
+    return {
+      ...db,
+      $transaction: vi.fn((callback: (tx: typeof db) => unknown) => callback(db)),
+    };
+  })(),
 }));
 
 vi.mock('@/lib/api/surgeries', () => ({
@@ -35,7 +41,7 @@ vi.mock('@/lib/prisma-enums', () => ({
 }));
 
 // Imports after mocks
-import { actionCreateSurgery, actionUpdateSurgery, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { actionArchiveSurgery, actionCancelSurgeryPlacement, actionCreateSurgery, actionUpdateSurgery, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
 import * as authServer from '@/lib/auth-server';
 import { prisma } from '@/lib/prisma';
 import * as surgeryApi from '@/lib/api/surgeries';
@@ -166,6 +172,12 @@ describe('actionCreateSurgery', () => {
     expect(surgeryApi.createSurgery).toHaveBeenCalledOnce();
   });
 
+  it('commits surgery creation through one database transaction', async () => {
+    const result = await actionCreateSurgery(surgeryData);
+    expect(result.ok).toBe(true);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+  });
+
   it('scope is derived from patient record, not client input', async () => {
     await actionCreateSurgery({ ...surgeryData, region: 'Banadir / Mogadishu' });
     expect(surgeryApi.createSurgery).toHaveBeenCalledWith(
@@ -173,6 +185,7 @@ describe('actionCreateSurgery', () => {
         region: 'Galmudug',
         campaignId: 'camp-galmudug-1',
       }),
+      expect.anything(),
     );
   });
 
@@ -309,6 +322,7 @@ describe('actionUpdateSurgery', () => {
         eye: 'Both',
         preOpVA: 'Right: CF / Left: 6/12',
       }),
+      expect.anything(),
     );
   });
 
@@ -346,6 +360,7 @@ describe('actionUpdateSurgery', () => {
         eye: 'Left',
         preOpVA: 'Right: CF / Left: 6/12',
       }),
+      expect.anything(),
     );
   });
 
@@ -359,7 +374,7 @@ describe('actionUpdateSurgery', () => {
       status: 'Completed',
       performedAt: '2025-03-01T10:00:00.000Z',
     });
-    vi.mocked(prisma.followUp.findFirst).mockImplementation(((args: any) => {
+    vi.mocked(prisma.followUp.findFirst).mockImplementation(((args: { where?: { milestone?: string } }) => {
       const milestone = args?.where?.milestone;
       return Promise.resolve(milestone === 'Week1' ? null : { id: `existing-${milestone}` });
     }) as never);
@@ -445,5 +460,82 @@ describe('actionUpdateSurgery', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/Week1/);
+  });
+});
+
+describe('actionCancelSurgeryPlacement', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(prisma.surgery.findUnique).mockResolvedValue({
+      ...rawSurgeryRow,
+      patientId: 'patient-1',
+      patientName: 'Amina Hassan',
+      campaignId: 'camp-galmudug-1',
+      archivedAt: null,
+    } as never);
+    vi.mocked(prisma.surgery.update).mockResolvedValue({} as never);
+  });
+
+  it('cancels a scheduled placement without archiving the patient or surgery', async () => {
+    const result = await actionCancelSurgeryPlacement(
+      'surgery-1',
+      'Did not show up',
+      'Called twice without response',
+    );
+
+    expect(result).toEqual({ ok: true, data: null });
+    expect(prisma.surgery.update).toHaveBeenCalledWith({
+      where: { id: 'surgery-1' },
+      data: expect.objectContaining({
+        status: 'Cancelled',
+        cancellationReason: 'Did not show up',
+        cancellationNotes: 'Called twice without response',
+        cancelledById: superAdmin.id,
+      }),
+    });
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+    expect(prisma.surgery.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ archivedAt: expect.anything() }) }),
+    );
+  });
+
+  it('requires notes when Other reason is selected', async () => {
+    const result = await actionCancelSurgeryPlacement('surgery-1', 'Other reason', '');
+
+    expect(result).toEqual({ ok: false, error: 'Additional notes are required for Other reason' });
+    expect(prisma.surgery.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('actionArchiveSurgery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(authServer.requireActor).mockResolvedValue(superAdmin);
+    vi.mocked(authServer.ensureRegionAccess).mockReturnValue(null);
+    vi.mocked(prisma.surgery.findUnique).mockResolvedValue({
+      ...rawSurgeryRow,
+      patientName: 'Amina Hassan',
+      campaignId: 'camp-galmudug-1',
+      archivedAt: null,
+    } as never);
+    vi.mocked(prisma.surgery.update).mockResolvedValue({} as never);
+  });
+
+  it('archives and audits the surgery in one transaction without changing the patient', async () => {
+    const result = await actionArchiveSurgery('surgery-1', 'Duplicate historical surgery record');
+
+    expect(result.ok).toBe(true);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    expect(prisma.surgery.update).toHaveBeenCalledWith({
+      where: { id: 'surgery-1' },
+      data: expect.objectContaining({ archivedById: superAdmin.id, archivedReason: 'Duplicate historical surgery record' }),
+    });
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+    expect(authServer.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'archive', entity: 'Surgery', entityId: 'surgery-1' }),
+      expect.anything(),
+    );
   });
 });

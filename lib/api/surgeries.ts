@@ -18,6 +18,7 @@ type Row = NonNullable<Awaited<ReturnType<typeof prisma.surgery.findFirst>>> & {
 };
 type ScreeningSnapshotRow = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>>;
 type SurgeryScreeningResult = NonNullable<Surgery['screeningResult']>;
+type SurgeryDb = Pick<Prisma.TransactionClient, 'surgery' | 'campaignRegion'>;
 
 const SURGERY_PATIENT_SELECT = {
   patientCode: true,
@@ -68,6 +69,11 @@ export function fromPrisma(row: Row): Surgery {
     archivedById: row.archivedById ?? undefined,
     archivedByName: row.archivedByName ?? undefined,
     archivedReason: row.archivedReason ?? undefined,
+    cancellationReason: row.cancellationReason ?? undefined,
+    cancellationNotes: row.cancellationNotes || undefined,
+    cancelledAt: row.cancelledAt ? (row.cancelledAt as Date).toISOString() : undefined,
+    cancelledById: row.cancelledById ?? undefined,
+    cancelledByName: row.cancelledByName ?? undefined,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
@@ -142,14 +148,17 @@ export async function getSurgeriesWithScreeningResults(where: Prisma.SurgeryWher
   return attachScreeningResults(rows);
 }
 
-export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Promise<Surgery> {
+export async function createSurgery(
+  data: Omit<Surgery, 'id' | 'createdAt'>,
+  db: SurgeryDb = prisma,
+): Promise<Surgery> {
   const assignedDoctor = data.campaignRegionId
-    ? await prisma.campaignRegion.findUnique({
+    ? await db.campaignRegion.findUnique({
         where: { id: data.campaignRegionId },
         select: { doctorName: true },
       })
     : null;
-  const row = await prisma.surgery.create({
+  const row = await db.surgery.create({
     data: {
       patientId: data.patientId,
       patientName: data.patientName,
@@ -176,8 +185,12 @@ export async function createSurgery(data: Omit<Surgery, 'id' | 'createdAt'>): Pr
   return fromPrisma(row);
 }
 
-export async function updateSurgery(id: string, data: Omit<Surgery, 'id' | 'createdAt'>): Promise<Surgery> {
-  const row = await prisma.surgery.update({
+export async function updateSurgery(
+  id: string,
+  data: Omit<Surgery, 'id' | 'createdAt'>,
+  db: SurgeryDb = prisma,
+): Promise<Surgery> {
+  const row = await db.surgery.update({
     where: { id },
     data: {
       patientId: data.patientId,
@@ -203,8 +216,4 @@ export async function updateSurgery(id: string, data: Omit<Surgery, 'id' | 'crea
     include: { patient: { select: SURGERY_PATIENT_SELECT } },
   });
   return fromPrisma(row);
-}
-
-export async function deleteSurgery(id: string): Promise<void> {
-  await prisma.surgery.delete({ where: { id } });
 }

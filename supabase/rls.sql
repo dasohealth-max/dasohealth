@@ -87,6 +87,7 @@ ALTER TABLE screenings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE surgeries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE follow_ups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE follow_up_medications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE change_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- =============================================================================
@@ -132,6 +133,11 @@ DROP POLICY IF EXISTS "follow_up_medications_select" ON follow_up_medications;
 DROP POLICY IF EXISTS "follow_up_medications_insert" ON follow_up_medications;
 DROP POLICY IF EXISTS "follow_up_medications_update" ON follow_up_medications;
 DROP POLICY IF EXISTS "follow_up_medications_delete" ON follow_up_medications;
+
+DROP POLICY IF EXISTS "change_requests_select" ON change_requests;
+DROP POLICY IF EXISTS "change_requests_insert" ON change_requests;
+DROP POLICY IF EXISTS "change_requests_update" ON change_requests;
+DROP POLICY IF EXISTS "change_requests_delete" ON change_requests;
 
 DROP POLICY IF EXISTS "audit_logs_select" ON audit_logs;
 DROP POLICY IF EXISTS "audit_logs_insert" ON audit_logs;
@@ -307,6 +313,33 @@ CREATE POLICY "follow_up_medications_update"
 
 CREATE POLICY "follow_up_medications_delete"
   ON follow_up_medications FOR DELETE TO authenticated
+  USING (public.deny_browser_write());
+
+-- =============================================================================
+-- Change requests
+-- Requesters may read their own submissions; Super Administrators may review
+-- all submissions. Browser writes are denied so entity scope is derived and
+-- validated by the trusted Server Action.
+-- =============================================================================
+
+CREATE POLICY "change_requests_select"
+  ON change_requests FOR SELECT TO authenticated
+  USING (
+    public.is_super_admin()
+    OR requested_by_id = auth.uid()::text
+  );
+
+CREATE POLICY "change_requests_insert"
+  ON change_requests FOR INSERT TO authenticated
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "change_requests_update"
+  ON change_requests FOR UPDATE TO authenticated
+  USING (public.deny_browser_write())
+  WITH CHECK (public.deny_browser_write());
+
+CREATE POLICY "change_requests_delete"
+  ON change_requests FOR DELETE TO authenticated
   USING (public.deny_browser_write());
 
 -- =============================================================================

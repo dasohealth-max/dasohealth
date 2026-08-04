@@ -19,7 +19,7 @@ Never commit real values. Store secrets only in Vercel environment variables, Su
 
 | Variable | Scope | Recommended value | Notes |
 | --- | --- | --- | --- |
-| `DATABASE_SSL_REJECT_UNAUTHORIZED` | Server only | unset or `false` unless certificate validation is configured | The Prisma adapter sets SSL mode for Supabase. Set `true` only when the environment has the correct CA trust chain. |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | Server only | `true` | Strict certificate validation is the default. Set `false` only for a documented certificate-chain exception. |
 | `E2E_SUPER_EMAIL` | CI only | staging test email | Optional Playwright Super Administrator account. |
 | `E2E_PM_EMAIL` | CI only | staging test email | Optional Playwright Project Manager account. |
 | `E2E_CLERK_EMAIL` | CI only | staging test email | Optional Playwright Data Clerk account. |

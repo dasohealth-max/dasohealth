@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Patient, Screening, SurgeryEye, VAGrade } from '@/types';
 import {
-  actionCreateScreening, actionDeleteScreening, actionUpdateScreening,
+  actionCreateScreening, actionUpdateScreening, actionVoidScreening,
   getScreeningHistoryPaginated, getScreeningQueuePaginated,
   getPrintableScreeningQueue, getPrintableScreeningHistory,
 } from '@/app/actions/screenings';
@@ -13,14 +13,14 @@ import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import LifecycleReasonDialog from '@/components/forms/LifecycleReasonDialog';
 import { toast } from '@/components/ui/toast';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { defaultRecommendationForSurgeryConsent } from '@/lib/screening-defaults';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, MapPin, Pencil, Printer, RefreshCw, Search, Stethoscope, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Ban, ChevronDown, ChevronRight, Clock, MapPin, Pencil, Printer, RefreshCw, Search, Stethoscope, X } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,9 @@ export default function ScreeningPage() {
   // ── Fetch waiting queue ────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setIsLoading(true);
+    });
     getScreeningQueuePaginated({
       search: debouncedQueueSearch,
       region: queueRegion,
@@ -194,7 +196,9 @@ export default function ScreeningPage() {
   // ── Fetch history ──────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    setHistLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setHistLoading(true);
+    });
     getScreeningHistoryPaginated({
       search: debouncedHistSearch,
       region: historyRegion,
@@ -351,18 +355,18 @@ export default function ScreeningPage() {
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────
-  async function confirmDelete() {
+  async function confirmDelete(reason: string) {
     if (!deleteTarget) return;
-    const result = await actionDeleteScreening(deleteTarget.id);
+    const result = await actionVoidScreening(deleteTarget.id, reason);
     if (result.ok) {
       const deletedName = patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode);
       setScreenings((rows) => rows.filter((r) => r.id !== deleteTarget.id));
       setScreeningsTotal((n) => Math.max(0, n - 1));
       if (result.data) { setQueueRefreshKey((key) => key + 1); }
       if (screenings.length === 1 && screeningsPage > 1) setScreeningsPage((p) => p - 1);
-      toast({ title: 'Screening deleted', description: deletedName });
+      toast({ title: 'Screening voided', description: `${deletedName}. The clinical evidence remains preserved.` });
     } else {
-      toast({ title: 'Screening delete failed', description: result.error, variant: 'error' });
+      toast({ title: 'Screening could not be voided', description: result.error, variant: 'error' });
     }
     setDeleteTarget(null);
   }
@@ -422,14 +426,13 @@ export default function ScreeningPage() {
 
   return (
     <div className="space-y-5">
-      <ConfirmDialog
+      <LifecycleReasonDialog
         open={!!deleteTarget}
-        title="Delete Screening Record"
-        description={deleteTarget
-          ? `Remove the screening record for "${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}"? This cannot be undone.`
-          : ''}
-        confirmLabel="Delete"
-        confirmationText="DELETE"
+        title="Void Screening Record"
+        subject={deleteTarget ? patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode) : ''}
+        impact="This marks the screening as entered in error and removes it from active clinical views. The original record remains preserved in the audit history."
+        actionLabel="Void Screening"
+        confirmationText={deleteTarget?.patientCode}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -817,9 +820,11 @@ export default function ScreeningPage() {
                               {can('screening', 'delete') && (
                                 <button
                                   onClick={() => setDeleteTarget(screening)}
+                                  title="Void screening entered in error"
+                                  aria-label={`Void screening for ${screening.patientName}`}
                                   className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
                                 >
-                                  <Trash2 size={13} />
+                                  <Ban size={13} />
                                 </button>
                               )}
                             </div>

@@ -23,6 +23,8 @@ describe('AuthGuard inactivity timeout', () => {
     prefetch: vi.fn(),
     forward: vi.fn(),
     refresh: vi.fn(),
+    hmrRefresh: vi.fn(),
+    bfcacheId: 'test',
   };
 
   beforeEach(() => {

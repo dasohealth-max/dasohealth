@@ -3,12 +3,15 @@
 import { useEffect, useState } from 'react';
 import type { jsPDF } from 'jspdf';
 import { actionAuditReportExport, getDroppedSurgeryPatients, getReportAggregation, getReportRawData, type DroppedSurgeryPatient, type ReportAggregation } from '@/app/actions/reports';
+import { actionRestorePatient } from '@/app/actions/patients';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CardSkeleton, Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
+import ModalForm from '@/components/forms/ModalForm';
 import { usePermissions } from '@/lib/auth';
+import { createSafeWorkbook } from '@/lib/excel-workbook';
 import {
   campaignDistrictsLabel,
   campaignHasRegion,
@@ -18,14 +21,11 @@ import {
   completionRate,
   type RegionStatus,
 } from '@/lib/reporting';
-import { AlertTriangle, CalendarDays, ChevronDown, Download, MapPin, Printer, UserCheck, UserMinus } from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronDown, Download, MapPin, Printer, RotateCcw, UserCheck, UserMinus } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { ACTIVE_FOLLOW_UP_MILESTONES } from '@/lib/follow-up-schedule';
-
-const MILESTONES = ACTIVE_FOLLOW_UP_MILESTONES;
 
 export default function ReportsPage() {
   const { user, role } = usePermissions();
@@ -45,6 +45,9 @@ export default function ReportsPage() {
   const [droppedFrom, setDroppedFrom] = useState('');
   const [droppedTo, setDroppedTo] = useState('');
   const [droppedOpen, setDroppedOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<DroppedSurgeryPatient | null>(null);
+  const [restoreReason, setRestoreReason] = useState('');
+  const [restoring, setRestoring] = useState(false);
 
   const isReportViewer = role === 'Super Administrator' || role === 'Project Manager';
 
@@ -75,7 +78,9 @@ export default function ReportsPage() {
   useEffect(() => {
     if (!isReportViewer || !droppedOpen) return;
     let cancelled = false;
-    setDroppedLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setDroppedLoading(true);
+    });
     const effectiveDroppedRegion = assignedRegion ?? droppedRegion;
     getDroppedSurgeryPatients({
       filterRegion: effectiveDroppedRegion,
@@ -117,7 +122,7 @@ export default function ReportsPage() {
       </tr>`).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<title>Patients Removed from Surgery Queue</title>
+<title>Archived Patients</title>
 <style>
   @page{size:A4 landscape;margin:15mm}
   *{box-sizing:border-box}
@@ -133,8 +138,8 @@ export default function ReportsPage() {
 </head><body>
 <div class="hdr">
   <div>
-    <p class="title">Patients Removed from Surgery Queue</p>
-    <p class="meta">Region: ${esc(regionLabel)} · Removal date: ${esc(dateRange)}</p>
+    <p class="title">Archived Patients</p>
+    <p class="meta">Region: ${esc(regionLabel)} · Archive date: ${esc(dateRange)}</p>
     <p class="meta">${rows.length} patient${rows.length !== 1 ? 's' : ''}${rows.length === 1000 ? ' (capped at 1,000)' : ''}</p>
   </div>
   <div style="text-align:right;font-size:10px;color:#4b5563">
@@ -143,7 +148,7 @@ export default function ReportsPage() {
   </div>
 </div>
 <table>
-  <thead><tr><th>#</th><th>Patient Name</th><th>Phone</th><th>Region</th><th>Screened Date</th><th>Removal Reason</th><th>Removed By</th><th>Removal Date</th></tr></thead>
+  <thead><tr><th>#</th><th>Patient Name</th><th>Phone</th><th>Region</th><th>Screened Date</th><th>Archive Reason</th><th>Archived By</th><th>Archive Date</th></tr></thead>
   <tbody>${tableRows}</tbody>
 </table>
 </body></html>`;
@@ -155,6 +160,24 @@ export default function ReportsPage() {
     win.focus();
     win.addEventListener('afterprint', () => win.close());
     win.print();
+  }
+
+  async function restorePatient() {
+    if (!restoreTarget || restoreReason.trim().length < 10) return;
+    setRestoring(true);
+    try {
+      const result = await actionRestorePatient(restoreTarget.id, restoreReason.trim());
+      if (!result.ok) {
+        toast({ title: 'Could not restore patient', description: result.error, variant: 'error' });
+        return;
+      }
+      setDroppedRows((rows) => rows?.filter((row) => row.id !== restoreTarget.id) ?? null);
+      toast({ title: 'Patient restored', description: `${restoreTarget.patientCode} is active again. Surgery placements were not rescheduled.`, variant: 'success' });
+      setRestoreTarget(null);
+      setRestoreReason('');
+    } finally {
+      setRestoring(false);
+    }
   }
 
   const availableRegions = agg?.availableRegions ?? [];
@@ -217,7 +240,7 @@ export default function ReportsPage() {
 
       const funnelExport = exportAgg.funnelData.map((f) => ({ step: f.step, count: f.count }));
 
-      const XLSX = await import('xlsx');
+      const XLSX = await createSafeWorkbook();
       const wb = XLSX.utils.book_new();
 
       // 1. Executive Summary
@@ -428,7 +451,7 @@ export default function ReportsPage() {
       }))), 'Follow-ups');
 
       const slug = effectiveRegion === 'all' ? 'all-regions' : effectiveRegion.toLowerCase().replace(/\s+/g, '-');
-      XLSX.writeFile(wb, `eyecare-report-${slug}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      await XLSX.writeFile(wb, `eyecare-report-${slug}-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast({ title: 'Workbook exported', description: selectedCampaignLabel });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not export report';
@@ -657,6 +680,25 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      {restoreTarget && (
+        <ModalForm
+          title="Restore Archived Patient"
+          subtitle={`${restoreTarget.patientCode} · ${restoreTarget.fullName}`}
+          onClose={() => { setRestoreTarget(null); setRestoreReason(''); }}
+          onSave={restorePatient}
+          saveLabel="Restore Patient"
+          saveDisabled={restoring || restoreReason.trim().length < 10}
+        >
+          <div className="space-y-3">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
+              Restoring makes the patient active again. Previous surgery placements remain archived or cancelled and are not automatically rescheduled.
+            </div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-[#647184]">Restore reason <span className="text-red-500">*</span></label>
+            <textarea value={restoreReason} onChange={(event) => setRestoreReason(event.target.value)} rows={3} placeholder="Explain why this archive should be reversed..." className="w-full rounded-md border border-[#DDE3EA] px-3 py-2 text-sm outline-none focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10" />
+            <p className="text-right text-xs text-[#647184]">{restoreReason.trim().length} / 10 min</p>
+          </div>
+        </ModalForm>
+      )}
       {/* Report header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -1009,7 +1051,7 @@ export default function ReportsPage() {
         </Card>
       </Section>
 
-      {/* ── Section: Patients Removed from Surgery Queue ──────────────── */}
+      {/* ── Section: Archived patients ───────────────────────────────── */}
       {isReportViewer && (
         <div>
           <button
@@ -1018,7 +1060,7 @@ export default function ReportsPage() {
             className="mb-3 flex w-full items-center gap-2 text-left"
           >
             <span className="text-xs font-semibold uppercase tracking-wider text-[#647184]">
-              Patients Removed from Surgery Queue
+              Archived Patients
             </span>
             <ChevronDown
               size={14}
@@ -1047,7 +1089,7 @@ export default function ReportsPage() {
                   </div>
                 )}
                 <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Removed from</label>
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#647184]">Archived from</label>
                   <input
                     type="date"
                     value={droppedFrom}
@@ -1082,7 +1124,7 @@ export default function ReportsPage() {
               ) : !droppedRows?.length ? (
                 <div className="flex flex-col items-center gap-2 py-10 text-[#647184]">
                   <UserMinus size={28} className="opacity-40" />
-                  <p className="text-sm">No patients have been removed from the surgery queue</p>
+                  <p className="text-sm">No archived patients found</p>
                   {(droppedFrom || droppedTo) && (
                     <p className="text-xs">Try widening the date range</p>
                   )}
@@ -1094,7 +1136,7 @@ export default function ReportsPage() {
                     <table className="w-full text-sm">
                       <thead className="border-b border-[#DDE3EA] bg-[#F5F7FA]">
                         <tr>
-                          {['#', 'Patient Name', 'Phone', 'Region', 'Screened Date', 'Removal Reason', 'Removed By', 'Removal Date'].map((h) => (
+                          {['#', 'Patient', 'Phone', 'Region', 'Screened Date', 'Archive Reason', 'Archived By', 'Archive Date', ...(role === 'Super Administrator' ? ['Action'] : [])].map((h) => (
                             <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#647184]">{h}</th>
                           ))}
                         </tr>
@@ -1103,7 +1145,7 @@ export default function ReportsPage() {
                         {droppedRows.map((row, i) => (
                           <tr key={row.id} className="border-b border-[#EAEEF3] hover:bg-[#F5F7FA]">
                             <td className="px-4 py-3 text-[#4B5666]">{i + 1}</td>
-                            <td className="px-4 py-3 font-medium text-[#141920]">{row.fullName}</td>
+                            <td className="px-4 py-3 font-medium text-[#141920]">{row.fullName}<span className="block font-mono text-xs font-normal text-[#647184]">{row.patientCode}</span></td>
                             <td className="px-4 py-3 text-[#4B5666]">{row.phone}</td>
                             <td className="px-4 py-3 text-[#4B5666]">{row.region}</td>
                             <td className="px-4 py-3 text-[#4B5666]">
@@ -1114,6 +1156,13 @@ export default function ReportsPage() {
                             <td className="px-4 py-3 text-[#4B5666]">
                               {new Date(row.archivedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </td>
+                            {role === 'Super Administrator' && (
+                              <td className="px-4 py-3">
+                                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setRestoreTarget(row); setRestoreReason(''); }}>
+                                  <RotateCcw size={13} /> Restore
+                                </Button>
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

@@ -92,11 +92,11 @@ export async function auditLog(input: {
   details?: string;
   before?: unknown;
   after?: unknown;
-}) {
+}, db: Pick<Prisma.TransactionClient, 'auditLog'> = prisma) {
   const toJson = (value: unknown): Prisma.InputJsonValue | undefined =>
     value === undefined ? undefined : JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
-  await prisma.auditLog.create({
+  await db.auditLog.create({
     data: {
       actor: `${input.actor.name} (${input.actor.role})`,
       actorId: input.actor.id,

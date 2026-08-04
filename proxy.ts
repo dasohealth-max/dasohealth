@@ -11,6 +11,7 @@ const PROTECTED = [
   '/screening',
   '/settings',
   '/surgeries',
+  '/inbox',
 ];
 
 const ROUTE_MODULES: { path: string; module: AppModule }[] = [
@@ -21,6 +22,7 @@ const ROUTE_MODULES: { path: string; module: AppModule }[] = [
   { path: '/surgeries', module: 'surgeries' },
   { path: '/followups', module: 'followups' },
   { path: '/reports', module: 'reports' },
+  { path: '/inbox', module: 'changeRequests' },
   { path: '/settings', module: 'settings' },
 ];
 

@@ -22,7 +22,7 @@ Create `.env.local` from `.env.example` for local development and fill in real v
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Yes | Prisma runtime | Use the Supabase pooler URL for application traffic. Contains the database password and must stay secret. |
 | `DIRECT_URL` | Yes for migrations | Prisma CLI | Used by `prisma.config.ts` for migrations. Contains the database password and must stay secret. |
-| `DATABASE_SSL_REJECT_UNAUTHORIZED` | Optional | Prisma runtime | Set to `true` only when certificate validation is configured correctly. |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | Optional | Prisma runtime | Defaults to strict certificate validation. Set to `false` only for a documented local/pooler certificate-chain exception. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Browser and server auth | Public project URL. It is not a password, but keep environment setup consistent. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Browser and server auth | Public anon key. It must rely on Supabase RLS and policies for safety. Rotate if exposed unexpectedly. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes for admin server actions | Server actions only | Highly privileged key that bypasses RLS. Never expose it to client code or logs. |
@@ -96,7 +96,8 @@ The route also accepts `x-cron-secret: <CRON_SECRET>` for external schedulers th
 
 Apply `supabase/rls.sql` in Supabase after testing it in staging. The current RLS model allows authenticated browser clients to read region-scoped rows but denies browser writes to patient, screening, surgery, follow-up, medication, user, campaign, and audit tables. Writes must go through Server Actions or trusted service-role/server database flows.
 
-The policies depend on Supabase Auth JWT metadata:
+The policies cover `change_requests` as well as the clinical, campaign, user,
+medication, and audit tables. They depend on Supabase Auth JWT metadata:
 
 - `app_metadata.role`
 - `app_metadata.assignedRegion`

@@ -194,8 +194,13 @@ model User {
   initials       String
   color          String   @default("#0d9488")
   active         Boolean  @default(true)
+  deactivatedAt     DateTime? @map("deactivated_at") @db.Timestamptz(3)
+  deactivatedById   String?   @map("deactivated_by_id")
+  deactivatedByName String?   @map("deactivated_by_name")
+  deactivationReason String?  @map("deactivation_reason")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@index([active], map: "idx_users_active")
   @@map("users")
 }
 
@@ -346,6 +351,10 @@ model Screening {
   currentMedications  String                  @default("") @map("current_medications")
   recommendation      ScreeningRecommendation
   notes               String                  @default("")
+  voidedAt            DateTime?               @map("voided_at") @db.Timestamptz(3)
+  voidedById          String?                 @map("voided_by_id")
+  voidedByName        String?                 @map("voided_by_name")
+  voidedReason        String?                 @map("voided_reason")
   createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
 
   patient        Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
@@ -359,6 +368,7 @@ model Screening {
   @@index([region, campaignId], map: "idx_screenings_region_campaign_id")
   @@index([screenedAt(sort: Desc)], map: "idx_screenings_screened_at")
   @@index([createdAt(sort: Desc)], map: "idx_screenings_created_at")
+  @@index([voidedAt], map: "idx_screenings_voided_at")
   @@map("screenings")
 }
 
@@ -387,6 +397,11 @@ model Surgery {
   archivedById           String?       @map("archived_by_id")
   archivedByName         String?       @map("archived_by_name")
   archivedReason         String?       @map("archived_reason")
+  cancellationReason     String?       @map("cancellation_reason")
+  cancellationNotes      String        @default("") @map("cancellation_notes")
+  cancelledAt            DateTime?     @map("cancelled_at") @db.Timestamptz(3)
+  cancelledById          String?       @map("cancelled_by_id")
+  cancelledByName        String?       @map("cancelled_by_name")
   createdAt              DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Restrict prevents cascading patient deletion when a surgery record exists.
@@ -434,6 +449,10 @@ model FollowUp {
   nextAppointmentDate  DateTime?          @map("next_appointment_date") @db.Date
   completedById        String             @default("") @map("completed_by_id")
   completedByName      String             @default("") @map("completed_by_name")
+  voidedAt             DateTime?          @map("voided_at") @db.Timestamptz(3)
+  voidedById           String?            @map("voided_by_id")
+  voidedByName         String?            @map("voided_by_name")
+  voidedReason         String?            @map("voided_reason")
   createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
 
   patient        Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
@@ -456,6 +475,7 @@ model FollowUp {
   @@index([status, dueDate], map: "idx_follow_ups_status_due_date")
   @@index([needsDoctorReview], map: "idx_follow_ups_needs_doctor_review")
   @@index([doctorReviewStatus], map: "idx_follow_ups_doctor_review_status")
+  @@index([voidedAt], map: "idx_follow_ups_voided_at")
   @@index([createdAt(sort: Desc)], map: "idx_follow_ups_created_at")
   @@map("follow_ups")
 }
@@ -470,11 +490,16 @@ model FollowUpMedication {
   instructions String           @default("")
   status       MedicationStatus @default(Prescribed)
   notes        String           @default("")
+  enteredInErrorAt     DateTime? @map("entered_in_error_at") @db.Timestamptz(3)
+  enteredInErrorById   String?   @map("entered_in_error_by_id")
+  enteredInErrorByName String?   @map("entered_in_error_by_name")
+  enteredInErrorReason String?   @map("entered_in_error_reason")
   createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   followUp FollowUp @relation(fields: [followUpId], references: [id], onDelete: Cascade)
 
   @@index([followUpId], map: "idx_follow_up_medications_follow_up_id")
+  @@index([enteredInErrorAt], map: "idx_follow_up_medications_entered_in_error_at")
   @@map("follow_up_medications")
 }
 
@@ -485,6 +510,7 @@ model ChangeRequest {
   entityLabel     String    @default("") @map("entity_label")
   requestType     String    @map("request_type")
   reason          String
+  notes           String    @default("")
   requestedById   String    @default("") @map("requested_by_id")
   requestedByName String    @default("") @map("requested_by_name")
   requestedByRole String    @default("") @map("requested_by_role")
@@ -495,6 +521,7 @@ model ChangeRequest {
   resolvedByName  String?   @map("resolved_by_name")
   resolutionNote  String    @default("") @map("resolution_note")
   resolvedAt      DateTime? @map("resolved_at") @db.Timestamptz(3)
+  requesterViewedAt DateTime? @map("requester_viewed_at") @db.Timestamptz(3)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -502,6 +529,7 @@ model ChangeRequest {
   @@index([status], map: "idx_change_requests_status")
   @@index([region], map: "idx_change_requests_region")
   @@index([requestedById], map: "idx_change_requests_requested_by_id")
+  @@index([requestedById, requesterViewedAt], map: "idx_change_requests_requester_unread")
   @@index([createdAt(sort: Desc)], map: "idx_change_requests_created_at")
   @@map("change_requests")
 }

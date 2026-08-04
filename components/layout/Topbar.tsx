@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { Bell, ChevronDown, Inbox, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import { getAllCampaigns } from '@/app/actions/campaigns';
 import { getAllFollowUps } from '@/app/actions/follow_ups';
 import { getAllPatients } from '@/app/actions/patients';
-import { getPendingChangeRequestCount } from '@/app/actions/change_requests';
+import { getInboxBadgeCount } from '@/app/actions/change_requests';
 import { signOut, usePermissions } from '@/lib/auth';
 import { formatPatientBirthDateLabel } from '@/lib/utils';
 import {
@@ -29,6 +29,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
   const { user, role } = usePermissions();
   const isSuperAdmin = role === 'Super Administrator';
+  const hasInbox = role === 'Super Administrator' || role === 'Project Manager';
   const [search, setSearch] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof document === 'undefined') return 'light';
@@ -42,18 +43,28 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [pendingRequests, setPendingRequests] = useState(0);
+  const [inboxCount, setInboxCount] = useState(0);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
-    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps(), getPendingChangeRequestCount()])
-      .then(([p, c, f, pending]) => {
+    Promise.all([getAllPatients(), getAllCampaigns(), getAllFollowUps()])
+      .then(([p, c, f]) => {
         setPatients(p);
         setCampaigns(c);
         setFollowUps(f);
-        setPendingRequests(pending);
       });
   }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (!hasInbox) return;
+    let cancelled = false;
+    const loadInboxCount = () => getInboxBadgeCount().then((count) => {
+      if (!cancelled) setInboxCount(count);
+    });
+    loadInboxCount();
+    const interval = setInterval(loadInboxCount, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [hasInbox]);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -93,7 +104,6 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
     : [];
   const hasResults = patientResults.length > 0 || campaignResults.length > 0;
   const overdueCount = followUps.filter((f) => f.status === 'Overdue').length;
-  const notifCount = overdueCount + (isSuperAdmin ? pendingRequests : 0);
 
   return (
     <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 shadow-[var(--shadow-xs)]">
@@ -275,12 +285,27 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         className="relative flex size-10 items-center justify-center rounded-md border border-transparent text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-strong)]"
       >
         <Bell size={18} />
-        {notifCount > 0 && (
+        {overdueCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#E53935] px-0.5 text-[9px] font-bold text-white">
-            {notifCount > 99 ? '99+' : notifCount}
+            {overdueCount > 99 ? '99+' : overdueCount}
           </span>
         )}
       </Link>
+
+      {hasInbox && (
+        <Link
+          href="/inbox"
+          title={isSuperAdmin ? 'View pending approvals' : 'View request decisions'}
+          className="relative flex size-10 items-center justify-center rounded-md border border-transparent text-[var(--text-muted)] transition-colors hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-strong)]"
+        >
+          <Inbox size={18} />
+          {inboxCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#E53935] px-0.5 text-[9px] font-bold text-white">
+              {inboxCount > 99 ? '99+' : inboxCount}
+            </span>
+          )}
+        </Link>
+      )}
 
       {user && (
         <DropdownMenu>

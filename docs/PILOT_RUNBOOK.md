@@ -17,14 +17,15 @@ This runbook is for a 1-week internal pilot with NGO staff using non-production 
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `CRON_SECRET`
 7. Deploy the app.
-8. Run demo seed data only against the pilot database:
+8. Confirm `GET /api/health` returns `200` with `database: reachable`.
+9. Run demo seed data only against the pilot database:
 
    ```bash
    npm run seed:demo
    ```
 
-9. Create matching Supabase Auth users for the pilot staff accounts.
-10. Set each Auth user's app metadata:
+10. Create matching Supabase Auth users for the pilot staff accounts.
+11. Set each Auth user's app metadata:
 
    ```json
    {

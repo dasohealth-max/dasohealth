@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { followUpMilestoneToApp, followUpMilestoneFromApp, doctorReviewStatusToApp, doctorReviewStatusFromApp, medicationStatusToApp, medicationStatusFromApp } from '@/lib/prisma-enums';
 import type { FollowUp, FollowUpMedication } from '@/types';
 import { ACTIVE_FOLLOW_UP_SCHEDULE, addDays, startOfDay } from '@/lib/follow-up-schedule';
+import type { Prisma } from '@/lib/generated/prisma/client';
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.followUp.findFirst>>> & {
   patient?: { patientCode: string; phone?: string; emergencyPhone?: string } | null;
@@ -55,6 +56,10 @@ export function fromPrisma(row: Row): FollowUp {
     nextAppointmentDate: row.nextAppointmentDate ? (row.nextAppointmentDate as Date).toISOString().split('T')[0] : undefined,
     completedById: row.completedById,
     completedByName: row.completedByName,
+    voidedAt: row.voidedAt ? (row.voidedAt as Date).toISOString() : undefined,
+    voidedById: row.voidedById ?? undefined,
+    voidedByName: row.voidedByName ?? undefined,
+    voidedReason: row.voidedReason ?? undefined,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
@@ -70,6 +75,10 @@ export function medFromPrisma(row: MedRow): FollowUpMedication {
     instructions: row.instructions,
     status: medicationStatusToApp(row.status) as FollowUpMedication['status'],
     notes: row.notes,
+    enteredInErrorAt: row.enteredInErrorAt ? (row.enteredInErrorAt as Date).toISOString() : undefined,
+    enteredInErrorById: row.enteredInErrorById ?? undefined,
+    enteredInErrorByName: row.enteredInErrorByName ?? undefined,
+    enteredInErrorReason: row.enteredInErrorReason ?? undefined,
     createdAt: (row.createdAt as Date).toISOString(),
   };
 }
@@ -78,7 +87,7 @@ export function medFromPrisma(row: MedRow): FollowUpMedication {
 export const getAllFollowUps = unstable_cache(
   async (where: { region?: string } = {}): Promise<FollowUp[]> => {
     const rows = await prisma.followUp.findMany({
-      where,
+      where: { ...where, voidedAt: null },
       include: FOLLOW_UP_INCLUDE,
       orderBy: { dueDate: 'asc' },
     });
@@ -91,7 +100,7 @@ export const getAllFollowUps = unstable_cache(
 export async function getFollowUpWithMedications(id: string): Promise<(FollowUp & { medications: FollowUpMedication[] }) | null> {
   const row = await prisma.followUp.findUnique({
     where: { id },
-    include: { medications: { orderBy: { createdAt: 'asc' } } },
+    include: { medications: { where: { enteredInErrorAt: null }, orderBy: { createdAt: 'asc' } } },
   });
   if (!row) return null;
   return { ...fromPrisma(row), medications: row.medications.map(medFromPrisma) };
@@ -99,7 +108,7 @@ export async function getFollowUpWithMedications(id: string): Promise<(FollowUp 
 
 export async function getMedicationsForFollowUp(followUpId: string): Promise<FollowUpMedication[]> {
   const rows = await prisma.followUpMedication.findMany({
-    where: { followUpId },
+    where: { followUpId, enteredInErrorAt: null },
     orderBy: { createdAt: 'asc' },
   });
   return rows.map(medFromPrisma);
@@ -108,7 +117,10 @@ export async function getMedicationsForFollowUp(followUpId: string): Promise<Fol
 export const getAllMedications = unstable_cache(
   async (followUpWhere: { region?: string } = {}): Promise<FollowUpMedication[]> => {
     const rows = await prisma.followUpMedication.findMany({
-      where: followUpWhere.region ? { followUp: { region: followUpWhere.region } } : {},
+      where: {
+        enteredInErrorAt: null,
+        followUp: { ...followUpWhere, voidedAt: null },
+      },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(medFromPrisma);
@@ -207,11 +219,10 @@ export async function updateFollowUp(id: string, data: Omit<FollowUp, 'id' | 'cr
   return fromPrisma(row);
 }
 
-export async function deleteFollowUp(id: string): Promise<void> {
-  await prisma.followUp.delete({ where: { id } });
-}
-
-export async function checkAndMarkOverdue(where: { region?: string } = {}): Promise<number> {
+export async function checkAndMarkOverdue(
+  where: { region?: string } = {},
+  db: Pick<Prisma.TransactionClient, 'followUp'> = prisma,
+): Promise<number> {
   const today = startOfDay(new Date());
   const mutableStatuses = ['Pending', 'Due', 'Overdue'] as never[];
   let updated = 0;
@@ -221,7 +232,7 @@ export async function checkAndMarkOverdue(where: { region?: string } = {}): Prom
     const overdueStart = addDays(today, -(rule.missedAfterDueDays - 1));
 
     const [pending, due, overdue, missed] = await Promise.all([
-      prisma.followUp.updateMany({
+      db.followUp.updateMany({
         where: {
           ...where,
           milestone: rule.prismaMilestone as never,
@@ -230,7 +241,7 @@ export async function checkAndMarkOverdue(where: { region?: string } = {}): Prom
         },
         data: { status: 'Pending' as never },
       }),
-      prisma.followUp.updateMany({
+      db.followUp.updateMany({
         where: {
           ...where,
           milestone: rule.prismaMilestone as never,
@@ -239,7 +250,7 @@ export async function checkAndMarkOverdue(where: { region?: string } = {}): Prom
         },
         data: { status: 'Due' as never },
       }),
-      prisma.followUp.updateMany({
+      db.followUp.updateMany({
         where: {
           ...where,
           milestone: rule.prismaMilestone as never,
@@ -248,7 +259,7 @@ export async function checkAndMarkOverdue(where: { region?: string } = {}): Prom
         },
         data: { status: 'Overdue' as never },
       }),
-      prisma.followUp.updateMany({
+      db.followUp.updateMany({
         where: {
           ...where,
           milestone: rule.prismaMilestone as never,
@@ -300,8 +311,4 @@ export async function updateMedication(
     },
   });
   return medFromPrisma(row);
-}
-
-export async function deleteMedication(id: string): Promise<void> {
-  await prisma.followUpMedication.delete({ where: { id } });
 }

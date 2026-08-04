@@ -379,6 +379,7 @@ describe('campaign deletion safeguards', () => {
 
   it('blocks campaign deletion when clinical records are linked', async () => {
     mockRequireActor(superAdmin);
+    vi.mocked(campaignApi.getCampaignById).mockResolvedValue({ ...galmudugCampaign, status: 'Planned' });
     vi.mocked(prisma.screening.count).mockResolvedValue(2);
 
     const result = await actionDeleteCampaign('camp-galmudug-1');
@@ -388,8 +389,19 @@ describe('campaign deletion safeguards', () => {
     expect(campaignApi.deleteCampaign).not.toHaveBeenCalled();
   });
 
-  it('deletes campaign when no clinical records are linked', async () => {
+  it('blocks deletion of a campaign that has left draft status', async () => {
     mockRequireActor(superAdmin);
+
+    const result = await actionDeleteCampaign('camp-galmudug-1');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Only unused Planned campaigns/);
+    expect(campaignApi.deleteCampaign).not.toHaveBeenCalled();
+  });
+
+  it('deletes an unused Planned campaign draft', async () => {
+    mockRequireActor(superAdmin);
+    vi.mocked(campaignApi.getCampaignById).mockResolvedValue({ ...galmudugCampaign, status: 'Planned' });
 
     const result = await actionDeleteCampaign('camp-galmudug-1');
 

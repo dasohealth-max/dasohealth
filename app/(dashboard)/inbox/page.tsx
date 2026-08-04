@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle, Clock, Inbox, XCircle } from 'lucide-react';
-import { getChangeRequests, actionResolveChangeRequest } from '@/app/actions/change_requests';
+import { getChangeRequests, actionResolveChangeRequest, markInboxDecisionsViewed } from '@/app/actions/change_requests';
 import { usePermissions } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
@@ -11,17 +11,17 @@ import ModalForm from '@/components/forms/ModalForm';
 import type { ChangeRequest, ChangeRequestStatus } from '@/types';
 
 const PAGE_SIZE = 25;
-type Tab = 'Pending' | 'all';
+type Tab = 'pending' | 'decided' | 'all';
 
 const STATUS_CONFIG: Record<ChangeRequestStatus, { label: string; className: string }> = {
   Pending: { label: 'Pending', className: 'bg-amber-100 text-amber-800' },
   Approved: { label: 'Approved', className: 'bg-green-100 text-green-800' },
   Rejected: { label: 'Rejected', className: 'bg-red-100 text-red-800' },
-  Resolved: { label: 'Resolved', className: 'bg-blue-100 text-blue-800' },
 };
 
 const TYPE_LABELS: Record<string, string> = {
   archive: 'Archive Request',
+  cancel_surgery: 'Surgery Cancellation Request',
   correct: 'Correction Request',
   other: 'Other Request',
 };
@@ -30,34 +30,34 @@ export default function InboxPage() {
   const { role } = usePermissions();
   const isSuperAdmin = role === 'Super Administrator';
 
-  const [tab, setTab] = useState<Tab>('Pending');
+  const [tab, setTab] = useState<Tab>('pending');
   const [items, setItems] = useState<ChangeRequest[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
   const [resolving, setResolving] = useState<ChangeRequest | null>(null);
-  const [resolution, setResolution] = useState<'Approved' | 'Rejected' | 'Resolved'>('Approved');
+  const [resolution, setResolution] = useState<'Approved' | 'Rejected'>('Approved');
   const [resolutionNote, setResolutionNote] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const status: ChangeRequestStatus | undefined = tab === 'Pending' ? 'Pending' : undefined;
-      const result = await getChangeRequests({ status, page, pageSize: PAGE_SIZE });
+      const result = await getChangeRequests({ view: tab, page, pageSize: PAGE_SIZE });
       setItems(result.data);
       setTotal(result.total);
+      if (!isSuperAdmin && tab === 'decided') await markInboxDecisionsViewed();
     } finally {
       setLoading(false);
     }
-  }, [tab, page]);
+  }, [tab, page, isSuperAdmin]);
 
   useEffect(() => {
-    load();
+    queueMicrotask(load);
   }, [load]);
 
-  function openResolve(item: ChangeRequest, defaultResolution: 'Approved' | 'Rejected' | 'Resolved') {
+  function openResolve(item: ChangeRequest, defaultResolution: 'Approved' | 'Rejected') {
     setResolving(item);
     setResolution(defaultResolution);
     setResolutionNote('');
@@ -91,7 +91,7 @@ export default function InboxPage() {
           <Inbox size={20} className="text-[var(--text-brand)]" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-[var(--text-strong)]">Inbox</h1>
+          <h1 className="text-xl font-bold text-[var(--text-strong)]">{isSuperAdmin ? 'Approvals' : 'My Requests'}</h1>
           <p className="text-sm text-[var(--text-muted)]">
             {isSuperAdmin ? 'Review and resolve change requests from your team' : 'Track your submitted change requests'}
           </p>
@@ -100,7 +100,7 @@ export default function InboxPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--border-subtle)]">
-        {(['Pending', 'all'] as Tab[]).map((t) => (
+        {(isSuperAdmin ? (['pending', 'all'] as Tab[]) : (['pending', 'decided'] as Tab[])).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setPage(1); }}
@@ -110,7 +110,7 @@ export default function InboxPage() {
                 : 'text-[var(--text-muted)] hover:text-[var(--text-strong)]'
             }`}
           >
-            {t === 'Pending' ? 'Pending' : 'All Requests'}
+            {t === 'pending' ? 'Pending' : t === 'decided' ? 'Decisions' : 'All Requests'}
           </button>
         ))}
       </div>
@@ -135,7 +135,7 @@ export default function InboxPage() {
             ) : items.length === 0 ? (
               <tr>
                 <td colSpan={isSuperAdmin ? 5 : 4} className="px-4 py-12 text-center text-sm text-[var(--text-muted)]">
-                  {tab === 'Pending' ? 'No pending requests — all clear!' : 'No change requests found.'}
+                  {tab === 'pending' ? 'No pending requests — all clear!' : 'No change requests found.'}
                 </td>
               </tr>
             ) : (
@@ -151,6 +151,7 @@ export default function InboxPage() {
                         {item.entity}: <span className="font-medium text-[var(--text-strong)]">{item.entityLabel}</span>
                       </p>
                       <p className="mt-1 max-w-xs text-xs text-[var(--text-muted)] line-clamp-2">{item.reason}</p>
+                      {item.notes && <p className="mt-0.5 max-w-xs text-xs text-[var(--text-muted)] line-clamp-2">{item.notes}</p>}
                       {item.region && (
                         <p className="mt-0.5 text-[10px] text-[var(--text-subtle)]">Region: {item.region}</p>
                       )}
@@ -162,7 +163,7 @@ export default function InboxPage() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${statusCfg.className}`}>
                         {item.status === 'Pending' && <Clock size={10} />}
-                        {(item.status === 'Approved' || item.status === 'Resolved') && <CheckCircle size={10} />}
+                        {item.status === 'Approved' && <CheckCircle size={10} />}
                         {item.status === 'Rejected' && <XCircle size={10} />}
                         {statusCfg.label}
                       </span>
@@ -236,11 +237,11 @@ export default function InboxPage() {
       {/* Resolve Modal */}
       {resolving && (
         <ModalForm
-          title={resolution === 'Approved' ? 'Approve Request' : resolution === 'Rejected' ? 'Reject Request' : 'Resolve Request'}
+          title={resolution === 'Approved' ? 'Approve Request' : 'Reject Request'}
           subtitle={`${TYPE_LABELS[resolving.requestType] ?? resolving.requestType} — ${resolving.entityLabel}`}
           onClose={() => setResolving(null)}
           onSave={submitResolution}
-          saveLabel={resolution === 'Approved' ? 'Approve' : resolution === 'Rejected' ? 'Reject' : 'Resolve'}
+          saveLabel={resolution === 'Approved' ? 'Approve' : 'Reject'}
           saveDisabled={saving || !resolutionNote.trim()}
         >
           <div className="space-y-4">
@@ -248,8 +249,20 @@ export default function InboxPage() {
             <div className="rounded-lg bg-[var(--surface-sunken)] p-3 text-sm">
               <p className="font-semibold text-[var(--text-strong)]">{resolving.entityLabel}</p>
               <p className="mt-1 text-[var(--text-muted)]">{resolving.reason}</p>
+              {resolving.notes && <p className="mt-1 text-[var(--text-muted)]">{resolving.notes}</p>}
               <p className="mt-1 text-xs text-[var(--text-subtle)]">Requested by {resolving.requestedByName} ({resolving.requestedByRole})</p>
             </div>
+
+            {resolution === 'Approved' && resolving.requestType === 'archive' && resolving.entity === 'Patient' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+                Approval archives this patient and removes active surgery placements from working queues. All clinical history remains preserved.
+              </div>
+            )}
+            {resolution === 'Approved' && resolving.requestType === 'cancel_surgery' && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-relaxed text-blue-900">
+                Approval cancels only this surgery placement. The patient remains active and their clinical history is unchanged.
+              </div>
+            )}
 
             {/* Resolution selector */}
             <div>
@@ -257,7 +270,7 @@ export default function InboxPage() {
                 Resolution
               </label>
               <div className="flex gap-2">
-                {(['Approved', 'Rejected', 'Resolved'] as const).map((r) => (
+                {(['Approved', 'Rejected'] as const).map((r) => (
                   <button
                     key={r}
                     type="button"

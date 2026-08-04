@@ -2,9 +2,8 @@
 
 import { z } from 'zod';
 import { updateTag } from 'next/cache';
-import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, deleteSurgery, fromPrisma, attachScreeningResults } from '@/lib/api/surgeries';
+import { getAllSurgeries as fetchAllSurgeries, createSurgery, updateSurgery, fromPrisma, attachScreeningResults } from '@/lib/api/surgeries';
 import { surgeryStatusFromApp, vaGradeToApp } from '@/lib/prisma-enums';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Surgery } from '@/types';
@@ -245,16 +244,20 @@ async function getLinkedScreeningForSurgery(screeningId?: string | null) {
   });
 }
 
-async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
+async function createInitialFollowUps(
+  surgery: Surgery,
+  performedAt: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+) {
   const base = new Date(performedAt);
   for (const rule of ACTIVE_FOLLOW_UP_SCHEDULE) {
-    const exists = await prisma.followUp.findFirst({
+    const exists = await db.followUp.findFirst({
       where: { surgeryId: surgery.id, milestone: rule.prismaMilestone as never },
       select: { id: true },
     });
     if (exists) continue;
     try {
-      await prisma.followUp.create({
+      await db.followUp.create({
         data: {
           patientId: surgery.patientId,
           patientName: surgery.patientName,
@@ -280,7 +283,7 @@ async function createInitialFollowUps(surgery: Surgery, performedAt: string) {
     }
   }
 
-  const rows = await prisma.followUp.findMany({
+  const rows = await db.followUp.findMany({
     where: { surgeryId: surgery.id },
     select: { milestone: true },
   });
@@ -323,7 +326,8 @@ export async function actionCreateSurgery(
       return { ok: false, error: 'Actual surgery completion date is required' };
     }
 
-    const surgery = {
+    const surgery = await prisma.$transaction(async (tx) => {
+      const created = {
       ...(await createSurgery({
       ...data,
       patientId: scope.id,
@@ -336,24 +340,28 @@ export async function actionCreateSurgery(
       surgeonName: scope.campaignRegion?.doctorName || data.surgeonName.trim() || '',
       completedById: data.status === 'Completed' ? actor.id : '',
       completedByName: data.status === 'Completed' ? actor.name : '',
-      })),
+      }, tx)),
       patientCode: scope.patientCode,
-    };
+      };
+      if (created.status === 'Completed' && created.performedAt) {
+        await createInitialFollowUps(created, created.performedAt, tx);
+      }
+      await auditLog({
+        actor,
+        action: 'create',
+        entity: 'Surgery',
+        entityId: created.id,
+        region: created.region,
+        campaignId: created.campaignId,
+        details: `Created surgery for ${created.patientName}`,
+        after: created,
+      }, tx);
+      return created;
+    });
     if (surgery.status === 'Completed' && surgery.performedAt) {
-      await createInitialFollowUps(surgery, surgery.performedAt);
       updateTag('follow-ups');
     }
     updateTag('surgeries');
-    after(() => auditLog({
-      actor,
-      action: 'create',
-      entity: 'Surgery',
-      entityId: surgery.id,
-      region: surgery.region,
-      campaignId: surgery.campaignId,
-      details: `Created surgery for ${surgery.patientName}`,
-      after: surgery,
-    }));
     return { ok: true, data: surgery };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -395,7 +403,8 @@ export async function actionUpdateSurgery(
       ? preOpVaForScreeningEye(linkedScreening)
       : data.preOpVA;
 
-    const updated = {
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = {
       ...(await updateSurgery(id, {
       ...data,
       patientId: scope.id,
@@ -411,28 +420,33 @@ export async function actionUpdateSurgery(
       preOpVA,
       completedById: newStatusKey === 'Completed' ? actor.id : data.completedById,
       completedByName: newStatusKey === 'Completed' ? actor.name : data.completedByName,
-      })),
+      }, tx)),
       patientCode: scope.patientCode,
-    };
+      };
+
+      if (newStatusKey === 'Completed' && result.performedAt) {
+        await createInitialFollowUps(result, result.performedAt, tx);
+      }
+      await auditLog({
+        actor,
+        action: 'update',
+        entity: 'Surgery',
+        entityId: result.id,
+        region: result.region,
+        campaignId: result.campaignId,
+        details: newStatusKey === 'Completed'
+          ? `Marked surgery completed for ${result.patientName}`
+          : `Updated surgery for ${result.patientName}`,
+        before: fromPrisma(beforeRow),
+        after: result,
+      }, tx);
+      return result;
+    });
 
     if (newStatusKey === 'Completed' && updated.performedAt) {
-      await createInitialFollowUps(updated, updated.performedAt);
       updateTag('follow-ups');
     }
     updateTag('surgeries');
-    after(() => auditLog({
-      actor,
-      action: 'update',
-      entity: 'Surgery',
-      entityId: updated.id,
-      region: updated.region,
-      campaignId: updated.campaignId,
-      details: newStatusKey === 'Completed'
-        ? `Marked surgery completed for ${updated.patientName}`
-        : `Updated surgery for ${updated.patientName}`,
-      before: fromPrisma(beforeRow),
-      after: updated,
-    }));
     return { ok: true, data: updated };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -440,6 +454,7 @@ export async function actionUpdateSurgery(
 }
 
 export async function actionDeleteSurgery(_id: string): Promise<ActionResult> {
+  void _id;
   // Hard deletion of surgery records is permanently blocked to preserve accountability.
   // Super Administrators must use actionArchiveSurgery with a mandatory reason instead.
   return {
@@ -453,14 +468,25 @@ export async function actionRemoveSurgeryPatient(
   reason: string,
   notes?: string,
 ): Promise<ActionResult<null>> {
+  return actionCancelSurgeryPlacement(surgeryId, reason, notes);
+}
+
+export async function actionCancelSurgeryPlacement(
+  surgeryId: string,
+  reason: string,
+  notes?: string,
+): Promise<ActionResult<null>> {
   const actor = await requireActor('surgeries', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
   if (actor.role !== 'Super Administrator') {
-    return { ok: false, error: 'Only Super Administrators can remove patients from the surgery queue' };
+    return { ok: false, error: 'Only Super Administrators can cancel surgery placements directly' };
   }
-  if (!reason.trim()) return { ok: false, error: 'Removal reason is required' };
-
-  const fullReason = notes?.trim() ? `${reason} — ${notes.trim()}` : reason;
+  const cancellationReason = reason.trim();
+  const cancellationNotes = notes?.trim() ?? '';
+  if (!cancellationReason) return { ok: false, error: 'Cancellation reason is required' };
+  if (cancellationReason === 'Other reason' && !cancellationNotes) {
+    return { ok: false, error: 'Additional notes are required for Other reason' };
+  }
 
   try {
     const surgery = await prisma.surgery.findUnique({ where: { id: surgeryId } });
@@ -472,37 +498,29 @@ export async function actionRemoveSurgeryPatient(
     const denied = ensureRegionAccess(actor, surgery.region);
     if (denied) return denied;
 
-    const patient = await prisma.patient.findUnique({ where: { id: surgery.patientId } });
-    if (!patient) return { ok: false, error: 'Patient record not found' };
-
     const now = new Date();
-    await prisma.$transaction([
-      prisma.surgery.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.surgery.update({
         where: { id: surgeryId },
-        data: { archivedAt: now, archivedById: actor.id, archivedByName: actor.name, archivedReason: fullReason },
-      }),
-      prisma.patient.update({
-        where: { id: surgery.patientId },
-        data: { archivedAt: now, archivedById: actor.id, archivedByName: actor.name, archivedReason: fullReason },
-      }),
-    ]);
+        data: {
+          status: 'Cancelled',
+          cancellationReason,
+          cancellationNotes,
+          cancelledAt: now,
+          cancelledById: actor.id,
+          cancelledByName: actor.name,
+        },
+      });
+
+      await auditLog({
+        actor, action: 'cancel', entity: 'Surgery', entityId: surgeryId,
+        region: surgery.region, campaignId: surgery.campaignId,
+        details: `Cancelled surgery placement — ${cancellationReason}${cancellationNotes ? ` — ${cancellationNotes}` : ''} (patient: ${surgery.patientName})`,
+        before: surgery,
+      }, tx);
+    });
 
     updateTag('surgeries');
-    updateTag('patients');
-    after(() => Promise.all([
-      auditLog({
-        actor, action: 'archive', entity: 'Surgery', entityId: surgeryId,
-        region: surgery.region, campaignId: surgery.campaignId,
-        details: `Removed from surgery queue — ${fullReason} (patient: ${surgery.patientName})`,
-        before: surgery,
-      }),
-      auditLog({
-        actor, action: 'archive', entity: 'Patient', entityId: surgery.patientId,
-        region: surgery.region, campaignId: surgery.campaignId,
-        details: `Archived with surgery removal — ${fullReason} (patient: ${surgery.patientName})`,
-        before: patient,
-      }),
-    ]));
 
     return { ok: true, data: null };
   } catch (e) {
@@ -525,26 +543,30 @@ export async function actionArchiveSurgery(id: string, reason: string): Promise<
     if (denied) return denied;
     if (before.archivedAt) return { ok: false, error: 'Surgery is already archived' };
 
-    await prisma.surgery.update({
-      where: { id },
-      data: {
-        archivedAt: new Date(),
-        archivedById: actor.id,
-        archivedByName: actor.name,
-        archivedReason: reason.trim(),
-      },
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.surgery.update({
+        where: { id },
+        data: {
+          archivedAt: now,
+          archivedById: actor.id,
+          archivedByName: actor.name,
+          archivedReason: reason.trim(),
+        },
+      });
+      await auditLog({
+        actor,
+        action: 'archive',
+        entity: 'Surgery',
+        entityId: id,
+        region: before.region,
+        campaignId: before.campaignId,
+        details: `Archived surgery for ${before.patientName} — reason: ${reason.trim()}`,
+        before,
+        after: { archivedAt: now, archivedById: actor.id, archivedReason: reason.trim() },
+      }, tx);
     });
     updateTag('surgeries');
-    after(() => auditLog({
-      actor,
-      action: 'archive',
-      entity: 'Surgery',
-      entityId: id,
-      region: before.region,
-      campaignId: before.campaignId,
-      details: `Archived surgery for ${before.patientName} — reason: ${reason.trim()}`,
-      before,
-    }));
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

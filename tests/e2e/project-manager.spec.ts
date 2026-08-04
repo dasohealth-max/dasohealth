@@ -1,20 +1,14 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { hasE2ECredentials, loginAs } from './auth';
 
 // Demo PM is assigned to Galmudug only.
-const EMAIL = process.env.E2E_PM_EMAIL ?? 'pm.galmudug@demo.eyecare.org';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Demo1234!';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(/email/i).fill(EMAIL);
-  await page.getByLabel(/password/i).fill(PASSWORD);
-  await page.getByRole('button', { name: /sign in|log in/i }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-}
+const EMAIL = process.env.E2E_PM_EMAIL;
+const PASSWORD = process.env.E2E_PASSWORD;
 
 test.describe('Project Manager – region isolation', () => {
+  test.skip(!hasE2ECredentials(EMAIL, PASSWORD), 'E2E Project Manager credentials are not configured');
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await loginAs(page, EMAIL!, PASSWORD!, '/dashboard');
   });
 
   test('sees the dashboard after login', async ({ page }) => {

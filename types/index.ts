@@ -13,6 +13,10 @@ export interface User {
   initials: string;
   color: string;
   active: boolean;
+  deactivatedAt?: string;
+  deactivatedById?: string;
+  deactivatedByName?: string;
+  deactivationReason?: string;
   createdAt: string;
 }
 
@@ -193,6 +197,11 @@ export interface Surgery {
   archivedById?: string;
   archivedByName?: string;
   archivedReason?: string;
+  cancellationReason?: string;
+  cancellationNotes?: string;
+  cancelledAt?: string;
+  cancelledById?: string;
+  cancelledByName?: string;
   createdAt: string;
 }
 
@@ -235,6 +244,10 @@ export interface FollowUp {
   nextAppointmentDate?: string;
   completedById: string;
   completedByName: string;
+  voidedAt?: string;
+  voidedById?: string;
+  voidedByName?: string;
+  voidedReason?: string;
   createdAt: string;
 }
 
@@ -248,6 +261,10 @@ export interface FollowUpMedication {
   instructions: string;
   status: MedicationStatus;
   notes: string;
+  enteredInErrorAt?: string;
+  enteredInErrorById?: string;
+  enteredInErrorByName?: string;
+  enteredInErrorReason?: string;
   createdAt: string;
 }
 
@@ -268,8 +285,8 @@ export interface AuditLog {
   createdAt: string;
 }
 
-export type ChangeRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Resolved';
-export type ChangeRequestType = 'archive' | 'correct' | 'other';
+export type ChangeRequestStatus = 'Pending' | 'Approved' | 'Rejected';
+export type ChangeRequestType = 'archive' | 'cancel_surgery' | 'correct' | 'other';
 
 export interface ChangeRequest {
   id: string;
@@ -278,6 +295,7 @@ export interface ChangeRequest {
   entityLabel: string;
   requestType: ChangeRequestType;
   reason: string;
+  notes: string;
   requestedById: string;
   requestedByName: string;
   requestedByRole: string;
@@ -288,6 +306,7 @@ export interface ChangeRequest {
   resolvedByName?: string;
   resolutionNote: string;
   resolvedAt?: string;
+  requesterViewedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

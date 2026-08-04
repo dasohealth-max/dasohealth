@@ -115,14 +115,6 @@ function countMap(rows: CountRow[]) {
   return map;
 }
 
-function surgeryCountMap(rows: SurgeryCountRow[]) {
-  const map = new Map<string, number>();
-  rows.forEach((row) => {
-    map.set(countKey(row.region, row.campaignId, row.status), row._count._all);
-  });
-  return map;
-}
-
 function followUpCountMap(rows: FollowUpCountRow[]) {
   const map = new Map<string, number>();
   rows.forEach((row) => {

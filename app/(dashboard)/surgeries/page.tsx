@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import type { LensType, Surgery, SurgeryStatus } from '@/types';
-import { actionUpdateSurgery, actionRemoveSurgeryPatient, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
-import { REMOVAL_REASONS } from '@/lib/surgery-constants';
+import { actionArchiveSurgery, actionUpdateSurgery, actionCancelSurgeryPlacement, getPrintableHistorySurgeries, getPrintableWaitingSurgeries, getSurgeriesPaginated } from '@/app/actions/surgeries';
+import { CANCELLATION_REASONS } from '@/lib/surgery-constants';
 import { actionCreateChangeRequest } from '@/app/actions/change_requests';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import LifecycleReasonDialog from '@/components/forms/LifecycleReasonDialog';
 import Pagination from '@/components/ui/Pagination';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
@@ -16,8 +16,7 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatDateTime } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { AlertTriangle, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, Trash2, UserMinus, X } from 'lucide-react';
-import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/forms/ChangeRequestDialog';
+import { AlertTriangle, Archive, ChevronDown, ChevronRight, Eye, Pencil, Phone, Printer, RefreshCw, Search, UserMinus, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
@@ -57,10 +56,6 @@ function toLocal(iso?: string): string {
   const d   = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function nowLocal(): string {
-  return toLocal(new Date().toISOString());
 }
 
 function screeningFindingLabel(screening: NonNullable<Surgery['screeningResult']>) {
@@ -115,7 +110,6 @@ export default function SurgeriesPage() {
   const [showForm,        setShowForm]        = useState(false);
   const [saveError,       setSaveError]       = useState('');
   const [deleteTarget,    setDeleteTarget]    = useState<Surgery | null>(null);
-  const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
 const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
   const [removeReason,    setRemoveReason]    = useState('');
   const [removeNotes,     setRemoveNotes]     = useState('');
@@ -171,7 +165,9 @@ const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
   // ── Fetch waiting ──────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    setWaitingLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setWaitingLoading(true);
+    });
     getSurgeriesPaginated({
       search: debouncedSearch,
       region: waitingRegion,
@@ -204,7 +200,9 @@ const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
   // ── Fetch history ──────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    setHistoryLoading(true);
+    queueMicrotask(() => {
+      if (!cancelled) setHistoryLoading(true);
+    });
     getSurgeriesPaginated({
       search: debouncedSearch,
       region: historyRegion,
@@ -277,54 +275,54 @@ const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
     setRefreshKey((k) => k + 1);
   }
 
-  async function confirmDelete() {
+  async function confirmDelete(reason: string) {
     if (!deleteTarget) return;
+    const target = deleteTarget;
+    const result = await actionArchiveSurgery(target.id, reason);
+    if (result.ok) {
+      toast({ title: 'Surgery record archived', description: `${patientDisplayName(target.patientName, target.patientCode)} remains preserved in history.` });
+      setHistorySurgeries((rows) => rows.filter((row) => row.id !== target.id));
+      setHistoryTotal((value) => Math.max(0, value - 1));
+    } else {
+      toast({ title: 'Could not archive surgery', description: result.error, variant: 'error' });
+    }
     setDeleteTarget(null);
-    setChangeRequestTarget({
-      entity: 'Surgery',
-      entityId: deleteTarget.id,
-      entityLabel: patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode),
-      region: deleteTarget.region,
-      campaignId: deleteTarget.campaignId,
-    });
   }
 
   async function confirmRemove() {
     if (!removeTarget) return;
     setIsRemoving(true);
-    const result = await actionRemoveSurgeryPatient(removeTarget.id, removeReason, removeNotes);
+    const result = await actionCancelSurgeryPlacement(removeTarget.id, removeReason, removeNotes);
     setIsRemoving(false);
     if (result.ok) {
-      toast({ title: 'Patient removed from surgery queue', description: patientDisplayName(removeTarget.patientName, removeTarget.patientCode) });
+      toast({ title: 'Surgery placement cancelled', description: `${patientDisplayName(removeTarget.patientName, removeTarget.patientCode)} remains an active patient.` });
       setWaitingSurgeries((rows) => rows.filter((r) => r.id !== removeTarget.id));
       setWaitingTotal((n) => Math.max(0, n - 1));
       setRemoveTarget(null);
     } else {
-      toast({ title: 'Could not remove patient', description: result.error, variant: 'error' });
+      toast({ title: 'Could not cancel placement', description: result.error, variant: 'error' });
     }
   }
 
   async function submitPmRemoval() {
     if (!pmRemoveTarget) return;
     setIsPmRequesting(true);
-    const reasonText = pmRemoveNotes.trim()
-      ? `${pmRemoveReason} — ${pmRemoveNotes.trim()}`
-      : pmRemoveReason;
     const result = await actionCreateChangeRequest({
       entity: 'Surgery',
       entityId: pmRemoveTarget.id,
       entityLabel: patientDisplayName(pmRemoveTarget.patientName, pmRemoveTarget.patientCode),
-      requestType: 'archive',
-      reason: reasonText,
+      requestType: 'cancel_surgery',
+      reason: pmRemoveReason,
+      notes: pmRemoveNotes.trim(),
       region: pmRemoveTarget.region,
       campaignId: pmRemoveTarget.campaignId,
     });
     setIsPmRequesting(false);
     if (result.ok) {
-      toast({ title: 'Removal request submitted', description: 'Your Super Administrator will review and action this request.' });
+      toast({ title: 'Cancellation request submitted', description: 'The patient remains in the queue until a Super Administrator approves it.' });
       setPmRemoveTarget(null);
     } else {
-      toast({ title: 'Could not submit request', description: result.error, variant: 'error' });
+      toast({ title: 'Could not submit cancellation request', description: result.error, variant: 'error' });
     }
   }
 
@@ -398,24 +396,16 @@ const [removeTarget,    setRemoveTarget]    = useState<Surgery | null>(null);
   return (
     <div className="space-y-5">
       {/* ── Dialogs ──────────────────────────────────────────────────────────── */}
-<ConfirmDialog
+      <LifecycleReasonDialog
         open={!!deleteTarget}
-        title="Surgery Record Protected"
-        description={deleteTarget
-          ? `Surgery records cannot be permanently deleted to prevent data loss. To request a change for ${patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode)}, submit a change request for your Super Administrator to review.`
-          : ''}
-        confirmLabel="Submit Change Request"
-        danger={false}
+        title="Archive Surgery Record"
+        subject={deleteTarget ? patientDisplayName(deleteTarget.patientName, deleteTarget.patientCode) : ''}
+        impact="This removes the surgery from active history views without deleting clinical evidence. The patient record is not archived."
+        actionLabel="Archive Surgery"
+        confirmationText={deleteTarget?.patientCode}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-
-      {changeRequestTarget && (
-        <ChangeRequestDialog
-          target={changeRequestTarget}
-          onClose={() => setChangeRequestTarget(null)}
-        />
-      )}
 
       {removeTarget && (
         <RemoveSurgeryDialog
@@ -1032,17 +1022,17 @@ function ScheduledSurgeryRow({
             </button>
           )}
           {canDelete && !onRemove && (
-            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
-              <Trash2 size={13} />
+            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-amber-50 hover:text-amber-700" title="Archive surgery record">
+              <Archive size={13} />
             </button>
           )}
           {onRemove && (
-            <button onClick={() => onRemove(surgery)} className="rounded-md p-1.5 text-[#E53935] transition hover:bg-[#FDECEB]" title="Remove patient from surgery queue">
+            <button onClick={() => onRemove(surgery)} className="rounded-md p-1.5 text-[#E53935] transition hover:bg-[#FDECEB]" title="Cancel surgery placement">
               <UserMinus size={13} />
             </button>
           )}
           {onRequestRemoval && (
-            <button onClick={() => onRequestRemoval(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#E53935]" title="Request removal of this patient">
+            <button onClick={() => onRequestRemoval(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3] hover:text-[#E53935]" title="Request surgery cancellation">
               <UserMinus size={13} />
             </button>
           )}
@@ -1090,8 +1080,8 @@ function HistorySurgeryRow({
             </button>
           )}
           {canDelete && (
-            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
-              <Trash2 size={13} />
+            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-amber-50 hover:text-amber-700" title="Archive surgery record">
+              <Archive size={13} />
             </button>
           )}
         </div>
@@ -1159,8 +1149,8 @@ function SurgeryRow({
             </button>
           )}
           {canDelete && (
-            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]" title="Delete surgery">
-              <Trash2 size={13} />
+            <button onClick={() => onDelete(surgery)} className="rounded-md p-1.5 text-[#647184] transition hover:bg-amber-50 hover:text-amber-700" title="Archive surgery record">
+              <Archive size={13} />
             </button>
           )}
         </div>
@@ -1309,30 +1299,30 @@ function RemoveSurgeryDialog({
   onClose: () => void;
   mode: 'direct' | 'request';
 }) {
-  const canSubmit = !!reason && !isSaving;
+  const canSubmit = !!reason && (reason !== 'Other reason' || notes.trim().length >= 10) && !isSaving;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="cancel-surgery-title">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-[#141920]">
-              {mode === 'direct' ? 'Remove Patient from Surgery Queue' : 'Request Patient Removal'}
+            <h2 id="cancel-surgery-title" className="text-base font-bold text-[#141920]">
+              {mode === 'direct' ? 'Cancel Surgery Placement' : 'Request Surgery Cancellation'}
             </h2>
             <p className="mt-0.5 text-sm text-[#647184]">
               {patientDisplayName(surgery.patientName, surgery.patientCode)}
               {' · '}Scheduled {new Date(surgery.scheduledAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3]">
+          <button onClick={onClose} aria-label="Close cancellation dialog" className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#EAEEF3]">
             <X size={15} />
           </button>
         </div>
 
         {mode === 'request' && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-            This request will be sent to your Super Administrator for review. The patient will remain in the queue until it is approved.
+            This request will be sent to your Super Administrator for review. The patient remains active, and the placement stays in the queue until approval.
           </div>
         )}
 
@@ -1342,7 +1332,7 @@ function RemoveSurgeryDialog({
               Reason <span className="text-[#E53935]">*</span>
             </label>
             <div className="space-y-2">
-              {REMOVAL_REASONS.map((r) => (
+              {CANCELLATION_REASONS.map((r) => (
                 <label
                   key={r}
                   className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
@@ -1365,7 +1355,9 @@ function RemoveSurgeryDialog({
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#647184]">
-              Additional notes <span className="text-[#94A0AE]">(optional)</span>
+              Additional notes {reason === 'Other reason'
+                ? <span className="text-red-500">*</span>
+                : <span className="text-[#94A0AE]">(optional)</span>}
             </label>
             <input
               type="text"
@@ -1374,6 +1366,9 @@ function RemoveSurgeryDialog({
               placeholder="Any additional context..."
               className="w-full rounded-md border border-[#DDE3EA] bg-white px-3 py-2 text-sm text-[#141920] placeholder:text-[#647184] outline-none transition focus:border-[#2C9942] focus:ring-2 focus:ring-[#2C9942]/10"
             />
+            {reason === 'Other reason' && notes.trim().length < 10 && (
+              <p className="mt-1 text-xs text-red-600">Provide at least 10 characters for Other reason.</p>
+            )}
           </div>
         </div>
 
@@ -1394,8 +1389,8 @@ function RemoveSurgeryDialog({
             }`}
           >
             {isSaving
-              ? mode === 'direct' ? 'Removing...' : 'Submitting...'
-              : mode === 'direct' ? 'Remove Patient' : 'Submit Request'}
+              ? mode === 'direct' ? 'Cancelling...' : 'Submitting...'
+              : mode === 'direct' ? 'Cancel Placement' : 'Submit Request'}
           </button>
         </div>
       </div>

@@ -606,6 +606,7 @@ export async function getReportRawData(params: {
 
 export type DroppedSurgeryPatient = {
   id: string;
+  patientCode: string;
   fullName: string;
   phone: string;
   region: string;
@@ -634,7 +635,6 @@ export async function getDroppedSurgeryPatients(params: {
         ...(params.to ? [{ archivedAt: { lt: new Date(new Date(params.to).getTime() + 86400000) } }] : []),
       ],
       ...(region && { region }),
-      surgeries: { some: { archivedAt: { not: null } } },
     },
     include: {
       screenings: {
@@ -649,6 +649,7 @@ export async function getDroppedSurgeryPatients(params: {
 
   return rows.map((row) => ({
     id: row.id,
+    patientCode: row.patientCode,
     fullName: row.fullName,
     phone: row.phone,
     region: row.region,

@@ -5,7 +5,6 @@ import type { BirthDateSource, Campaign, DisabilityStatus, Patient, Sex } from '
 import {
   getPatientsPaginated,
   actionCreatePatient,
-  actionDeletePatient,
   actionUpdatePatient,
   getPatientRegistrationCampaigns,
 } from '@/app/actions/patients';
@@ -13,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import DateOfBirthPicker from '@/components/forms/DateOfBirthPicker';
 import Pagination from '@/components/ui/Pagination';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
@@ -22,8 +20,8 @@ import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { formatPatientBirthDateLabel } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
-import { AlertTriangle, Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
-import ChangeRequestDialog, { type ChangeRequestTarget } from '@/components/forms/ChangeRequestDialog';
+import { AlertTriangle, Archive, Pencil, Plus, RefreshCw, Search, X } from 'lucide-react';
+import PatientArchiveDialog from '@/components/forms/PatientArchiveDialog';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -101,8 +99,7 @@ export default function PatientsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<Patient | null>(null);
-  const [changeRequestTarget, setChangeRequestTarget] = useState<ChangeRequestTarget | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<Patient | null>(null);
   const [highlightCode, setHighlightCode] = useState(() => {
     if (typeof window === 'undefined') return '';
     return new URLSearchParams(window.location.search).get('highlight') ?? '';
@@ -246,38 +243,6 @@ export default function PatientsPage() {
     setEditing(null);
   }
 
-  // ── Delete ────────────────────────────────────────────────────────────────
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    const result = await actionDeletePatient(deleteTarget.id);
-    if (result.ok) {
-      const deletedName = patientDisplayName(deleteTarget.fullName, deleteTarget.patientCode);
-      const remaining = patients.filter((r) => r.id !== deleteTarget.id);
-      setTotal((t) => t - 1);
-      if (remaining.length === 0 && page > 1) {
-        setPage((p) => p - 1);
-      } else {
-        setPatients(remaining);
-      }
-      toast({ title: 'Patient deleted', description: deletedName });
-      setDeleteTarget(null);
-    } else if (result.error.includes('surgery records')) {
-      // Patient has surgery records — offer a change request instead of a plain error
-      setDeleteTarget(null);
-      setChangeRequestTarget({
-        entity: 'Patient',
-        entityId: deleteTarget.id,
-        entityLabel: patientDisplayName(deleteTarget.fullName, deleteTarget.patientCode),
-        region: deleteTarget.region,
-        campaignId: deleteTarget.campaignId,
-      });
-    } else {
-      toast({ title: 'Patient delete failed', description: result.error, variant: 'error' });
-      setDeleteTarget(null);
-    }
-  }
-
   const hasFilters = !!search || !!regionFilter || !!statusFilter;
   const birthDateComplete = form.birthDateSource === 'AgeEstimate'
     ? isValidAgeInput(form.ageYearsAtRegistration)
@@ -287,22 +252,17 @@ export default function PatientsPage() {
 
   return (
     <div className="space-y-5">
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title="Delete Patient Record"
-        description={deleteTarget
-          ? `This will permanently delete ${deleteTarget.fullName} (${deleteTarget.patientCode}) along with all their screenings, surgeries, and follow-ups. This cannot be undone.`
-          : ''}
-        confirmLabel="Delete Patient"
-        confirmationText="DELETE"
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
-
-      {changeRequestTarget && (
-        <ChangeRequestDialog
-          target={changeRequestTarget}
-          onClose={() => setChangeRequestTarget(null)}
+      {archiveTarget && (
+        <PatientArchiveDialog
+          patient={archiveTarget}
+          mode={isSuperAdmin ? 'direct' : 'request'}
+          onClose={() => setArchiveTarget(null)}
+          onArchived={() => {
+            const remaining = patients.filter((row) => row.id !== archiveTarget.id);
+            setPatients(remaining);
+            setTotal((value) => Math.max(0, value - 1));
+            if (remaining.length === 0 && page > 1) setPage((value) => value - 1);
+          }}
         />
       )}
 
@@ -474,12 +434,14 @@ export default function PatientsPage() {
                             <Pencil size={13} />
                           </button>
                         )}
-                        {can('patients', 'delete') && (
+                        {(isSuperAdmin || role === 'Project Manager') && (
                           <button
-                            onClick={() => setDeleteTarget(patient)}
-                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-[#FDECEB] hover:text-[#E53935]"
+                            onClick={() => setArchiveTarget(patient)}
+                            title={isSuperAdmin ? 'Archive patient record' : 'Request patient archival'}
+                            aria-label={isSuperAdmin ? `Archive ${patient.fullName}` : `Request archival for ${patient.fullName}`}
+                            className="rounded-md p-1.5 text-[#647184] transition hover:bg-amber-50 hover:text-amber-700"
                           >
-                            <Trash2 size={13} />
+                            <Archive size={13} />
                           </button>
                         )}
                       </div>

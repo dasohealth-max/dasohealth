@@ -1,9 +1,13 @@
-export const REMOVAL_REASONS = [
+export const CANCELLATION_REASONS = [
   'Did not show up',
   'Refused the surgery',
   'Cannot be reached',
-  'Patient has passed away',
+  'Medically deferred',
+  'Rescheduled',
   'Other reason',
 ] as const;
 
-export type RemovalReason = typeof REMOVAL_REASONS[number];
+export type CancellationReason = typeof CANCELLATION_REASONS[number];
+
+// Temporary compatibility export for callers migrated in the same release.
+export const REMOVAL_REASONS = CANCELLATION_REASONS;

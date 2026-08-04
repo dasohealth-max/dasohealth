@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { can, canAccess, canAccessSettings, defaultPathForRole, manageableRolesFor } from '@/lib/permissions';
+import { can, canAccess, canAccessSettings, defaultPathForRole, inboxLabelForRole, manageableRolesFor } from '@/lib/permissions';
 
-const modules = ['dashboard', 'campaigns', 'patients', 'screening', 'surgeries', 'followups', 'reports', 'settings'] as const;
+const modules = ['dashboard', 'campaigns', 'patients', 'screening', 'surgeries', 'followups', 'reports', 'settings', 'changeRequests'] as const;
 const actions = ['view', 'create', 'edit', 'delete', 'approve', 'export'] as const;
 
 describe('permissions - Super Administrator', () => {
@@ -22,6 +22,7 @@ describe('permissions - Super Administrator', () => {
       'Data Clerk',
       'Screening Officer',
     ]);
+    expect(inboxLabelForRole('Super Administrator')).toBe('Approvals');
   });
 });
 
@@ -38,6 +39,9 @@ describe('permissions - Project Manager', () => {
     expect(canAccess('Project Manager', 'dashboard')).toBe(true);
     expect(canAccess('Project Manager', 'reports')).toBe(true);
     expect(defaultPathForRole('Project Manager')).toBe('/dashboard');
+    expect(can('Project Manager', 'changeRequests', 'view')).toBe(true);
+    expect(can('Project Manager', 'changeRequests', 'create')).toBe(true);
+    expect(inboxLabelForRole('Project Manager')).toBe('My Requests');
   });
 
   it('can manage only clerk and screener users', () => {
@@ -68,6 +72,8 @@ describe('permissions - Data Clerk', () => {
     expect(canAccessSettings('Data Clerk')).toBe(false);
     expect(manageableRolesFor('Data Clerk')).toHaveLength(0);
     expect(defaultPathForRole('Data Clerk')).toBe('/patients');
+    expect(canAccess('Data Clerk', 'changeRequests')).toBe(false);
+    expect(can('Data Clerk', 'changeRequests', 'create')).toBe(false);
   });
 });
 
@@ -90,6 +96,8 @@ describe('permissions - Screening Officer', () => {
     expect(canAccessSettings('Screening Officer')).toBe(false);
     expect(manageableRolesFor('Screening Officer')).toHaveLength(0);
     expect(defaultPathForRole('Screening Officer')).toBe('/screening');
+    expect(canAccess('Screening Officer', 'changeRequests')).toBe(false);
+    expect(can('Screening Officer', 'changeRequests', 'create')).toBe(false);
   });
 });
 

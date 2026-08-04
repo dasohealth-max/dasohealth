@@ -2,13 +2,13 @@
 
 import { z } from 'zod';
 import { updateTag } from 'next/cache';
-import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAllScreenings as fetchAllScreenings, createScreening, updateScreening, deleteScreening, fromPrisma as screeningFromPrisma } from '@/lib/api/screenings';
+import { getAllScreenings as fetchAllScreenings, createScreening, updateScreening, fromPrisma as screeningFromPrisma } from '@/lib/api/screenings';
 import { fromPrisma as patientFromPrisma } from '@/lib/api/patients';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
 import type { Patient, Screening } from '@/types';
 import type { Prisma } from '@/lib/generated/prisma/client';
+import { protectPatientForRole } from '@/lib/privacy';
 
 const PRINT_LIMIT = 1000;
 
@@ -93,7 +93,7 @@ export async function getScreeningQueuePaginated(params: {
     prisma.patient.count({ where }),
   ]);
 
-  return { data: rows.map(patientFromPrisma), total };
+  return { data: rows.map(patientFromPrisma).map((patient) => protectPatientForRole(patient, actor.role)), total };
 }
 
 export async function getPrintableScreeningQueue(params: {
@@ -132,7 +132,12 @@ export async function getPrintableScreeningQueue(params: {
     prisma.patient.count({ where }),
   ]);
 
-  return { data: rows.map(patientFromPrisma), total, truncated: total > rows.length, limit: PRINT_LIMIT };
+  return {
+    data: rows.map(patientFromPrisma).map((patient) => protectPatientForRole(patient, actor.role)),
+    total,
+    truncated: total > rows.length,
+    limit: PRINT_LIMIT,
+  };
 }
 
 export async function getScreeningHistoryPaginated(params: {
@@ -155,6 +160,7 @@ export async function getScreeningHistoryPaginated(params: {
   } : undefined;
 
   const where: Prisma.ScreeningWhereInput = {
+    voidedAt: null,
     ...(region && { region }),
     ...(screenedAt ? { screenedAt } : {}),
     ...(params.search && {
@@ -205,6 +211,7 @@ export async function getPrintableScreeningHistory(params: {
   } : undefined;
 
   const where: Prisma.ScreeningWhereInput = {
+    voidedAt: null,
     ...(region && { region }),
     ...(screenedAt ? { screenedAt } : {}),
     ...(params.search && {
@@ -265,19 +272,21 @@ function preOpVaForEye(screening: Screening) {
   return `Right: ${screening.vaRightUnaided} / Left: ${screening.vaLeftUnaided}`;
 }
 
-async function routeSurgery(screening: Screening) {
+type ScreeningTransaction = Prisma.TransactionClient;
+
+async function routeSurgery(screening: Screening, db: ScreeningTransaction) {
   if (screening.recommendation !== 'Refer for Surgery') return;
   const [existingFromScreening, existingForPatient, campaignRegion] = await Promise.all([
-    prisma.surgery.findFirst({
+    db.surgery.findFirst({
       where: { createdFromScreeningId: screening.id },
       select: { id: true, status: true },
     }),
-    prisma.surgery.findFirst({
+    db.surgery.findFirst({
       where: { patientId: screening.patientId, status: { notIn: ['Cancelled'] as never[] } },
       select: { id: true, status: true },
     }),
     screening.campaignRegionId
-      ? prisma.campaignRegion.findUnique({
+      ? db.campaignRegion.findUnique({
           where: { id: screening.campaignRegionId },
           select: { doctorName: true },
         })
@@ -305,11 +314,11 @@ async function routeSurgery(screening: Screening) {
   if (existingFromScreening) {
     // Update the surgery that was previously auto-created from this exact screening.
     if (String(existingFromScreening.status) !== 'Completed') {
-      await prisma.surgery.update({ where: { id: existingFromScreening.id }, data });
+      await db.surgery.update({ where: { id: existingFromScreening.id }, data });
     }
   } else if (!existingForPatient) {
     // Patient has no surgery yet — create the auto-surgery.
-    await prisma.surgery.create({ data });
+    await db.surgery.create({ data });
   }
   // If the patient already has a non-cancelled surgery from another path, skip silently.
 }
@@ -349,7 +358,8 @@ export async function actionCreateScreening(
       return { ok: false, error: 'Patient consent is required before referring for surgery' };
     }
 
-    const screening = {
+    const screening = await prisma.$transaction(async (tx) => {
+      const created = {
       ...(await createScreening({
       ...data,
       patientId: scope.id,
@@ -362,10 +372,10 @@ export async function actionCreateScreening(
       screenedBy: actor.name,
       screenedById: actor.id,
       screenedByName: actor.name,
-      })),
+      }, tx)),
       patientCode: scope.patientCode,
-    };
-    await prisma.patient.update({
+      };
+      await tx.patient.update({
       where: { id: data.patientId },
       data: {
         screeningStatus: 'Screened',
@@ -373,20 +383,22 @@ export async function actionCreateScreening(
         consentDate: surgeryConsentDate ? new Date(surgeryConsentDate) : null,
       },
     });
-    await routeSurgery(screening);
+      await routeSurgery(created, tx);
+      await auditLog({
+        actor,
+        action: 'create',
+        entity: 'Screening',
+        entityId: created.id,
+        region: created.region,
+        campaignId: created.campaignId,
+        details: `Completed screening for ${created.patientName}`,
+        after: created,
+      }, tx);
+      return created;
+    });
     updateTag('screenings');
     updateTag('patients');
     updateTag('surgeries');
-    after(() => auditLog({
-      actor,
-      action: 'create',
-      entity: 'Screening',
-      entityId: screening.id,
-      region: screening.region,
-      campaignId: screening.campaignId,
-      details: `Completed screening for ${screening.patientName}`,
-      after: screening,
-    }));
     return { ok: true, data: screening };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -425,7 +437,8 @@ export async function actionUpdateScreening(
       return { ok: false, error: 'Patient consent is required before referring for surgery' };
     }
 
-    const screening = {
+    const screening = await prisma.$transaction(async (tx) => {
+      const updated = {
       ...(await updateScreening(id, {
       ...data,
       patientId: scope.id,
@@ -438,31 +451,33 @@ export async function actionUpdateScreening(
       screenedBy: data.screenedBy || actor.name,
       screenedById: data.screenedById || actor.id,
       screenedByName: data.screenedByName || actor.name,
-      })),
+      }, tx)),
       patientCode: scope.patientCode,
-    };
-    await prisma.patient.update({
+      };
+      await tx.patient.update({
       where: { id: data.patientId },
       data: {
         consentGiven: surgeryConsentGiven,
         consentDate: surgeryConsentDate ? new Date(surgeryConsentDate) : null,
       },
     });
-    await routeSurgery(screening);
+      await routeSurgery(updated, tx);
+      await auditLog({
+        actor,
+        action: 'update',
+        entity: 'Screening',
+        entityId: updated.id,
+        region: updated.region,
+        campaignId: updated.campaignId,
+        details: `Updated screening for ${updated.patientName}`,
+        before: beforeRow,
+        after: updated,
+      }, tx);
+      return updated;
+    });
     updateTag('screenings');
     updateTag('patients');
     updateTag('surgeries');
-    after(() => auditLog({
-      actor,
-      action: 'update',
-      entity: 'Screening',
-      entityId: screening.id,
-      region: screening.region,
-      campaignId: screening.campaignId,
-      details: `Updated screening for ${screening.patientName}`,
-      before: beforeRow,
-      after: screening,
-    }));
     return { ok: true, data: screening };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -475,37 +490,62 @@ export async function actionDeleteScreening(id: string): Promise<ActionResult<{
 } | null>> {
   const actor = await requireActor('screening', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
+  void id;
+  return { ok: false, error: 'Screening records cannot be permanently deleted. Void the record instead.' };
+}
+
+export async function actionVoidScreening(id: string, reason: string): Promise<ActionResult<{
+  patientId: string;
+  screeningStatus: 'Awaiting Screening' | 'Screened';
+} | null>> {
+  const actor = await requireActor('screening', 'delete');
+  if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') return { ok: false, error: 'Only Super Administrators can void screenings' };
+  if (reason.trim().length < 10) return { ok: false, error: 'Void reason must be at least 10 characters' };
 
   try {
     const before = await prisma.screening.findUnique({ where: { id } });
+    if (!before) return { ok: false, error: 'Screening not found' };
+    if (before.voidedAt) return { ok: false, error: 'Screening is already voided' };
     if (before) {
       const denied = ensureRegionAccess(actor, before.region);
       if (denied) return denied;
     }
-    await deleteScreening(id);
-    let patientStatus: 'Awaiting Screening' | 'Screened' | null = null;
-    if (before?.patientId) {
-      const remainingScreenings = await prisma.screening.count({
-        where: { patientId: before.patientId },
+    const patientStatus = await prisma.$transaction(async (tx) => {
+      await tx.screening.update({
+        where: { id },
+        data: {
+          voidedAt: new Date(),
+          voidedById: actor.id,
+          voidedByName: actor.name,
+          voidedReason: reason.trim(),
+        },
       });
-      patientStatus = remainingScreenings > 0 ? 'Screened' : 'Awaiting Screening';
-      await prisma.patient.update({
+      let nextStatus: 'Awaiting Screening' | 'Screened' | null = null;
+      if (before?.patientId) {
+      const remainingScreenings = await tx.screening.count({
+        where: { patientId: before.patientId, voidedAt: null },
+      });
+      nextStatus = remainingScreenings > 0 ? 'Screened' : 'Awaiting Screening';
+      await tx.patient.update({
         where: { id: before.patientId },
-        data: { screeningStatus: patientStatus },
+        data: { screeningStatus: nextStatus },
       });
-    }
+      }
+      await auditLog({
+        actor,
+        action: 'void',
+        entity: 'Screening',
+        entityId: id,
+        region: before?.region,
+        campaignId: before?.campaignId,
+        details: `Voided screening — ${reason.trim()}`,
+        before,
+      }, tx);
+      return nextStatus;
+    });
     updateTag('screenings');
     updateTag('patients');
-    after(() => auditLog({
-      actor,
-      action: 'delete',
-      entity: 'Screening',
-      entityId: id,
-      region: before?.region,
-      campaignId: before?.campaignId,
-      details: 'Deleted screening',
-      before,
-    }));
     return {
       ok: true,
       data: before?.patientId && patientStatus

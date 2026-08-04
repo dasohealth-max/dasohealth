@@ -45,14 +45,12 @@ const PERMISSIONS: Record<Role, Matrix> = {
   'Data Clerk': {
     patients: CRE,
     screening: VIEW_ONLY,
-    changeRequests: ['view', 'create'],
   },
   'Screening Officer': {
     patients: VIEW_ONLY,
     screening: CRE,
     surgeries: ['view', 'edit'],
     followups: CRE,
-    changeRequests: ['view', 'create'],
   },
 };
 
@@ -66,10 +64,6 @@ export function canAccess(role: string, module: AppModule): boolean {
   return can(role, module, 'view');
 }
 
-export function mustMaskPatient(): boolean {
-  return false;
-}
-
 export function canAccessSettings(role: string): boolean {
   return can(role, 'settings', 'view');
 }
@@ -78,6 +72,10 @@ export function defaultPathForRole(role: string): string {
   if (role === 'Data Clerk') return '/patients';
   if (role === 'Screening Officer') return '/screening';
   return '/dashboard';
+}
+
+export function inboxLabelForRole(role: string): 'Approvals' | 'My Requests' {
+  return role === 'Super Administrator' ? 'Approvals' : 'My Requests';
 }
 
 export function manageableRolesFor(role: string): Role[] {

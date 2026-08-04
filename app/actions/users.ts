@@ -56,6 +56,10 @@ function toUserFromDb(u: {
   initials: string;
   color: string;
   active: boolean;
+  deactivatedAt?: Date | null;
+  deactivatedById?: string | null;
+  deactivatedByName?: string | null;
+  deactivationReason?: string | null;
   createdAt: Date;
 }): User {
   return {
@@ -67,6 +71,10 @@ function toUserFromDb(u: {
     initials: u.initials,
     color: u.color,
     active: u.active,
+    deactivatedAt: u.deactivatedAt?.toISOString(),
+    deactivatedById: u.deactivatedById ?? undefined,
+    deactivatedByName: u.deactivatedByName ?? undefined,
+    deactivationReason: u.deactivationReason ?? undefined,
     createdAt: u.createdAt.toISOString(),
   };
 }
@@ -320,33 +328,58 @@ export async function actionResetUserPassword(
 }
 
 export async function actionDeleteUser(userId: string): Promise<ActionResult> {
+  void userId;
+  return { ok: false, error: 'User accounts cannot be permanently deleted. Deactivate the account instead.' };
+}
+
+export async function actionDeactivateUser(userId: string, reason: string): Promise<ActionResult> {
   const actor = await requireActor('settings', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can deactivate user accounts' };
+  }
+  if (actor.id === userId) return { ok: false, error: 'You cannot deactivate your own account' };
+  const cleanReason = reason.trim();
+  if (cleanReason.length < 10) return { ok: false, error: 'Reason must be at least 10 characters' };
 
   const db = createServerClient();
   const current = await db.auth.admin.getUserById(userId);
   const dbBefore = await prisma.user.findUnique({ where: { id: userId } }).catch(() => null);
   const before = current.data?.user ? toUser(current.data.user) : dbBefore ? toUserFromDb(dbBefore) : null;
-  if (actor.role === 'Project Manager' && before?.assignedRegion !== actor.assignedRegion) {
-    return { ok: false, error: 'Forbidden: region access denied' };
-  }
+  if (!before) return { ok: false, error: 'User not found' };
+  if (!before.active) return { ok: false, error: 'User account is already inactive' };
 
-  const { error } = await db.auth.admin.deleteUser(userId);
-  if (error && !error.message.toLowerCase().includes('not found')) {
-    return { ok: false, error: error.message };
-  }
-  await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
+  const { error } = await db.auth.admin.updateUserById(userId, { ban_duration: '876000h' });
+  if (error) return { ok: false, error: error.message };
 
-  await auditLog({
-    actor,
-    action: 'delete',
-    entity: 'User',
-    entityId: userId,
-    region: before?.assignedRegion,
-    details: before ? `Deleted user ${before.name}` : 'Deleted user',
-    before,
-  });
-  return { ok: true, data: null };
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          active: false,
+          deactivatedAt: new Date(),
+          deactivatedById: actor.id,
+          deactivatedByName: actor.name,
+          deactivationReason: cleanReason,
+        },
+      });
+      await auditLog({
+        actor,
+        action: 'deactivate',
+        entity: 'User',
+        entityId: userId,
+        region: before.assignedRegion,
+        details: `Deactivated user ${before.name}: ${cleanReason}`,
+        before,
+        after: { active: false },
+      }, tx);
+    });
+    return { ok: true, data: null };
+  } catch (cause) {
+    await db.auth.admin.updateUserById(userId, { ban_duration: 'none' }).catch(() => undefined);
+    return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+  }
 }
 
 export async function actionGetAuditLogs(limit = 100): Promise<ActionResult<{

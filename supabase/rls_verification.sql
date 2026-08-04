@@ -37,6 +37,15 @@ INSERT INTO patients (
    true, CURRENT_DATE, '22222222-2222-2222-2222-222222222222', '44444444-4444-4444-4444-444444444444',
    'RLS test', '00000000-0000-0000-0000-000000000001', 'RLS Test');
 
+INSERT INTO change_requests (
+  id, entity, entity_id, entity_label, request_type, reason,
+  requested_by_id, requested_by_name, requested_by_role, status, region
+) VALUES
+  ('88888888-8888-8888-8888-888888888881', 'Patient', '55555555-5555-5555-5555-555555555555', 'RLS Galmudug Patient', 'correct', 'RLS own request',
+   '99999999-9999-9999-9999-999999999999', 'RLS Requester', 'Project Manager', 'Pending', 'Galmudug'),
+  ('88888888-8888-8888-8888-888888888882', 'Patient', '66666666-6666-6666-6666-666666666666', 'RLS Banadir Patient', 'correct', 'RLS other request',
+   '88888888-8888-8888-8888-888888888888', 'Other Requester', 'Project Manager', 'Pending', 'Banadir / Mogadishu');
+
 CREATE TEMP TABLE rls_results (
   check_name text PRIMARY KEY,
   passed boolean NOT NULL,
@@ -91,6 +100,14 @@ SELECT pg_temp.record_check(
   AND EXISTS (SELECT 1 FROM patients WHERE patient_code = 'RLSG1')
   AND NOT EXISTS (SELECT 1 FROM patients WHERE patient_code = 'RLSB1')
 );
+SELECT pg_temp.record_check(
+  'project_manager_reads_only_own_change_requests',
+  (SELECT count(*) FROM change_requests WHERE id IN (
+    '88888888-8888-8888-8888-888888888881',
+    '88888888-8888-8888-8888-888888888882'
+  )) = 1
+  AND EXISTS (SELECT 1 FROM change_requests WHERE id = '88888888-8888-8888-8888-888888888881')
+);
 RESET ROLE;
 
 -- Data Clerk can read only assigned region.
@@ -141,6 +158,29 @@ BEGIN
 
   RESET ROLE;
   PERFORM pg_temp.record_check('authenticated_browser_cannot_insert_patient', denied);
+END $$;
+
+DO $$
+DECLARE
+  denied boolean := false;
+BEGIN
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.set_claims('Project Manager', 'Galmudug');
+
+  BEGIN
+    INSERT INTO change_requests (
+      entity, entity_id, entity_label, request_type, reason,
+      requested_by_id, requested_by_name, requested_by_role, region
+    ) VALUES (
+      'Patient', '55555555-5555-5555-5555-555555555555', 'Denied', 'correct', 'Denied browser write',
+      '99999999-9999-9999-9999-999999999999', 'RLS Requester', 'Project Manager', 'Galmudug'
+    );
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN
+    denied := true;
+  END;
+
+  RESET ROLE;
+  PERFORM pg_temp.record_check('authenticated_browser_cannot_insert_change_request', denied);
 END $$;
 
 -- Browser/anon clients cannot read or write clinical records.

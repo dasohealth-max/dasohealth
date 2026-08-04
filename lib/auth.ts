@@ -2,7 +2,7 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import { useEffect, useState } from 'react';
-import { can, canAccess, mustMaskPatient, type AppModule, type Action } from '@/lib/permissions';
+import { can, canAccess, type AppModule, type Action } from '@/lib/permissions';
 
 const url  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -141,6 +141,5 @@ export function usePermissions() {
     user:        sessionUser,
     can:         (module: AppModule, action: Action) => can(role, module, action),
     canAccess:   (module: AppModule) => canAccess(role, module),
-    maskPatient: mustMaskPatient(),
   };
 }

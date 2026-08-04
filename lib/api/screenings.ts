@@ -3,6 +3,9 @@ import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { vaGradeToApp, vaGradeFromApp, screeningRecToApp, screeningRecFromApp } from '@/lib/prisma-enums';
 import type { Screening } from '@/types';
+import type { Prisma } from '@/lib/generated/prisma/client';
+
+type ScreeningDb = Pick<Prisma.TransactionClient, 'screening'>;
 
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.screening.findFirst>>> & {
   patient?: { patientCode: string } | null;
@@ -47,7 +50,7 @@ export function fromPrisma(row: Row): Screening {
 export const getAllScreenings = unstable_cache(
   async (where: { region?: string } = {}): Promise<Screening[]> => {
     const rows = await prisma.screening.findMany({
-      where,
+      where: { ...where, voidedAt: null },
       include: { patient: { select: { patientCode: true } } },
       orderBy: { screenedAt: 'desc' },
     });
@@ -59,8 +62,9 @@ export const getAllScreenings = unstable_cache(
 
 export async function createScreening(
   data: Omit<Screening, 'id' | 'createdAt'>,
+  db: ScreeningDb = prisma,
 ): Promise<Screening> {
-  const row = await prisma.screening.create({
+  const row = await db.screening.create({
     data: {
       patientId: data.patientId,
       patientName: data.patientName,
@@ -97,8 +101,9 @@ export async function createScreening(
 export async function updateScreening(
   id: string,
   data: Omit<Screening, 'id' | 'createdAt'>,
+  db: ScreeningDb = prisma,
 ): Promise<Screening> {
-  const row = await prisma.screening.update({
+  const row = await db.screening.update({
     where: { id },
     data: {
       patientId: data.patientId,
@@ -131,8 +136,4 @@ export async function updateScreening(
     },
   });
   return fromPrisma(row);
-}
-
-export async function deleteScreening(id: string): Promise<void> {
-  await prisma.screening.delete({ where: { id } });
 }

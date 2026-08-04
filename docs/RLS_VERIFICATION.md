@@ -27,6 +27,8 @@ The script runs inside a transaction and ends with `ROLLBACK`, so test rows are 
 - Screening Officer can read only their assigned region.
 - Anonymous browser access cannot read patient clinical rows.
 - Authenticated browser access cannot directly insert patient clinical rows.
+- Users can read only their own change requests while Super Administrators can read all.
+- Authenticated browser access cannot directly write change requests.
 - Service role can still insert patient clinical rows for trusted server-side flows.
 
 ## Manual API Smoke Checks

@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FollowUp, FollowUpMedication, FollowUpStatus, DoctorReviewStatus, MedicationStatus } from '@/types';
 import {
-  actionUpdateFollowUp, getFollowUpsPaginated, getFollowUpTabCounts, getPrintableFollowUps,
+  actionUpdateFollowUp, actionVoidFollowUp, getFollowUpsPaginated, getFollowUpTabCounts, getPrintableFollowUps,
   getMedicationsForFollowUp,
-  actionCreateMedication, actionUpdateMedication, actionDeleteMedication,
+  actionCreateMedication, actionUpdateMedication, actionMarkMedicationEnteredInError,
 } from '@/app/actions/follow_ups';
 import type { FollowUpGroup } from '@/app/actions/follow_ups';
 import Pagination from '@/components/ui/Pagination';
@@ -16,13 +16,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ModalForm from '@/components/forms/ModalForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import LifecycleReasonDialog from '@/components/forms/LifecycleReasonDialog';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 import { daysUntil, formatDate } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import { patientDisplayName } from '@/lib/patient-code';
 import { ACTIVE_FOLLOW_UP_SCHEDULE } from '@/lib/follow-up-schedule';
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Printer, RefreshCw, Trash2, UserX, X } from 'lucide-react';
+import { AlertTriangle, Ban, CheckCircle, ChevronDown, ChevronRight, Clock, Eye, Pencil, Plus, Printer, RefreshCw, UserX, X } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 type PrintMode = 'current' | 'all';
@@ -214,7 +215,8 @@ function printAfterRender() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FollowUpsPage() {
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
+  const isSuperAdmin = role === 'Super Administrator';
   const [followUpGroups, setFollowUpGroups] = useState<FollowUpGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -233,6 +235,7 @@ export default function FollowUpsPage() {
   const [statusRefreshKey, setStatusRefreshKey] = useState(0);
   const [completeTarget, setCompleteTarget] = useState<FollowUp | null>(null);
   const [missedTarget, setMissedTarget] = useState<FollowUp | null>(null);
+  const [voidFollowUpTarget, setVoidFollowUpTarget] = useState<FollowUp | null>(null);
   const [printRows, setPrintRows] = useState<FollowUp[] | null>(null);
   const [printMode, setPrintMode] = useState<PrintMode>('current');
   const [printTotal, setPrintTotal] = useState(0);
@@ -245,7 +248,7 @@ export default function FollowUpsPage() {
   const [medications, setMedications] = useState<FollowUpMedication[]>([]);
   const [medForm, setMedForm] = useState<Omit<FollowUpMedication, 'id' | 'createdAt' | 'followUpId'>>(BLANK_MED);
   const [editingMed, setEditingMed] = useState<FollowUpMedication | null>(null);
-  const [deleteMedTarget, setDeleteMedTarget] = useState<FollowUpMedication | null>(null);
+  const [voidMedTarget, setVoidMedTarget] = useState<FollowUpMedication | null>(null);
   const [showMedForm, setShowMedForm] = useState(false);
   const [medError, setMedError] = useState('');
 
@@ -442,6 +445,19 @@ export default function FollowUpsPage() {
     setMissedTarget(null);
   }
 
+  async function confirmVoidFollowUp(reason: string) {
+    if (!voidFollowUpTarget) return;
+    const result = await actionVoidFollowUp(voidFollowUpTarget.id, reason);
+    if (result.ok) {
+      toast({ title: 'Follow-up voided', description: `${patientDisplayName(voidFollowUpTarget.patientName, voidFollowUpTarget.patientCode)} — ${voidFollowUpTarget.milestone}` });
+      setStatusRefreshKey((key) => key + 1);
+      refreshCounts();
+    } else {
+      toast({ title: 'Could not void follow-up', description: result.error, variant: 'error' });
+    }
+    setVoidFollowUpTarget(null);
+  }
+
   // Medication handlers
   function openAddMed() {
     setMedForm(BLANK_MED);
@@ -493,17 +509,17 @@ export default function FollowUpsPage() {
     setEditingMed(null);
   }
 
-  async function confirmDeleteMed() {
-    if (!deleteMedTarget) return;
-    const result = await actionDeleteMedication(deleteMedTarget.id);
+  async function confirmVoidMed(reason: string) {
+    if (!voidMedTarget) return;
+    const result = await actionMarkMedicationEnteredInError(voidMedTarget.id, reason);
     if (result.ok) {
-      const drugName = deleteMedTarget.drugName;
-      setMedications((prev) => prev.filter((m) => m.id !== deleteMedTarget.id));
-      toast({ title: 'Medication deleted', description: drugName });
+      const drugName = voidMedTarget.drugName;
+      setMedications((prev) => prev.filter((m) => m.id !== voidMedTarget.id));
+      toast({ title: 'Medication marked as entered in error', description: drugName });
     } else {
-      toast({ title: 'Medication delete failed', description: result.error, variant: 'error' });
+      toast({ title: 'Could not update medication', description: result.error, variant: 'error' });
     }
-    setDeleteMedTarget(null);
+    setVoidMedTarget(null);
   }
 
   const showDoctorSection = form.needsDoctorReview || form.doctorReviewStatus !== 'Not Needed';
@@ -577,14 +593,15 @@ export default function FollowUpsPage() {
       />
 
       <div className="space-y-4" data-print-hide="">
-      <ConfirmDialog
-        open={!!deleteMedTarget}
-        title="Delete Medication"
-        description={deleteMedTarget ? `Remove ${deleteMedTarget.drugName} from this follow-up record? This cannot be undone.` : ''}
-        confirmLabel="Delete Medication"
-        confirmationText="DELETE"
-        onConfirm={confirmDeleteMed}
-        onCancel={() => setDeleteMedTarget(null)}
+      <LifecycleReasonDialog
+        open={!!voidMedTarget}
+        title="Mark Medication as Entered in Error"
+        subject={voidMedTarget?.drugName ?? ''}
+        impact="The medication stays in the audit history but is removed from active clinical views. This action requires a reason."
+        actionLabel="Mark Entered in Error"
+        confirmationText="VOID"
+        onConfirm={confirmVoidMed}
+        onCancel={() => setVoidMedTarget(null)}
       />
       <ConfirmDialog
         open={!!completeTarget}
@@ -602,6 +619,16 @@ export default function FollowUpsPage() {
         confirmLabel="Mark Missed"
         onConfirm={confirmMissed}
         onCancel={() => setMissedTarget(null)}
+      />
+      <LifecycleReasonDialog
+        open={!!voidFollowUpTarget}
+        title="Void Follow-up Record"
+        subject={voidFollowUpTarget ? `${patientDisplayName(voidFollowUpTarget.patientName, voidFollowUpTarget.patientCode)} — ${voidFollowUpTarget.milestone}` : ''}
+        impact="The record and its audit history remain preserved, but it will be removed from active follow-up queues."
+        actionLabel="Void Follow-up"
+        confirmationText="VOID"
+        onConfirm={confirmVoidFollowUp}
+        onCancel={() => setVoidFollowUpTarget(null)}
       />
 
       {/* Header */}
@@ -967,7 +994,9 @@ export default function FollowUpsPage() {
                           {can('followups', 'edit') && (
                             <div className="flex gap-1">
                               <button onClick={() => openEditMed(med)} className="rounded p-1 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]"><Pencil size={11} /></button>
-                              <button onClick={() => setDeleteMedTarget(med)} className="rounded p-1 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={11} /></button>
+                              {isSuperAdmin && (
+                                <button type="button" onClick={() => setVoidMedTarget(med)} title="Mark medication as entered in error" aria-label={`Mark ${med.drugName} as entered in error`} className="rounded p-1 text-[#647184] hover:bg-[#FFF5E6] hover:text-amber-700"><Ban size={11} /></button>
+                              )}
                             </div>
                           )}
                         </td>
@@ -1128,6 +1157,11 @@ export default function FollowUpsPage() {
                                 <button onClick={() => openEdit(fu)} title="Edit" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]">
                                   <Pencil size={14} />
                                 </button>
+                                {isSuperAdmin && (
+                                  <button type="button" onClick={() => setVoidFollowUpTarget(fu)} title="Void follow-up record" aria-label={`Void ${fu.milestone} follow-up for ${fu.patientName}`} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FFF5E6] hover:text-amber-700">
+                                    <Ban size={14} />
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>

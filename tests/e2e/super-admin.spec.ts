@@ -1,20 +1,14 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { hasE2ECredentials, loginAs } from './auth';
 
 // E2E credentials must point at a prepared non-production test account.
-const EMAIL = process.env.E2E_SUPER_EMAIL ?? 'super@demo.eyecare.org';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Demo1234!';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(/email/i).fill(EMAIL);
-  await page.getByLabel(/password/i).fill(PASSWORD);
-  await page.getByRole('button', { name: /sign in|log in/i }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-}
+const EMAIL = process.env.E2E_SUPER_EMAIL;
+const PASSWORD = process.env.E2E_PASSWORD;
 
 test.describe('Super Administrator', () => {
+  test.skip(!hasE2ECredentials(EMAIL, PASSWORD), 'E2E Super Administrator credentials are not configured');
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await loginAs(page, EMAIL!, PASSWORD!, '/dashboard');
   });
 
   test('sees the dashboard after login', async ({ page }) => {

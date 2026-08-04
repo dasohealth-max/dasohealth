@@ -9,14 +9,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InlineForm from '@/components/forms/InlineForm';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import LifecycleReasonDialog from '@/components/forms/LifecycleReasonDialog';
 import { TableSkeletonRows } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
-import { actionCreateUser, actionDeleteUser, actionGetAllUsers, actionGetAuditLogs, actionResetUserPassword, actionUpdateUserMetadata } from '@/app/actions/users';
+import { actionCreateUser, actionDeactivateUser, actionGetAllUsers, actionGetAuditLogs, actionResetUserPassword, actionUpdateUserMetadata } from '@/app/actions/users';
 import { REGIONAL_CAMPAIGN_AREAS } from '@/lib/regions';
 import { usePermissions } from '@/lib/auth';
 import { formatDateTime } from '@/lib/utils';
-import { AlertTriangle, KeyRound, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Ban, KeyRound, Pencil, Plus, RefreshCw, X } from 'lucide-react';
 
 interface UserFormData extends Omit<User, 'id' | 'createdAt'> {
   password: string;
@@ -221,15 +221,15 @@ export default function SettingsPage() {
     });
   }
 
-  async function confirmDeleteUser() {
+  async function confirmDeactivateUser(reason: string) {
     if (!deleteTarget) return;
-    const result = await actionDeleteUser(deleteTarget.id);
+    const result = await actionDeactivateUser(deleteTarget.id, reason);
     if (result.ok) {
       const deletedName = deleteTarget.name;
       setUsers((rows) => rows.filter((row) => row.id !== deleteTarget.id));
-      toast({ title: 'User deleted', description: deletedName });
+      toast({ title: 'User deactivated', description: deletedName });
     } else {
-      toast({ title: 'User delete failed', description: result.error, variant: 'error' });
+      toast({ title: 'User deactivation failed', description: result.error, variant: 'error' });
     }
     setDeleteTarget(null);
   }
@@ -253,15 +253,14 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-5">
-      <ConfirmDialog
+      <LifecycleReasonDialog
         open={!!deleteTarget}
-        title="Delete User"
-        description={deleteTarget
-          ? `This will permanently delete ${deleteTarget.name} (${deleteTarget.email}) and remove their login access. This cannot be undone.`
-          : ''}
-        confirmLabel="Delete User"
-        confirmationText="DELETE"
-        onConfirm={confirmDeleteUser}
+        title="Deactivate User"
+        subject={deleteTarget ? `${deleteTarget.name} (${deleteTarget.email})` : ''}
+        impact="Login access will be disabled immediately. The user identity and all audit history remain preserved."
+        actionLabel="Deactivate User"
+        confirmationText="DEACTIVATE"
+        onConfirm={confirmDeactivateUser}
         onCancel={() => setDeleteTarget(null)}
       />
 
@@ -406,7 +405,7 @@ export default function SettingsPage() {
                           <div className="flex gap-1">
                             {can('settings', 'edit') && <button onClick={() => openEdit(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#EBF7EE] hover:text-[#2C9942]"><Pencil size={14} /></button>}
                             {canResetPassword(user) && <button onClick={() => openResetPassword(user)} title="Reset password" className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FFF5E6] hover:text-[#F59E0B]"><KeyRound size={14} /></button>}
-                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button onClick={() => setDeleteTarget(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FDECEB] hover:text-[#E53935]"><Trash2 size={14} /></button>}
+                            {can('settings', 'delete') && user.email !== sessionUser?.email && <button type="button" title="Deactivate user" aria-label={`Deactivate ${user.name}`} onClick={() => setDeleteTarget(user)} className="rounded-lg p-1.5 text-[#647184] hover:bg-[#FFF5E6] hover:text-amber-700"><Ban size={14} /></button>}
                           </div>
                         </td>
                       </tr>

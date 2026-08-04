@@ -1,14 +1,13 @@
 'use server';
 
 import { updateTag } from 'next/cache';
-import { after } from 'next/server';
 import {
   getAllFollowUps as fetchAllFollowUps,
   getAllMedications as fetchAllMedications,
-  createFollowUp, updateFollowUp, deleteFollowUp,
+  createFollowUp, updateFollowUp,
   checkAndMarkOverdue as apiCheckAndMarkOverdue,
   getMedicationsForFollowUp as fetchMedications,
-  createMedication, updateMedication, deleteMedication,
+  createMedication, updateMedication,
   fromPrisma as followUpFromPrisma,
 } from '@/lib/api/follow_ups';
 import { auditLog, ensureRegionAccess, requireActor, scopedRegionWhere } from '@/lib/auth-server';
@@ -135,6 +134,7 @@ function followUpWhere(params: {
 }, regionWhere: Prisma.FollowUpWhereInput): Prisma.FollowUpWhereInput {
   return {
     ...regionWhere,
+    voidedAt: null,
     ...tabWhere(params.tab),
     ...(params.search && {
       OR: [
@@ -167,7 +167,7 @@ function followUpDistinctGroupWhereSql(params: {
   search?: string;
   region?: string;
 }) {
-  const conditions: Prisma.Sql[] = followUpTabSql(params.tab);
+  const conditions: Prisma.Sql[] = [Prisma.sql`voided_at IS NULL`, ...followUpTabSql(params.tab)];
   if (params.region) conditions.push(Prisma.sql`region = ${params.region}`);
 
   const search = params.search?.trim();
@@ -191,7 +191,7 @@ function followUpDistinctGroupWhereSql(params: {
 export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number>> {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);
-  const base = scopedRegionWhere(actor);
+  const base = { ...scopedRegionWhere(actor), voidedAt: null };
 
   const [due, overdue, missed, needsReview, reviewCompleted, all] = await Promise.all([
     prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('due') } }),
@@ -249,6 +249,7 @@ export async function getFollowUpsPaginated(params: {
   const rows = await prisma.followUp.findMany({
     where: {
       ...scopedRegionWhere(actor),
+      voidedAt: null,
       patientId: { in: patientIds },
       milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] },
     },
@@ -407,7 +408,7 @@ export async function actionCreateFollowUp(
       patientCode: surgery.patient?.patientCode,
     }, surgery);
     updateTag('follow-ups');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'create',
       entity: 'FollowUp',
@@ -416,7 +417,7 @@ export async function actionCreateFollowUp(
       campaignId: followUp.campaignId,
       details: `Created follow-up for ${followUp.patientName}`,
       after: followUp,
-    }));
+    });
     return { ok: true, data: followUp };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -459,7 +460,7 @@ export async function actionUpdateFollowUp(
       patientCode: surgery.patient?.patientCode,
     }, surgery);
     updateTag('follow-ups');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'update',
       entity: 'FollowUp',
@@ -475,7 +476,7 @@ export async function actionUpdateFollowUp(
           : `Updated follow-up for ${followUp.patientName}`,
       before,
       after: followUp,
-    }));
+    });
     return { ok: true, data: followUp };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -483,27 +484,48 @@ export async function actionUpdateFollowUp(
 }
 
 export async function actionDeleteFollowUp(id: string): Promise<ActionResult> {
+  void id;
+  return { ok: false, error: 'Follow-up records cannot be permanently deleted. Void the record instead.' };
+}
+
+export async function actionVoidFollowUp(id: string, reason: string): Promise<ActionResult> {
   const actor = await requireActor('followups', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can void follow-ups' };
+  }
+  const cleanReason = reason.trim();
+  if (cleanReason.length < 10) return { ok: false, error: 'Reason must be at least 10 characters' };
 
   try {
-    const before = await prisma.followUp.findUnique({ where: { id } });
-    if (before) {
-      const denied = ensureRegionAccess(actor, before.region);
-      if (denied) return denied;
-    }
-    await deleteFollowUp(id);
+    const existing = await prisma.followUp.findUnique({ where: { id } });
+    if (!existing) return { ok: false, error: 'Follow-up not found' };
+    if (existing.voidedAt) return { ok: false, error: 'Follow-up is already voided' };
+    const denied = ensureRegionAccess(actor, existing.region);
+    if (denied) return denied;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.followUp.update({
+        where: { id },
+        data: {
+          voidedAt: new Date(),
+          voidedById: actor.id,
+          voidedByName: actor.name,
+          voidedReason: cleanReason,
+        },
+      });
+      await auditLog({
+        actor,
+        action: 'void',
+        entity: 'FollowUp',
+        entityId: id,
+        region: existing.region,
+        campaignId: existing.campaignId,
+        details: `Voided follow-up for ${existing.patientName}: ${cleanReason}`,
+        before: existing,
+      }, tx);
+    });
     updateTag('follow-ups');
-    after(() => auditLog({
-      actor,
-      action: 'delete',
-      entity: 'FollowUp',
-      entityId: id,
-      region: before?.region,
-      campaignId: before?.campaignId,
-      details: before ? `Deleted follow-up for ${before.patientName}` : 'Deleted follow-up',
-      before,
-    }));
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -555,19 +577,50 @@ export async function actionUpdateMedication(
 }
 
 export async function actionDeleteMedication(id: string): Promise<ActionResult> {
-  const actor = await requireActor('followups', 'edit');
+  void id;
+  return { ok: false, error: 'Medication records cannot be permanently deleted. Mark the record as entered in error instead.' };
+}
+
+export async function actionMarkMedicationEnteredInError(id: string, reason: string): Promise<ActionResult> {
+  const actor = await requireActor('followups', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can mark medications as entered in error' };
+  }
+  const cleanReason = reason.trim();
+  if (cleanReason.length < 10) return { ok: false, error: 'Reason must be at least 10 characters' };
 
   try {
     const existing = await prisma.followUpMedication.findUnique({
       where: { id },
-      include: { followUp: { select: { region: true } } },
+      include: { followUp: { select: { region: true, campaignId: true } } },
     });
-    if (existing) {
-      const denied = ensureRegionAccess(actor, existing.followUp.region);
-      if (denied) return denied;
-    }
-    await deleteMedication(id);
+    if (!existing) return { ok: false, error: 'Medication not found' };
+    if (existing.enteredInErrorAt) return { ok: false, error: 'Medication is already marked as entered in error' };
+    const denied = ensureRegionAccess(actor, existing.followUp.region);
+    if (denied) return denied;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.followUpMedication.update({
+        where: { id },
+        data: {
+          enteredInErrorAt: new Date(),
+          enteredInErrorById: actor.id,
+          enteredInErrorByName: actor.name,
+          enteredInErrorReason: cleanReason,
+        },
+      });
+      await auditLog({
+        actor,
+        action: 'void',
+        entity: 'FollowUpMedication',
+        entityId: id,
+        region: existing.followUp.region,
+        campaignId: existing.followUp.campaignId,
+        details: `Marked medication ${existing.drugName} as entered in error: ${cleanReason}`,
+        before: existing,
+      }, tx);
+    });
     updateTag('follow-ups');
     return { ok: true, data: null };
   } catch (e) {

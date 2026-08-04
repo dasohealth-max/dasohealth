@@ -2,7 +2,6 @@
 
 import { z } from 'zod';
 import { updateTag } from 'next/cache';
-import { after } from 'next/server';
 import {
   createCampaign,
   createCampaignRegion,
@@ -272,7 +271,7 @@ export async function actionCreateCampaign(input: unknown): Promise<ActionResult
   try {
     const campaign = await createCampaign(parsed.data);
     updateTag('campaigns');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'create',
       entity: 'Campaign',
@@ -281,7 +280,7 @@ export async function actionCreateCampaign(input: unknown): Promise<ActionResult
       region: campaign.region || undefined,
       details: `Campaign created: ${campaign.name}`,
       after: campaign,
-    }));
+    });
     return { ok: true, data: campaign };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -324,7 +323,7 @@ export async function actionUpdateCampaign(id: string, input: unknown): Promise<
 
     const campaign = await updateCampaign(id, parsed.data);
     updateTag('campaigns');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'update',
       entity: 'Campaign',
@@ -333,7 +332,7 @@ export async function actionUpdateCampaign(id: string, input: unknown): Promise<
       details: before.status !== campaign.status ? `Status changed to ${campaign.status}` : `Campaign updated: ${campaign.name}`,
       before,
       after: campaign,
-    }));
+    });
     return { ok: true, data: campaign };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -346,16 +345,18 @@ export async function actionDeleteCampaign(id: string): Promise<ActionResult> {
 
   try {
     const before = await getCampaignById(id);
-    if (before) {
-      const denied = canAccessCampaign(actor, before);
-      if (denied) return denied;
+    if (!before) return { ok: false, error: 'Campaign not found' };
+    const denied = canAccessCampaign(actor, before);
+    if (denied) return denied;
+    if (before.status !== 'Planned') {
+      return { ok: false, error: 'Only unused Planned campaigns can be deleted. Keep active or historical campaigns for audit history.' };
     }
     const dependencyMessage = clinicalDependencyMessage('this campaign', await getCampaignClinicalDependencies(id));
     if (dependencyMessage) return { ok: false, error: dependencyMessage };
 
     await deleteCampaign(id);
     updateTag('campaigns');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'delete',
       entity: 'Campaign',
@@ -363,7 +364,7 @@ export async function actionDeleteCampaign(id: string): Promise<ActionResult> {
       campaignId: id,
       details: before ? `Deleted campaign ${before.name}` : 'Deleted campaign',
       before,
-    }));
+    });
     return { ok: true, data: null };
   } catch (e) {
     if (isForeignKeyConstraintError(e)) {
@@ -404,7 +405,7 @@ export async function actionCreateCampaignRegion(input: unknown): Promise<Action
 
     const plan = await createCampaignRegion(parsed.data);
     updateTag('campaigns');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'create',
       entity: 'CampaignRegion',
@@ -413,7 +414,7 @@ export async function actionCreateCampaignRegion(input: unknown): Promise<Action
       campaignId: plan.campaignId,
       details: `Sub-region added: ${plan.type} in ${plan.region}`,
       after: plan,
-    }));
+    });
     return { ok: true, data: plan };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -455,7 +456,7 @@ export async function actionUpdateCampaignRegion(id: string, input: unknown): Pr
 
     const plan = await updateCampaignRegion(id, parsed.data);
     updateTag('campaigns');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'update',
       entity: 'CampaignRegion',
@@ -465,7 +466,7 @@ export async function actionUpdateCampaignRegion(id: string, input: unknown): Pr
       details: before.status !== (plan.status === 'On Track' ? 'OnTrack' : plan.status) ? `Status changed to ${plan.status}` : `Region updated: ${plan.region}`,
       before,
       after: plan,
-    }));
+    });
     return { ok: true, data: plan };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -487,7 +488,7 @@ export async function actionDeleteCampaignRegion(id: string): Promise<ActionResu
 
     await deleteCampaignRegion(id);
     updateTag('campaigns');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'delete',
       entity: 'CampaignRegion',
@@ -496,7 +497,7 @@ export async function actionDeleteCampaignRegion(id: string): Promise<ActionResu
       campaignId: before.campaignId,
       details: `Region removed: ${before.region}`,
       before,
-    }));
+    });
     return { ok: true, data: null };
   } catch (e) {
     if (isForeignKeyConstraintError(e)) {

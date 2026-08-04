@@ -1,23 +1,17 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { hasE2ECredentials, loginAs } from './auth';
 
-const EMAIL = process.env.E2E_CLERK_EMAIL ?? 'clerk@demo.eyecare.org';
-const PASSWORD = process.env.E2E_PASSWORD ?? 'Demo1234!';
-
-async function login(page: Page) {
-  await page.goto('/login');
-  await page.getByLabel(/email/i).fill(EMAIL);
-  await page.getByLabel(/password/i).fill(PASSWORD);
-  await page.getByRole('button', { name: /sign in|log in/i }).click();
-  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
-}
+const EMAIL = process.env.E2E_CLERK_EMAIL;
+const PASSWORD = process.env.E2E_PASSWORD;
 
 test.describe('Data Clerk – patient registration', () => {
+  test.skip(!hasE2ECredentials(EMAIL, PASSWORD), 'E2E Data Clerk credentials are not configured');
   test.beforeEach(async ({ page }) => {
-    await login(page);
+    await loginAs(page, EMAIL!, PASSWORD!, '/patients');
   });
 
-  test('sees the dashboard after login', async ({ page }) => {
-    await expect(page).toHaveURL(/\/dashboard/);
+  test('lands in the patient workspace after login', async ({ page }) => {
+    await expect(page).toHaveURL(/\/patients/);
   });
 
   test('can navigate to the patients page', async ({ page }) => {
@@ -55,14 +49,14 @@ test.describe('Data Clerk – patient registration', () => {
   test('cannot access surgeries page', async ({ page }) => {
     await page.goto('/surgeries');
     // Data Clerk should be redirected or see an access-denied message
-    const isRedirected = page.url().includes('/dashboard') || page.url().includes('/login');
+    const isRedirected = page.url().includes('/patients') || page.url().includes('/login');
     const hasDenied = await page.getByText(/access denied|permission|forbidden/i).isVisible();
     expect(isRedirected || hasDenied).toBe(true);
   });
 
   test('cannot access settings', async ({ page }) => {
     await page.goto('/settings');
-    const isRedirected = page.url().includes('/dashboard') || page.url().includes('/login');
+    const isRedirected = page.url().includes('/patients') || page.url().includes('/login');
     const hasDenied = await page.getByText(/access denied|permission|forbidden/i).isVisible();
     expect(isRedirected || hasDenied).toBe(true);
   });

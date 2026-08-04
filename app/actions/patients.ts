@@ -2,7 +2,6 @@
 
 import { z } from 'zod';
 import { updateTag } from 'next/cache';
-import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fromPrisma, getAllPatients as fetchAllPatients, getPatientById as fetchPatientById } from '@/lib/api/patients';
 import { getAllCampaigns as fetchAllCampaigns } from '@/lib/api/campaigns';
@@ -10,11 +9,12 @@ import { auditLog, ensureRegionAccess, isSuperAdmin, requireActor, scopedRegionW
 import type { Campaign, Patient } from '@/types';
 import { Prisma, type Sex, type DisabilityStatus, type BirthDateSource } from '@/lib/generated/prisma/client';
 import { formatPatientCode, patientCodePrefix } from '@/lib/patient-code';
+import { protectPatientForRole } from '@/lib/privacy';
 
 export async function getAllPatients(): Promise<Patient[]> {
   const actor = await requireActor('patients', 'view');
   if ('error' in actor) throw new Error(actor.error);
-  return fetchAllPatients(scopedRegionWhere(actor));
+  return (await fetchAllPatients(scopedRegionWhere(actor))).map((patient) => protectPatientForRole(patient, actor.role));
 }
 
 export async function getPatientRegistrationCampaigns(): Promise<Campaign[]> {
@@ -72,7 +72,7 @@ export async function getPatientsPaginated(params: {
     prisma.patient.count({ where }),
   ]);
 
-  return { data: rows.map(fromPrisma), total };
+  return { data: rows.map(fromPrisma).map((patient) => protectPatientForRole(patient, actor.role)), total };
 }
 
 export async function getPatientById(id: string): Promise<Patient | null> {
@@ -82,7 +82,7 @@ export async function getPatientById(id: string): Promise<Patient | null> {
   if (!patient) return null;
   const denied = ensureRegionAccess(actor, patient.region);
   if (denied) throw new Error(denied.error);
-  return patient;
+  return protectPatientForRole(patient, actor.role);
 }
 
 const PatientSchema = z.object({
@@ -295,7 +295,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
       screeningStatus: 'Awaiting Screening',
     });
     updateTag('patients');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'create',
       entity: 'Patient',
@@ -304,7 +304,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
       campaignId: patient.campaignId,
       details: `Registered patient ${patient.fullName}`,
       after: patient,
-    }));
+    });
     return { ok: true, data: patient };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -380,7 +380,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
     });
     const patient = fromPrisma(row);
     updateTag('patients');
-    after(() => auditLog({
+    await auditLog({
       actor,
       action: 'update',
       entity: 'Patient',
@@ -390,7 +390,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
       details: `Updated patient ${patient.fullName}`,
       before,
       after: patient,
-    }));
+    });
     return { ok: true, data: patient };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -400,38 +400,13 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
 export async function actionDeletePatient(id: string): Promise<ActionResult<null>> {
   const actor = await requireActor('patients', 'delete');
   if ('error' in actor) return { ok: false, error: actor.error };
-
-  try {
-    const before = await fetchPatientById(id);
-    if (before) {
-      const denied = ensureRegionAccess(actor, before.region);
-      if (denied) return denied;
-    }
-
-    const surgeryCount = await prisma.surgery.count({ where: { patientId: id } });
-    if (surgeryCount > 0) {
-      return {
-        ok: false,
-        error: 'This patient has surgery records and cannot be deleted. Use "Archive" to preserve the record for accountability, or submit a change request.',
-      };
-    }
-
-    await prisma.patient.delete({ where: { id } });
-    updateTag('patients');
-    after(() => auditLog({
-      actor,
-      action: 'delete',
-      entity: 'Patient',
-      entityId: id,
-      region: before?.region,
-      campaignId: before?.campaignId,
-      details: before ? `Deleted patient ${before.fullName}` : 'Deleted patient',
-      before,
-    }));
-    return { ok: true, data: null };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
+  void id;
+  // Patient clinical records are archive-only. Keep this blocked action so
+  // stale clients cannot recover the former hard-delete behavior.
+  return {
+    ok: false,
+    error: 'Patient records cannot be permanently deleted. Archive the patient record instead.',
+  };
 }
 
 export async function actionArchivePatient(id: string, reason: string): Promise<ActionResult<null>> {
@@ -449,26 +424,88 @@ export async function actionArchivePatient(id: string, reason: string): Promise<
     if (denied) return denied;
     if (before.archivedAt) return { ok: false, error: 'Patient is already archived' };
 
-    await prisma.patient.update({
-      where: { id },
-      data: {
-        archivedAt: new Date(),
-        archivedById: actor.id,
-        archivedByName: actor.name,
-        archivedReason: reason.trim(),
-      },
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.patient.update({
+        where: { id },
+        data: {
+          archivedAt: now,
+          archivedById: actor.id,
+          archivedByName: actor.name,
+          archivedReason: reason.trim(),
+        },
+      });
+      await tx.surgery.updateMany({
+        where: {
+          patientId: id,
+          archivedAt: null,
+          status: { in: ['Scheduled', 'Postponed'] },
+        },
+        data: {
+          archivedAt: now,
+          archivedById: actor.id,
+          archivedByName: actor.name,
+          archivedReason: reason.trim(),
+        },
+      });
+      await auditLog({
+        actor,
+        action: 'archive',
+        entity: 'Patient',
+        entityId: id,
+        region: before.region,
+        campaignId: before.campaignId,
+        details: `Archived patient ${before.fullName} — reason: ${reason.trim()}`,
+        before,
+      }, tx);
     });
     updateTag('patients');
-    after(() => auditLog({
-      actor,
-      action: 'archive',
-      entity: 'Patient',
-      entityId: id,
-      region: before.region,
-      campaignId: before.campaignId,
-      details: `Archived patient ${before.fullName} — reason: ${reason.trim()}`,
-      before,
-    }));
+    updateTag('surgeries');
+    return { ok: true, data: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function actionRestorePatient(id: string, reason: string): Promise<ActionResult<null>> {
+  const actor = await requireActor('patients', 'delete');
+  if ('error' in actor) return { ok: false, error: actor.error };
+  if (actor.role !== 'Super Administrator') {
+    return { ok: false, error: 'Only Super Administrators can restore archived patients' };
+  }
+  if (reason.trim().length < 10) {
+    return { ok: false, error: 'Restore reason must be at least 10 characters' };
+  }
+
+  try {
+    const before = await fetchPatientById(id);
+    if (!before) return { ok: false, error: 'Patient not found' };
+    const denied = ensureRegionAccess(actor, before.region);
+    if (denied) return denied;
+    if (!before.archivedAt) return { ok: false, error: 'Patient is not archived' };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.patient.update({
+        where: { id },
+        data: {
+          archivedAt: null,
+          archivedById: null,
+          archivedByName: null,
+          archivedReason: null,
+        },
+      });
+      await auditLog({
+        actor,
+        action: 'restore',
+        entity: 'Patient',
+        entityId: id,
+        region: before.region,
+        campaignId: before.campaignId,
+        details: `Restored patient ${before.fullName} — reason: ${reason.trim()}`,
+        before,
+      }, tx);
+    });
+    updateTag('patients');
     return { ok: true, data: null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

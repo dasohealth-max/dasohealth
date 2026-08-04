@@ -6,13 +6,14 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { usePermissions } from '@/lib/auth';
 import type { AppModule } from '@/lib/permissions';
+import { inboxLabelForRole } from '@/lib/permissions';
 import {
   LayoutDashboard, Megaphone, Users, Microscope,
   Scissors, CalendarCheck,
   FileBarChart, Settings, ChevronLeft, ChevronRight,
   Inbox, X,
 } from 'lucide-react';
-import { getPendingChangeRequestCount } from '@/app/actions/change_requests';
+import { getInboxBadgeCount } from '@/app/actions/change_requests';
 
 const NAV: { label: string; href: string; icon: React.ElementType; module: AppModule }[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, module: 'dashboard' },
@@ -35,14 +36,14 @@ interface SidebarProps {
 
 function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => void }) {
   const path = usePathname();
-  const { canAccess } = usePermissions();
+  const { canAccess, role } = usePermissions();
   const visibleNav = NAV.filter(({ module }) => canAccess(module));
 
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
     async function fetchCount() {
-      const count = await getPendingChangeRequestCount();
+      const count = await getInboxBadgeCount();
       if (!cancelled) setPendingCount(count);
     }
     fetchCount();
@@ -52,7 +53,8 @@ function NavLinks({ collapsed, onClose }: { collapsed: boolean; onClose?: () => 
 
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-      {visibleNav.map(({ label, href, icon: Icon }) => {
+      {visibleNav.map(({ label: configuredLabel, href, icon: Icon }) => {
+        const label = href === '/inbox' ? inboxLabelForRole(role) : configuredLabel;
         const active = path === href || path.startsWith(href + '/');
         const badge = href === '/inbox' && pendingCount > 0 ? pendingCount : null;
         return (
@@ -164,4 +166,3 @@ export default function Sidebar({ mobileOpen, onMobileClose, collapsed, onToggle
     </>
   );
 }
-
