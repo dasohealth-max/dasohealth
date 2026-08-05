@@ -315,7 +315,7 @@ export async function actionCreateSurgery(
     if (denied) return denied;
 
     const existingSurgery = await prisma.surgery.findFirst({
-      where: { patientId: data.patientId, status: { notIn: ['Cancelled'] as never[] } },
+      where: { patientId: data.patientId, status: { notIn: ['Cancelled'] as never[] }, archivedAt: null },
       select: { id: true, status: true },
     });
     if (existingSurgery) {

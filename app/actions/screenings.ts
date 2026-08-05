@@ -343,7 +343,7 @@ export async function actionCreateScreening(
     if (denied) return denied;
 
     const existingScreening = await prisma.screening.findFirst({
-      where: { patientId: data.patientId },
+      where: { patientId: data.patientId, voidedAt: null },
       select: { id: true },
     });
     if (existingScreening) {

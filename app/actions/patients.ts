@@ -260,6 +260,7 @@ export async function actionCreatePatient(input: unknown): Promise<ActionResult<
         campaignRegionId: d.campaignRegionId,
         phone,
         fullName: { equals: fullName, mode: 'insensitive' },
+        archivedAt: null,
       },
       select: { patientCode: true, fullName: true },
     });
@@ -344,6 +345,7 @@ export async function actionUpdatePatient(id: string, input: unknown): Promise<A
         campaignRegionId: d.campaignRegionId,
         phone,
         fullName: { equals: fullName, mode: 'insensitive' },
+        archivedAt: null,
       },
       select: { patientCode: true, fullName: true },
     });

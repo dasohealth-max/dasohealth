@@ -223,7 +223,7 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
         }),
         prisma.screening.groupBy({
           by: ['region', 'campaignId', 'patientId'],
-          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds }, voidedAt: null, patient: { archivedAt: null } },
           _count: { _all: true },
         }),
         prisma.surgery.groupBy({
@@ -233,12 +233,12 @@ export async function getDashboardRegionStats(): Promise<DashboardRegionStats[]>
         }),
         prisma.followUp.groupBy({
           by: ['region', 'campaignId', 'status', 'patientId'],
-          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds }, voidedAt: null, patient: { archivedAt: null } },
           _count: { _all: true },
         }),
         prisma.followUp.groupBy({
           by: ['region', 'campaignId', 'status', 'needsDoctorReview'],
-          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds } },
+          where: { ...scopedRegionWhere(actor), campaignId: { in: campaignIds }, voidedAt: null, patient: { archivedAt: null } },
           _count: { _all: true },
         }),
       ]);

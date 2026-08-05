@@ -136,6 +136,7 @@ function followUpWhere(params: {
   return {
     ...regionWhere,
     voidedAt: null,
+    patient: { archivedAt: null },
     ...tabWhere(params.tab),
     ...(params.region && { region: params.region }),
     ...(params.search && {
@@ -169,7 +170,11 @@ function followUpDistinctGroupWhereSql(params: {
   search?: string;
   region?: string;
 }) {
-  const conditions: Prisma.Sql[] = [Prisma.sql`voided_at IS NULL`, ...followUpTabSql(params.tab)];
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`voided_at IS NULL`,
+    Prisma.sql`NOT EXISTS (SELECT 1 FROM patients WHERE patients.id = follow_ups.patient_id AND patients.archived_at IS NOT NULL)`,
+    ...followUpTabSql(params.tab),
+  ];
   if (params.region) conditions.push(Prisma.sql`region = ${params.region}`);
 
   const search = params.search?.trim();
@@ -193,7 +198,7 @@ function followUpDistinctGroupWhereSql(params: {
 export async function getFollowUpTabCounts(): Promise<Record<FollowUpTab, number>> {
   const actor = await requireActor('followups', 'view');
   if ('error' in actor) throw new Error(actor.error);
-  const base = { ...scopedRegionWhere(actor), voidedAt: null };
+  const base = { ...scopedRegionWhere(actor), voidedAt: null, patient: { archivedAt: null } };
 
   const [due, overdue, missed, needsReview, reviewCompleted, all] = await Promise.all([
     prisma.followUp.groupBy({ by: ['patientId'], where: { ...base, ...tabWhere('due') } }),
