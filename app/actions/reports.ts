@@ -398,6 +398,8 @@ export async function getReportAggregation(params: {
   };
   const followUpWhere = {
     ...baseEntityWhere,
+    voidedAt: null,
+    patient: { archivedAt: null },
     milestone: { in: ACTIVE_FOLLOW_UP_PRISMA_MILESTONES as never[] },
   };
 
@@ -417,7 +419,7 @@ export async function getReportAggregation(params: {
         }),
         prisma.screening.groupBy({
           by: ['region', 'campaignId', 'patientId'],
-          where: { ...baseEntityWhere, patient: { archivedAt: null } },
+          where: { ...baseEntityWhere, voidedAt: null, patient: { archivedAt: null } },
           _count: { _all: true },
         }),
         prisma.surgery.groupBy({
@@ -566,10 +568,10 @@ export async function getReportRawData(params: {
 
   const [patientRows, screeningRows, surgeryRows, followUpRows, medRows] = await Promise.all([
     prisma.patient.findMany({ where: { ...entityWhere, archivedAt: null } }),
-    prisma.screening.findMany({ where: { ...entityWhere, patient: { archivedAt: null } } }),
+    prisma.screening.findMany({ where: { ...entityWhere, voidedAt: null, patient: { archivedAt: null } } }),
     prisma.surgery.findMany({ where: { ...entityWhere, archivedAt: null } }),
-    prisma.followUp.findMany({ where: { ...entityWhere, patient: { archivedAt: null } } }),
-    prisma.followUpMedication.findMany({ where: { followUp: { ...entityWhere, patient: { archivedAt: null } } } }),
+    prisma.followUp.findMany({ where: { ...entityWhere, voidedAt: null, patient: { archivedAt: null } } }),
+    prisma.followUpMedication.findMany({ where: { followUp: { ...entityWhere, voidedAt: null, patient: { archivedAt: null } } } }),
   ]);
 
   const campaigns = allCampaigns.filter(
